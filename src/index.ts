@@ -4,12 +4,12 @@ import { MenuItemLocation, ToolbarButtonLocation, ContentScriptType, ModelType }
 /**
  * Joplin Univer Plugin
  * Embeds interactive Univer spreadsheets within Joplin notes
- * VERSION: 2.3.0 - Dialog-based editing with userData storage, RTE support, formulas
+ * VERSION: 2.4.0 - Dialog-based editing with userData storage, RTE support, formulas, row/col manipulation
  */
 joplin.plugins.register({
 	onStart: async function() {
 		try {
-			console.info('=== UNIVER PLUGIN v2.3.0 STARTING ===');
+			console.info('=== UNIVER PLUGIN v2.4.0 STARTING ===');
 			console.info('Joplin Univer Sheets plugin starting...');
 
 			// Create dialog for spreadsheet editing

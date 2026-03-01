@@ -1,6 +1,6 @@
 {
   "name": "joplin-plugin-univer-worksheet-plugin",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "scripts": {
     "copy-styles": "cp node_modules/@univerjs/design/lib/index.css dist/univer-bundle.css",
     "dist": "NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=buildMain && NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=buildExtraScripts && npm run copy-styles && NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=createArchive",

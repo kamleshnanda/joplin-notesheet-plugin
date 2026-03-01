@@ -2,7 +2,7 @@
 	"manifest_version": 1,
 	"id": "com.kamleshnanda.joplin-univer-plugin",
 	"app_min_version": "3.5",
-	"version": "2.3.0",
+	"version": "2.4.0",
 	"name": "Univer Worksheet Plugin",
 	"description": "Embed interactive Univer spreadsheets with Excel-like functionality directly in your Joplin notes. Supports formulas, cell formatting, and seamless sync across devices.",
 	"author": "Kamlesh Nanda",

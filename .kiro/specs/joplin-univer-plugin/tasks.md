@@ -122,7 +122,7 @@
 - [ ]* 12.3 Cell formatting (colors, bold, borders)
 - [ ]* 12.4 Chart support
 - [ ]* 12.5 Auto-save mechanism
-- [ ]* 12.6 Add/delete row/column buttons
+- [x] 12.6 Add/delete row/column buttons
 
 ## Notes
 

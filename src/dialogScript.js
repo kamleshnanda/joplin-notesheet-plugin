@@ -5,7 +5,7 @@
  * Data is passed from the plugin via a hidden <div id="spreadsheet-data">
  * containing JSON-encoded spreadsheet data.
  * 
- * VERSION: 2.3.0 — adds formula evaluation engine
+ * VERSION: 2.4.0 — adds formula evaluation engine + row/column manipulation
  * 
  * Supported formulas:
  *   =A1+B1, =A1*2, =A1/B1, =A1-B1
@@ -22,6 +22,10 @@
     var MAX_COLS = 52;
 
     var _firstSheetId = null;
+
+    // Button styles (inline since CSP blocks <style> in dynamic HTML)
+    var _btnStyle = 'padding:4px 10px;font-size:12px;border:1px solid #d0d7de;border-radius:4px;background:#f6f8fa;color:#24292f;cursor:pointer;';
+    var _btnStyleDanger = 'padding:4px 10px;font-size:12px;border:1px solid #d0d7de;border-radius:4px;background:#fff5f5;color:#cf222e;cursor:pointer;';
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -433,6 +437,117 @@
         return cell.v !== undefined ? String(cell.v) : '';
     }
 
+    // ── Row/Column manipulation ──
+    // Track current grid dimensions for add/delete operations
+    var _displayRows = 10;
+    var _displayCols = 5;
+
+    function getActiveCell() {
+        var active = document.activeElement;
+        if (active && active.tagName === 'INPUT' && active.hasAttribute('data-row')) {
+            return { row: parseInt(active.getAttribute('data-row')), col: parseInt(active.getAttribute('data-col')) };
+        }
+        return null;
+    }
+
+    function addRowAtEnd() {
+        if (_displayRows >= MAX_ROWS) { showWarning('Maximum ' + MAX_ROWS + ' rows reached.'); return; }
+        _displayRows++;
+        reRender();
+    }
+
+    function insertRowAbove() {
+        var cell = getActiveCell();
+        if (!cell) { showWarning('Select a cell first to insert a row above it.'); return; }
+        if (_displayRows >= MAX_ROWS) { showWarning('Maximum ' + MAX_ROWS + ' rows reached.'); return; }
+        var cellData = window.spreadsheetData.sheets[_firstSheetId].cellData;
+        // Shift all rows from bottom up to make room at cell.row
+        for (var r = _displayRows; r > cell.row; r--) {
+            if (cellData[r - 1]) {
+                cellData[r] = cellData[r - 1];
+            } else {
+                delete cellData[r];
+            }
+        }
+        cellData[cell.row] = {}; // empty new row
+        _displayRows++;
+        reRender();
+    }
+
+    function deleteRow() {
+        var cell = getActiveCell();
+        if (!cell) { showWarning('Select a cell in the row you want to delete.'); return; }
+        if (_displayRows <= 1) { showWarning('Cannot delete the last row.'); return; }
+        var cellData = window.spreadsheetData.sheets[_firstSheetId].cellData;
+        // Shift rows up from cell.row
+        for (var r = cell.row; r < _displayRows - 1; r++) {
+            if (cellData[r + 1]) {
+                cellData[r] = cellData[r + 1];
+            } else {
+                delete cellData[r];
+            }
+        }
+        delete cellData[_displayRows - 1];
+        _displayRows--;
+        reRender();
+    }
+
+    function addColAtEnd() {
+        if (_displayCols >= MAX_COLS) { showWarning('Maximum ' + MAX_COLS + ' columns reached.'); return; }
+        _displayCols++;
+        reRender();
+    }
+
+    function insertColLeft() {
+        var cell = getActiveCell();
+        if (!cell) { showWarning('Select a cell first to insert a column to its left.'); return; }
+        if (_displayCols >= MAX_COLS) { showWarning('Maximum ' + MAX_COLS + ' columns reached.'); return; }
+        var cellData = window.spreadsheetData.sheets[_firstSheetId].cellData;
+        var rowKeys = Object.keys(cellData);
+        for (var ri = 0; ri < rowKeys.length; ri++) {
+            var rd = cellData[rowKeys[ri]];
+            if (!rd) continue;
+            // Shift columns right from end
+            for (var c = _displayCols; c > cell.col; c--) {
+                if (rd[c - 1]) {
+                    rd[c] = rd[c - 1];
+                } else {
+                    delete rd[c];
+                }
+            }
+            delete rd[cell.col]; // empty new column cell
+        }
+        _displayCols++;
+        reRender();
+    }
+
+    function deleteCol() {
+        var cell = getActiveCell();
+        if (!cell) { showWarning('Select a cell in the column you want to delete.'); return; }
+        if (_displayCols <= 1) { showWarning('Cannot delete the last column.'); return; }
+        var cellData = window.spreadsheetData.sheets[_firstSheetId].cellData;
+        var rowKeys = Object.keys(cellData);
+        for (var ri = 0; ri < rowKeys.length; ri++) {
+            var rd = cellData[rowKeys[ri]];
+            if (!rd) continue;
+            // Shift columns left from cell.col
+            for (var c = cell.col; c < _displayCols - 1; c++) {
+                if (rd[c + 1]) {
+                    rd[c] = rd[c + 1];
+                } else {
+                    delete rd[c];
+                }
+            }
+            delete rd[_displayCols - 1];
+        }
+        _displayCols--;
+        reRender();
+    }
+
+    function reRender() {
+        renderSpreadsheet(window.spreadsheetData);
+    }
+
     // ── Rendering ──
     function renderSpreadsheet(data) {
         var editor = document.getElementById('spreadsheet-editor');
@@ -457,19 +572,39 @@
             }
         });
 
-        var displayRows = Math.min(Math.max(maxRow + 1, 10), MAX_ROWS);
-        var displayCols = Math.min(Math.max(maxCol + 1, 5), MAX_COLS);
+        _displayRows = Math.min(Math.max(maxRow + 1, _displayRows, 10), MAX_ROWS);
+        _displayCols = Math.min(Math.max(maxCol + 1, _displayCols, 5), MAX_COLS);
+
+        // Toolbar for row/column operations
+        var toolbar = '<div id="grid-toolbar" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">'
+            + '<button type="button" onclick="return false;" id="btn-add-row" style="' + _btnStyle + '" title="Add row at bottom">+ Row</button>'
+            + '<button type="button" onclick="return false;" id="btn-insert-row" style="' + _btnStyle + '" title="Insert row above selected cell">↑ Insert Row</button>'
+            + '<button type="button" onclick="return false;" id="btn-del-row" style="' + _btnStyleDanger + '" title="Delete selected row">− Row</button>'
+            + '<span style="border-left:1px solid #d0d7de;margin:0 4px;"></span>'
+            + '<button type="button" onclick="return false;" id="btn-add-col" style="' + _btnStyle + '" title="Add column at right">+ Col</button>'
+            + '<button type="button" onclick="return false;" id="btn-insert-col" style="' + _btnStyle + '" title="Insert column left of selected cell">← Insert Col</button>'
+            + '<button type="button" onclick="return false;" id="btn-del-col" style="' + _btnStyleDanger + '" title="Delete selected column">− Col</button>'
+            + '<span style="flex:1;"></span>'
+            + '<span style="font-size:12px;color:#57606a;align-self:center;">' + _displayRows + ' × ' + _displayCols + '</span>'
+            + '</div>';
+
+        // Formula bar
+        var formulaBar = '<div id="formula-bar" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 8px;background:#f0f3f6;border-radius:4px;font-size:13px;">'
+            + '<span id="cell-ref" style="font-weight:600;min-width:36px;color:#57606a;">A1</span>'
+            + '<span style="color:#d0d7de;">|</span>'
+            + '<span id="formula-display" style="font-family:monospace;color:#24292f;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&nbsp;</span>'
+            + '</div>';
 
         var html = '<table>';
         html += '<thead><tr><th></th>';
-        for (var col = 0; col < displayCols; col++) {
+        for (var col = 0; col < _displayCols; col++) {
             html += '<th>' + indexToCol(col) + '</th>';
         }
         html += '</tr></thead><tbody>';
 
-        for (var row = 0; row < displayRows; row++) {
+        for (var row = 0; row < _displayRows; row++) {
             html += '<tr><th>' + (row + 1) + '</th>';
-            for (var c = 0; c < displayCols; c++) {
+            for (var c = 0; c < _displayCols; c++) {
                 var display = getDisplayValue(cellData, row, c);
                 var edit = getEditValue(cellData, row, c);
                 var isFormula = edit.charAt && edit.charAt(0) === '=';
@@ -485,14 +620,15 @@
         }
         html += '</tbody></table>';
 
-        // Formula bar
-        var formulaBar = '<div id="formula-bar" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 8px;background:#f0f3f6;border-radius:4px;font-size:13px;">'
-            + '<span id="cell-ref" style="font-weight:600;min-width:36px;color:#57606a;">A1</span>'
-            + '<span style="color:#d0d7de;">|</span>'
-            + '<span id="formula-display" style="font-family:monospace;color:#24292f;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&nbsp;</span>'
-            + '</div>';
+        editor.innerHTML = toolbar + formulaBar + html;
 
-        editor.innerHTML = formulaBar + html;
+        // Wire up toolbar buttons (no inline onclick due to CSP)
+        document.getElementById('btn-add-row').addEventListener('click', addRowAtEnd);
+        document.getElementById('btn-insert-row').addEventListener('click', insertRowAbove);
+        document.getElementById('btn-del-row').addEventListener('click', deleteRow);
+        document.getElementById('btn-add-col').addEventListener('click', addColAtEnd);
+        document.getElementById('btn-insert-col').addEventListener('click', insertColLeft);
+        document.getElementById('btn-del-col').addEventListener('click', deleteCol);
 
         // Wire up cell interactions
         var inputs = editor.querySelectorAll('input');
