@@ -1,0 +1,48 @@
+{
+  "name": "joplin-plugin-univer-worksheet-plugin",
+  "version": "2.3.0",
+  "scripts": {
+    "copy-styles": "cp node_modules/@univerjs/design/lib/index.css dist/univer-bundle.css",
+    "dist": "NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=buildMain && NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=buildExtraScripts && npm run copy-styles && NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=createArchive",
+    "prepare": "npm run dist",
+    "updateVersion": "NODE_OPTIONS='--openssl-legacy-provider' webpack --env.joplin-plugin-config=updateVersion",
+    "update": "npm install -g generator-joplin && yo joplin --node-package-manager npm --update --force"
+  },
+  "license": "MIT",
+  "keywords": [
+    "joplin-plugin"
+  ],
+  "files": [
+    "publish"
+  ],
+  "devDependencies": {
+    "@types/node": "^18.7.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "chalk": "^4.1.0",
+    "copy-webpack-plugin": "^4.2.3",
+    "fs-extra": "^10.1.0",
+    "glob": "^8.0.3",
+    "tar": "^7.5.9",
+    "ts-loader": "^8.4.0",
+    "typescript": "^4.8.2",
+    "webpack": "^4.25.1",
+    "webpack-cli": "^3.3.12"
+  },
+  "dependencies": {
+    "@univerjs/core": "^0.15.5",
+    "@univerjs/design": "^0.15.5",
+    "@univerjs/docs": "^0.15.5",
+    "@univerjs/docs-ui": "^0.15.5",
+    "@univerjs/engine-formula": "^0.15.5",
+    "@univerjs/engine-render": "^0.15.5",
+    "@univerjs/facade": "^0.5.5",
+    "@univerjs/sheets": "^0.15.5",
+    "@univerjs/sheets-formula": "^0.15.5",
+    "@univerjs/sheets-ui": "^0.15.5",
+    "@univerjs/ui": "^0.15.5",
+    "@wendellhu/redi": "^1.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
