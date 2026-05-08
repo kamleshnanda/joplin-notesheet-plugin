@@ -2,3 +2,4 @@ dist/
 node_modules/
 publish/
 build.log
+.DS_Store
