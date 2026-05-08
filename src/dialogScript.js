@@ -23,6 +23,22 @@
 
     var _firstSheetId = null;
 
+    // ── Cell mode state (Excel-like) ──
+    // _editMode: false = "selected" (whole content highlighted, typing replaces).
+    //            true  = "edit"     (cursor in text, arrows behave per content type).
+    var _editMode = false;
+
+    // ── Reference-picker state ──
+    // While entering a formula (value starts with "="), arrow keys and clicks insert
+    // a cell reference at the cursor. After insertion, the reference is "live": the
+    // next arrow key REPLACES it (matching Excel). Any non-arrow keystroke commits
+    // the live reference (so the next arrow inserts a new ref at the cursor).
+    var _refLive = false;
+    var _refRow = -1;        // current target row (live ref points here)
+    var _refCol = -1;        // current target col
+    var _refStart = -1;      // slice [start,end) in active input where the ref text sits
+    var _refEnd = -1;
+
     // Button styles (inline since CSP blocks <style> in dynamic HTML)
     var _btnStyle = 'padding:4px 10px;font-size:12px;border:1px solid #d0d7de;border-radius:4px;background:#f6f8fa;color:#24292f;cursor:pointer;';
     var _btnStyleDanger = 'padding:4px 10px;font-size:12px;border:1px solid #d0d7de;border-radius:4px;background:#fff5f5;color:#cf222e;cursor:pointer;';
@@ -45,6 +61,22 @@
 
         window.spreadsheetData = data;
         renderSpreadsheet(data);
+        syncState(); // initial state for the hidden input
+        // Excel-like default: cell A1 is selected on open so keyboard works immediately.
+        focusCellAt(0, 0, /* selectMode */ true);
+    }
+
+    // Mirror window.spreadsheetData into the hidden #spreadsheet-state input so the
+    // plugin process receives authoritative cell data (including formulas as {f, v})
+    // on save, instead of having to reconstruct from per-cell input values.
+    function syncState() {
+        var stateEl = document.getElementById('spreadsheet-state');
+        if (!stateEl || !window.spreadsheetData) return;
+        try {
+            stateEl.value = JSON.stringify(window.spreadsheetData);
+        } catch(e) {
+            console.error('syncState failed:', e);
+        }
     }
 
     function showError(msg) {
@@ -567,6 +599,7 @@
 
     function reRender() {
         renderSpreadsheet(window.spreadsheetData);
+        syncState();
     }
 
     // ── Rendering ──
@@ -667,20 +700,39 @@
         // Wire up cell interactions
         var inputs = editor.querySelectorAll('input');
         for (var i = 0; i < inputs.length; i++) {
-            // On focus: show formula in input, update formula bar, track active cell
+            // On focus: show formula in input, update formula bar, track active cell.
+            // Default to "selected" mode (Excel: typing replaces, arrows navigate).
             inputs[i].addEventListener('focus', function() {
                 var formula = this.getAttribute('data-formula') || '';
                 if (formula && formula.charAt(0) === '=') {
                     this.value = formula;
                 }
                 var r = parseInt(this.getAttribute('data-row'));
-                var co = parseInt(this.getAttribute('data-col'));
                 _lastActiveRow = r;
+                var co = parseInt(this.getAttribute('data-col'));
                 _lastActiveCol = co;
                 var refEl = document.getElementById('cell-ref');
                 var dispEl = document.getElementById('formula-display');
                 if (refEl) refEl.textContent = indexToCol(co) + (r + 1);
                 if (dispEl) dispEl.textContent = formula || this.value || '\u00a0';
+                clearRefHighlight();
+                _refLive = false;
+                // Selected mode: highlight whole value so typing replaces.
+                // Skip select() if focus came from a ref-pick navigation (handled there).
+                if (!_editMode) {
+                    var self = this;
+                    // Defer to next tick so click positioning doesn't immediately deselect
+                    setTimeout(function() {
+                        if (document.activeElement === self) self.select();
+                    }, 0);
+                }
+            });
+
+            // Double-click enters edit mode (Excel: F2 / dbl-click puts cursor in cell)
+            inputs[i].addEventListener('dblclick', function() {
+                _editMode = true;
+                var len = this.value.length;
+                try { this.setSelectionRange(len, len); } catch(e) {}
             });
 
             // On blur: evaluate formula, show result
@@ -708,8 +760,9 @@
                     window.spreadsheetData.sheets[_firstSheetId].cellData[r][co] = { v: val };
                 }
 
-                // Re-evaluate all formula cells
+                // Re-evaluate all formula cells, then sync to hidden state input
                 recalcAll();
+                syncState();
             });
 
             // On change (fallback for form submission)
@@ -725,8 +778,243 @@
                 } else if (val !== '') {
                     window.spreadsheetData.sheets[_firstSheetId].cellData[r][co] = { v: val };
                 }
+                syncState();
             });
         }
+
+        // Editor-level listeners (mouse + keyboard) attach once per editor element.
+        // renderSpreadsheet() rebuilds the table on every reRender, so guard against
+        // double-binding by stamping the attribute and reading it on subsequent calls.
+        if (!editor.hasAttribute('data-listeners-installed')) {
+            editor.setAttribute('data-listeners-installed', '1');
+            editor.addEventListener('mousedown', onEditorMousedown);
+            editor.addEventListener('keydown', onEditorKeydown);
+        }
+    }
+
+    // ── Reference-target highlight ──
+    function clearRefHighlight() {
+        var prev = document.querySelectorAll('#spreadsheet-editor td.ref-target');
+        for (var i = 0; i < prev.length; i++) prev[i].classList.remove('ref-target');
+    }
+    function setRefHighlight(row, col) {
+        clearRefHighlight();
+        var sel = '#spreadsheet-editor input[data-row="' + row + '"][data-col="' + col + '"]';
+        var el = document.querySelector(sel);
+        if (el && el.parentElement) el.parentElement.classList.add('ref-target');
+    }
+
+    // Insert (or replace if a live ref exists) a cell reference into the active input.
+    // After this call, _refLive is true and _refRow/_refCol/_refStart/_refEnd describe
+    // the live ref. Subsequent ref insertions REPLACE this slice.
+    function setLiveRef(active, row, col) {
+        if (row < 0 || col < 0) return;
+        var ref = indexToCol(col) + (row + 1);
+        var v = active.value;
+
+        if (_refLive && _refStart >= 0 && _refEnd >= _refStart) {
+            // Replace the previous live ref with the new ref text in the same slice.
+            v = v.slice(0, _refStart) + ref + v.slice(_refEnd);
+            _refEnd = _refStart + ref.length;
+        } else {
+            // Fresh insert at cursor.
+            var s = typeof active.selectionStart === 'number' ? active.selectionStart : v.length;
+            var e = typeof active.selectionEnd === 'number' ? active.selectionEnd : v.length;
+            v = v.slice(0, s) + ref + v.slice(e);
+            _refStart = s;
+            _refEnd = s + ref.length;
+        }
+
+        active.value = v;
+        active.setSelectionRange(_refEnd, _refEnd);
+        _refLive = true;
+        _refRow = row;
+        _refCol = col;
+        setRefHighlight(row, col);
+
+        var dispEl = document.getElementById('formula-display');
+        if (dispEl) dispEl.textContent = active.value;
+    }
+
+    // Commit the live ref so the next ref-pick acts as a fresh insert at the cursor.
+    function commitLiveRef() {
+        _refLive = false;
+        _refStart = -1;
+        _refEnd = -1;
+        clearRefHighlight();
+    }
+
+    // ── Mouse handling: ref-pick during formula entry, otherwise enter selected mode ──
+    function onEditorMousedown(e) {
+        var active = document.activeElement;
+
+        // Find the cell input under the click (if any)
+        var target = e.target;
+        while (target && target.tagName !== 'INPUT') target = target.parentElement;
+        var clickedCell = (target && target.hasAttribute && target.hasAttribute('data-row')) ? target : null;
+
+        // Case 1: clicking a different cell while entering a formula → pick a reference
+        if (clickedCell && active && active !== clickedCell &&
+            active.tagName === 'INPUT' && active.hasAttribute('data-row')) {
+            var formula = active.value;
+            if (formula && formula.charAt(0) === '=') {
+                e.preventDefault();
+                var tr = parseInt(clickedCell.getAttribute('data-row'));
+                var tc = parseInt(clickedCell.getAttribute('data-col'));
+                if (isNaN(tr) || isNaN(tc)) return;
+                setLiveRef(active, tr, tc);
+                return;
+            }
+        }
+
+        // Case 2: clicking a cell normally → ensure we land in selected mode (not edit)
+        // unless the user clicks the SAME cell that's already focused.
+        if (clickedCell && clickedCell !== active) {
+            _editMode = false;
+        }
+    }
+
+    // ── Excel-style keyboard navigation ──
+    function onEditorKeydown(e) {
+        var active = document.activeElement;
+        if (!active || active.tagName !== 'INPUT' || !active.hasAttribute('data-row')) return;
+
+        var key = e.key;
+        var shift = e.shiftKey;
+        var r = parseInt(active.getAttribute('data-row'));
+        var c = parseInt(active.getAttribute('data-col'));
+        if (isNaN(r) || isNaN(c)) return;
+
+        var inFormula = active.value.charAt(0) === '=';
+        var isArrow = key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight';
+
+        // Any non-arrow, non-modifier key in formula mode commits the live ref so the
+        // next arrow/click inserts a fresh ref instead of replacing the last one.
+        if (inFormula && _refLive && !isArrow && key !== 'Shift' && key !== 'Control' && key !== 'Alt' && key !== 'Meta') {
+            commitLiveRef();
+        }
+
+        // F2: enter edit mode (cursor at end, no selection)
+        if (key === 'F2') {
+            e.preventDefault();
+            _editMode = true;
+            var len = active.value.length;
+            try { active.setSelectionRange(len, len); } catch(err) {}
+            return;
+        }
+
+        if (key === 'Enter' || key === 'Tab') {
+            e.preventDefault();
+            commitLiveRef();
+            var sheet = window.spreadsheetData.sheets[_firstSheetId];
+            var maxRow = (sheet._gridRows || 1) - 1;
+            var maxCol = (sheet._gridCols || 1) - 1;
+            var nr = r, nc = c;
+            if (key === 'Enter') nr = shift ? Math.max(0, r - 1) : Math.min(maxRow, r + 1);
+            else                 nc = shift ? Math.max(0, c - 1) : Math.min(maxCol, c + 1);
+            if (nr !== r || nc !== c) {
+                active.blur();
+                focusCellAt(nr, nc, /* selectMode */ true);
+            } else {
+                // No room to move — commit current edit by re-selecting in place.
+                active.blur();
+                focusCellAt(r, c, /* selectMode */ true);
+            }
+            return;
+        }
+
+        if (key === 'Escape') {
+            e.preventDefault();
+            commitLiveRef();
+            var cellData = window.spreadsheetData.sheets[_firstSheetId].cellData;
+            var saved = getEditValue(cellData, r, c);
+            active.value = saved;
+            _editMode = false;
+            active.blur();
+            return;
+        }
+
+        if (key === 'Delete' || key === 'Backspace') {
+            // In selected mode (whole-cell highlight), Delete clears the cell.
+            // In edit mode, default behavior (delete one char) applies.
+            if (!_editMode && active.selectionStart === 0 && active.selectionEnd === active.value.length) {
+                e.preventDefault();
+                active.value = '';
+                // Don't enter edit mode — the cell stays in selected mode with empty value
+                return;
+            }
+            return;
+        }
+
+        if (isArrow) {
+            // Formula mode: arrows pick / move the ref target.
+            if (inFormula && _editMode) {
+                var dr = key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0;
+                var dc = key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0;
+                var baseR = _refLive ? _refRow : r;
+                var baseC = _refLive ? _refCol : c;
+                var tr = baseR + dr;
+                var tc = baseC + dc;
+                if (tr < 0 || tc < 0) return;
+                e.preventDefault();
+                setLiveRef(active, tr, tc);
+                return;
+            }
+
+            // Edit mode (non-formula): only navigate at edges so user can position cursor.
+            if (_editMode) {
+                if (key === 'ArrowLeft' && active.selectionStart > 0) return;
+                if (key === 'ArrowRight' && active.selectionEnd < active.value.length) return;
+            }
+
+            // Selected mode OR edit mode at edge: navigate cells, clamped to grid bounds.
+            var sheet = window.spreadsheetData.sheets[_firstSheetId];
+            var maxRow = (sheet._gridRows || 1) - 1;
+            var maxCol = (sheet._gridCols || 1) - 1;
+            var nr = r, nc = c;
+            if (key === 'ArrowUp') nr = Math.max(0, r - 1);
+            else if (key === 'ArrowDown') nr = Math.min(maxRow, r + 1);
+            else if (key === 'ArrowLeft') nc = Math.max(0, c - 1);
+            else if (key === 'ArrowRight') nc = Math.min(maxCol, c + 1);
+
+            // Always swallow the arrow so it doesn't bubble to the dialog/page;
+            // only blur+refocus when the target cell actually changes.
+            e.preventDefault();
+            if (nr !== r || nc !== c) {
+                active.blur();
+                focusCellAt(nr, nc, /* selectMode */ true);
+            }
+            return;
+        }
+
+        // Any printable single character in selected mode → enter edit mode replacing content.
+        // (Excel: typing in a selected cell replaces its content.)
+        if (!_editMode && key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Clear the value first; let the keystroke be appended naturally by the browser.
+            active.value = '';
+            _editMode = true;
+            // Fall through — don't preventDefault, so the character is typed normally.
+            return;
+        }
+    }
+
+    // Focus a cell. selectMode = true ⇒ highlight whole content (Excel "selected" cell).
+    // selectMode = false ⇒ cursor at end (Excel edit mode).
+    function focusCellAt(row, col, selectMode) {
+        if (row < 0 || col < 0) return;
+        var sel = '#spreadsheet-editor input[data-row="' + row + '"][data-col="' + col + '"]';
+        var el = document.querySelector(sel);
+        if (!el) return;
+        _editMode = !selectMode;
+        el.focus();
+        try {
+            if (selectMode) {
+                el.select();
+            } else {
+                var len = el.value.length;
+                el.setSelectionRange(len, len);
+            }
+        } catch(e) { /* non-text input */ }
     }
 
     // Recalculate all cells and update display
