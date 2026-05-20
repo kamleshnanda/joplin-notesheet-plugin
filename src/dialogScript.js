@@ -36,6 +36,8 @@
     var _refLive = false;
     var _refRow = -1;        // current target row (live ref points here)
     var _refCol = -1;        // current target col
+    var _refAnchorRow = -1;  // anchor cell for shift+arrow range expansion
+    var _refAnchorCol = -1;
     var _refStart = -1;      // slice [start,end) in active input where the ref text sits
     var _refEnd = -1;
 
@@ -60,10 +62,51 @@
         if (!data || typeof data !== 'object') { showError('Invalid data type: ' + typeof data); return; }
 
         window.spreadsheetData = data;
+        // Downgrade any formulas the evaluator can't handle (e.g. user-typed
+        // gibberish from the markdown table) to plain literal text so the cell
+        // shows the raw "=foo()" string instead of "#ERROR!".
+        validateFormulasOnLoad(data);
         renderSpreadsheet(data);
+        // Reify computed values into cell.v so the markdown export carries
+        // the latest calculated values for every formula cell.
+        recalcAll();
         syncState(); // initial state for the hidden input
         // Excel-like default: cell A1 is selected on open so keyboard works immediately.
         focusCellAt(0, 0, /* selectMode */ true);
+    }
+
+    // Walks every cell with `f` set; if evaluation produces '#ERROR!' (the
+    // evaluator's sentinel for any thrown exception inside it), replace the
+    // cell with a literal { v: <original formula text> }. Runtime issues that
+    // happen to evaluate to numbers (e.g. division by zero → Infinity, missing
+    // ref → 0) are preserved as formulas — the formula itself is valid.
+    function validateFormulasOnLoad(data) {
+        if (!data || !data.sheets) return;
+        for (var sheetId in data.sheets) {
+            if (!Object.prototype.hasOwnProperty.call(data.sheets, sheetId)) continue;
+            var sheet = data.sheets[sheetId];
+            var cellData = sheet && sheet.cellData;
+            if (!cellData) continue;
+            for (var rk in cellData) {
+                if (!Object.prototype.hasOwnProperty.call(cellData, rk)) continue;
+                var row = cellData[rk];
+                if (!row) continue;
+                for (var ck in row) {
+                    if (!Object.prototype.hasOwnProperty.call(row, ck)) continue;
+                    var cell = row[ck];
+                    if (!cell || cell.f == null) continue;
+                    var result;
+                    try {
+                        result = evaluateFormula(cell.f, cellData, {});
+                    } catch (e) {
+                        result = '#ERROR!';
+                    }
+                    if (result === '#ERROR!') {
+                        row[ck] = { v: String(cell.f) };
+                    }
+                }
+            }
+        }
     }
 
     // Mirror window.spreadsheetData into the hidden #spreadsheet-state input so the
@@ -797,19 +840,33 @@
         var prev = document.querySelectorAll('#spreadsheet-editor td.ref-target');
         for (var i = 0; i < prev.length; i++) prev[i].classList.remove('ref-target');
     }
-    function setRefHighlight(row, col) {
+    function setRangeHighlight(r1, c1, r2, c2) {
         clearRefHighlight();
-        var sel = '#spreadsheet-editor input[data-row="' + row + '"][data-col="' + col + '"]';
-        var el = document.querySelector(sel);
-        if (el && el.parentElement) el.parentElement.classList.add('ref-target');
+        var rMin = Math.min(r1, r2), rMax = Math.max(r1, r2);
+        var cMin = Math.min(c1, c2), cMax = Math.max(c1, c2);
+        for (var r = rMin; r <= rMax; r++) {
+            for (var c = cMin; c <= cMax; c++) {
+                var el = document.querySelector('#spreadsheet-editor input[data-row="' + r + '"][data-col="' + c + '"]');
+                if (el && el.parentElement) el.parentElement.classList.add('ref-target');
+            }
+        }
+    }
+
+    function buildRefText(anchorR, anchorC, r, c) {
+        var single = indexToCol(c) + (r + 1);
+        if (anchorR === r && anchorC === c) return single;
+        var rMin = Math.min(anchorR, r), rMax = Math.max(anchorR, r);
+        var cMin = Math.min(anchorC, c), cMax = Math.max(anchorC, c);
+        return indexToCol(cMin) + (rMin + 1) + ':' + indexToCol(cMax) + (rMax + 1);
     }
 
     // Insert (or replace if a live ref exists) a cell reference into the active input.
-    // After this call, _refLive is true and _refRow/_refCol/_refStart/_refEnd describe
-    // the live ref. Subsequent ref insertions REPLACE this slice.
-    function setLiveRef(active, row, col) {
-        if (row < 0 || col < 0) return;
-        var ref = indexToCol(col) + (row + 1);
+    // anchorR/anchorC define the anchor; r/c define the current edge of a range.
+    // When anchor === current, a single-cell ref like "A1" is inserted; otherwise a
+    // normalized range like "A1:B2" is inserted (top-left always first).
+    function setLiveRef(active, anchorR, anchorC, r, c) {
+        if (anchorR < 0 || anchorC < 0 || r < 0 || c < 0) return;
+        var ref = buildRefText(anchorR, anchorC, r, c);
         var v = active.value;
 
         if (_refLive && _refStart >= 0 && _refEnd >= _refStart) {
@@ -828,9 +885,11 @@
         active.value = v;
         active.setSelectionRange(_refEnd, _refEnd);
         _refLive = true;
-        _refRow = row;
-        _refCol = col;
-        setRefHighlight(row, col);
+        _refAnchorRow = anchorR;
+        _refAnchorCol = anchorC;
+        _refRow = r;
+        _refCol = c;
+        setRangeHighlight(anchorR, anchorC, r, c);
 
         var dispEl = document.getElementById('formula-display');
         if (dispEl) dispEl.textContent = active.value;
@@ -841,6 +900,8 @@
         _refLive = false;
         _refStart = -1;
         _refEnd = -1;
+        _refAnchorRow = -1;
+        _refAnchorCol = -1;
         clearRefHighlight();
     }
 
@@ -862,7 +923,7 @@
                 var tr = parseInt(clickedCell.getAttribute('data-row'));
                 var tc = parseInt(clickedCell.getAttribute('data-col'));
                 if (isNaN(tr) || isNaN(tc)) return;
-                setLiveRef(active, tr, tc);
+                setLiveRef(active, tr, tc, tr, tc);
                 return;
             }
         }
@@ -948,6 +1009,8 @@
 
         if (isArrow) {
             // Formula mode: arrows pick / move the ref target.
+            // Plain arrow → move both anchor and current to the new cell (single ref).
+            // Shift+arrow → keep anchor, move only current edge (range expands/shrinks).
             if (inFormula && _editMode) {
                 var dr = key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0;
                 var dc = key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0;
@@ -957,7 +1020,15 @@
                 var tc = baseC + dc;
                 if (tr < 0 || tc < 0) return;
                 e.preventDefault();
-                setLiveRef(active, tr, tc);
+                var anchorR, anchorC;
+                if (shift && _refLive) {
+                    anchorR = _refAnchorRow;
+                    anchorC = _refAnchorCol;
+                } else {
+                    anchorR = tr;
+                    anchorC = tc;
+                }
+                setLiveRef(active, anchorR, anchorC, tr, tc);
                 return;
             }
 
@@ -1017,10 +1088,36 @@
         } catch(e) { /* non-text input */ }
     }
 
-    // Recalculate all cells and update display
+    // Recalculate all cells and update display.
+    // Also writes the computed value back into cell.v for every formula cell
+    // so the saved snapshot carries the latest calculated value (the markdown
+    // table renderer reads cell.v).
     function recalcAll() {
         if (!_firstSheetId || !window.spreadsheetData) return;
         var cellData = window.spreadsheetData.sheets[_firstSheetId].cellData;
+
+        for (var rk in cellData) {
+            if (!Object.prototype.hasOwnProperty.call(cellData, rk)) continue;
+            var rowData = cellData[rk];
+            if (!rowData) continue;
+            for (var ck in rowData) {
+                if (!Object.prototype.hasOwnProperty.call(rowData, ck)) continue;
+                var cell = rowData[ck];
+                if (!cell || cell.f == null) continue;
+                var computed;
+                try {
+                    computed = evaluateFormula(cell.f, cellData, {});
+                } catch (e) {
+                    computed = '#ERROR!';
+                }
+                if (typeof computed === 'number') {
+                    cell.v = Math.round(computed * 1e10) / 1e10;
+                } else {
+                    cell.v = String(computed);
+                }
+            }
+        }
+
         var inputs = document.querySelectorAll('#spreadsheet-editor input');
         for (var i = 0; i < inputs.length; i++) {
             var inp = inputs[i];

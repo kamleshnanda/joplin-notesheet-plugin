@@ -124,7 +124,7 @@ export default function(context: any) {
             return [
                 {
                     inline: true,
-                    text: '.joplin-editable .joplin-source { display: none !important; } .univer-link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; text-decoration: none; color: #24292f; font-weight: 500; cursor: pointer; user-select: none; } .univer-link:hover { background: #e8ecf0 !important; border-color: #afb8c1 !important; } .univer-link:focus { outline: 2px solid #0969da; outline-offset: 2px; }',
+                    text: '.joplin-editable .joplin-source { display: none !important; } .univer-link { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; text-decoration: none; color: #24292f; font-weight: 500; cursor: pointer; user-select: none; } .univer-link:hover { background: #e8ecf0 !important; border-color: #afb8c1 !important; } .univer-link:focus { outline: 2px solid #0969da; outline-offset: 2px; } .univer-formula { color: #1a7f37; font-weight: 500; } @media (prefers-color-scheme: dark) { .univer-formula { color: #4ac26b; } }',
                     mime: 'text/css',
                 },
                 {
