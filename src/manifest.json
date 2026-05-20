@@ -1,14 +1,14 @@
 {
 	"manifest_version": 1,
-	"id": "com.kamleshnanda.joplin-univer-plugin",
+	"id": "com.kamleshnanda.joplin-notesheet",
 	"app_min_version": "3.5",
 	"platforms": ["desktop"],
-	"version": "2.4.0",
-	"name": "Univer Worksheet Plugin",
-	"description": "Embed interactive Univer spreadsheets with Excel-like functionality directly in your Joplin notes. Supports formulas, cell formatting, and seamless sync across devices.",
+	"version": "1.0.0",
+	"name": "Notesheet",
+	"description": "Spreadsheets for Joplin. A Joplin note can be a full spreadsheet powered by the Univer SDK — formulas, formatting, sort, filter, charts, and .xlsx import/export.",
 	"author": "Kamlesh Nanda",
-	"homepage_url": "https://github.com/kamleshnanda/joplin-univer-plugin",
-	"repository_url": "https://github.com/kamleshnanda/joplin-univer-plugin",
-	"keywords": ["Excel", "Spreadsheet", "Univer", "Kamlesh", "worksheet", "table", "formula", "calculation"],
+	"homepage_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
+	"repository_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
+	"keywords": ["spreadsheet", "sheet", "table", "formula", "calculation", "xlsx", "excel"],
 	"categories": ["productivity", "editor"]
 }
