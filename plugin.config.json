@@ -1,6 +1,5 @@
 {
 	"extraScripts": [
-		"contentScript.ts",
-		"contentScriptTinyMCE.ts"
+		"contentScript.ts"
 	]
 }
