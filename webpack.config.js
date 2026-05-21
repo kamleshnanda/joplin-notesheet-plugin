@@ -200,21 +200,26 @@ const pluginConfig = { ...baseConfig, entry: './src/index.ts',
 	output: {
 		filename: 'index.js',
 		path: distDir,
+		// Joplin's plugin sandbox exposes `module` but not bare `exports`.
+		// commonjs2 outputs `module.exports = ...` which works correctly.
+		library: { type: 'commonjs2' },
 	},
 	plugins: [
-		new CopyPlugin([
-			{
-				from: '**/*',
-				context: path.resolve(__dirname, 'src'),
-				to: path.resolve(__dirname, 'dist'),
-				ignore: [
-					// All TypeScript files are compiled to JS and
-					// already copied into /dist so we don't copy them.
-					'**/*.ts',
-					'**/*.tsx',
-				],
-			},
-		]),
+		new CopyPlugin({
+			patterns: [
+				{
+					from: '**/*',
+					context: path.resolve(__dirname, 'src'),
+					to: path.resolve(__dirname, 'dist'),
+					globOptions: {
+						// All TypeScript files are compiled to JS and
+						// already copied into /dist so we don't copy them.
+						ignore: ['**/*.ts', '**/*.tsx'],
+					},
+					noErrorOnMissing: true,
+				},
+			],
+		}),
 	] };
 
 
@@ -255,6 +260,47 @@ const extraScriptConfig = {
 	// We support requiring @codemirror/... libraries through require('@codemirror/...')
 	externals: extraScriptExternals,
 };
+
+// Notesheet: scripts that run inside a Joplin webview (Custom Editor or
+// dialog) need to target the browser, not Node, and need to be a SINGLE
+// bundle file because Joplin's addScript API loads one file by path —
+// it has no chunk-loading runtime, so async splits would fail at load.
+const browserExtraScripts = new Set([
+	'editorView.tsx',
+]);
+
+const webpack = require('webpack');
+
+function browserOverrides() {
+	return {
+		target: 'web',
+		// Ship one file. Joplin's addScript API loads a single file by path;
+		// it has no chunk-loading runtime, so async splits would fail at load.
+		// LimitChunkCountPlugin(maxChunks:1) collapses dynamic import() chunks
+		// back into the entry — splitChunks:false alone doesn't prevent Univer's
+		// internal dynamic imports from creating split chunks.
+		optimization: {
+			splitChunks: false,
+			runtimeChunk: false,
+		},
+		module: {
+			rules: [
+				{
+					test: /\.tsx?$/,
+					use: 'ts-loader',
+					exclude: /node_modules/,
+				},
+				{
+					test: /\.css$/,
+					use: ['style-loader', 'css-loader'],
+				},
+			],
+		},
+		plugins: [
+			new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+		],
+	};
+}
 
 const createArchiveConfig = {
 	stats: 'errors-only',
@@ -297,8 +343,19 @@ function buildExtraScriptConfigs(userConfig) {
 
 	for (const scriptName of userConfig.extraScripts) {
 		const scriptPaths = resolveExtraScriptPath(scriptName);
-		output.push({ ...extraScriptConfig, entry: scriptPaths.entry,
-			output: scriptPaths.output });
+		const isBrowser = browserExtraScripts.has(scriptName);
+		const cfg = {
+			...extraScriptConfig,
+			entry: scriptPaths.entry,
+			output: isBrowser
+				// Browser-bound scripts must NOT use commonjs2 (the webview has
+				// no module loader); ship a plain IIFE bundle that exposes
+				// nothing but executes on load.
+				? { filename: scriptPaths.output.filename, path: scriptPaths.output.path }
+				: scriptPaths.output,
+			...(isBrowser ? browserOverrides() : {}),
+		};
+		output.push(cfg);
 	}
 
 	return output;
