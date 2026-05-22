@@ -8,6 +8,8 @@
 // styles, toolbar layouts, and icon font definitions that make the UI render
 // properly. Without these, you see scattered icons and unstyled HTML.
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
+import '@univerjs/preset-sheets-sort/lib/index.css';
+import '@univerjs/preset-sheets-filter/lib/index.css';
 
 import {
     createUniver,
@@ -18,7 +20,11 @@ import {
     merge,
 } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
+import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
+import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
+import sheetsSortEnUS from '@univerjs/preset-sheets-sort/locales/en-US';
+import sheetsFilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
 
 declare global {
     interface Window {
@@ -71,14 +77,43 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     const { univer, univerAPI } = createUniver({
         locale: LocaleType.EN_US,
         locales: {
-            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS),
+            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, {
+                'sheets-sort': {
+                    dialog: {
+                        'sort-reminder': 'Sort Warning',
+                        'sort-reminder-desc': 'Data was found next to your selection. What would you like to do?',
+                        'sort-reminder-ext': 'Expand the selection (sort entire rows together)',
+                        'sort-reminder-no': 'Continue with the current selection',
+                        'first-row-check': 'My data has headers',
+                    },
+                    general: {
+                        'sort-custom': 'Sort...',
+                    },
+                },
+            }),
         },
         theme: defaultTheme,
         logLevel: LogLevel.WARN,
         presets: [
             UniverSheetsCorePreset({
                 container: ROOT_ID,
+                // Hide the quick-sort options, keeping only "Sort..." in the
+                // dropdown. Same pattern as Excel's Data → Sort & Filter
+                // dropdown which shows "Custom Sort..." among other options.
+                // Context menu also cleaned up.
+                menu: {
+                    'sheet.command.sort-range-asc': { hidden: true },
+                    'sheet.command.sort-range-desc': { hidden: true },
+                    'sheet.command.sort-range-asc-ext': { hidden: true },
+                    'sheet.command.sort-range-desc-ext': { hidden: true },
+                    'sheet.command.sort-range-asc-ctx': { hidden: true },
+                    'sheet.command.sort-range-desc-ctx': { hidden: true },
+                    'sheet.command.sort-range-asc-ext-ctx': { hidden: true },
+                    'sheet.command.sort-range-desc-ext-ctx': { hidden: true },
+                },
             }),
+            UniverSheetsSortPreset(),
+            UniverSheetsFilterPreset(),
         ],
     });
 
