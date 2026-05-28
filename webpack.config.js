@@ -304,6 +304,10 @@ function browserOverrides() {
 
 const createArchiveConfig = {
 	stats: 'errors-only',
+	// The plugin host runs in Node; otherwise webpack defaults to 'web' and
+	// fails to resolve node built-ins (stream/zlib/fs/promises) that real
+	// dependencies like exceljs reference at runtime.
+	target: 'node',
 	entry: './dist/index.js',
 	output: {
 		filename: 'index.js',
