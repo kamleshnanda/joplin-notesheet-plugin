@@ -1,6 +1,9 @@
 import joplin from 'api';
 import { MenuItemLocation, ToolbarButtonLocation } from 'api/types';
+import { readFile } from 'fs/promises';
+import * as path from 'path';
 import { emptySnapshot, extractSnapshot, isNotesheetBody, wrapSnapshot } from './snapshot';
+import { xlsxBufferToSnapshot } from './xlsx';
 
 const LOG = '[Notesheet]';
 
@@ -119,6 +122,56 @@ joplin.plugins.register({
                         console.error(LOG, 'newSpreadsheet failed:', error);
                         await joplin.views.dialogs.showMessageBox(
                             'Failed to create spreadsheet: ' + (error as Error).message,
+                        );
+                    }
+                },
+            });
+
+            // ── "Import .xlsx as Notesheet" command ──
+            await joplin.commands.register({
+                name: 'importXlsxAsNotesheet',
+                label: 'Import .xlsx as Notesheet',
+                iconName: 'fas fa-file-import',
+                execute: async () => {
+                    try {
+                        // Native open dialog so we can read directly from disk.
+                        const result = await joplin.views.dialogs.showOpenDialog({
+                            properties: ['openFile'],
+                            filters: [{ name: 'Excel Workbook', extensions: ['xlsx', 'xls'] }],
+                        });
+                        const filePath = result?.filePaths?.[0];
+                        if (!filePath) return;
+
+                        const folder = await joplin.workspace.selectedFolder();
+                        if (!folder) {
+                            await joplin.views.dialogs.showMessageBox(
+                                'Please select a notebook first.',
+                            );
+                            return;
+                        }
+
+                        const buffer = await readFile(filePath);
+                        const snapshot = await xlsxBufferToSnapshot(buffer);
+                        const title = path.basename(filePath, path.extname(filePath));
+                        const body = wrapSnapshot(snapshot);
+                        const note = await joplin.data.post(['notes'], null, {
+                            parent_id: folder.id,
+                            title,
+                            body,
+                        });
+                        await joplin.commands.execute('openNote', note.id);
+                        // Same retry pattern as newSpreadsheet — wait for activation check.
+                        for (let attempt = 0; attempt < 10; attempt++) {
+                            await new Promise(r => setTimeout(r, 300));
+                            try {
+                                await joplin.commands.execute('showEditorPlugin');
+                                break;
+                            } catch { /* retry */ }
+                        }
+                    } catch (error) {
+                        console.error(LOG, 'importXlsxAsNotesheet failed:', error);
+                        await joplin.views.dialogs.showMessageBox(
+                            'Failed to import .xlsx: ' + (error as Error).message,
                         );
                     }
                 },
