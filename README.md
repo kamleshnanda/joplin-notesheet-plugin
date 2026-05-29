@@ -54,6 +54,13 @@ Requires Node.js 18+. The build produces `publish/com.kamleshnanda.joplin-notesh
 - Joplin 3.5+
 - Desktop only (Joplin Mobile's plugin model isn't yet ready for the Custom Editor API)
 
+## Known issues
+
+- Pressing **Left arrow** in column A (or **Up arrow** in row 1) jumps the
+  cursor to the bottom-right corner of the sheet. This is an upstream Univer
+  bug — track at [dream-num/univer#6988](https://github.com/dream-num/univer/issues/6988).
+  Workaround: navigate to the edge with the mouse instead.
+
 ## License
 
 MIT. Bundled libraries: Univer SDK is Apache-2.0, exceljs is MIT.
