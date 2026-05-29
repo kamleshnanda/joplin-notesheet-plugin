@@ -10,6 +10,7 @@
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/preset-sheets-sort/lib/index.css';
 import '@univerjs/preset-sheets-filter/lib/index.css';
+import '@univerjs/preset-sheets-table/lib/index.css';
 
 import {
     createUniver,
@@ -22,9 +23,11 @@ import {
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
+import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
 import sheetsSortEnUS from '@univerjs/preset-sheets-sort/locales/en-US';
 import sheetsFilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
+import sheetsTableEnUS from '@univerjs/preset-sheets-table/locales/en-US';
 
 import { xlsxBufferToSnapshot, snapshotToXlsxBuffer } from './xlsx';
 
@@ -216,7 +219,7 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     const { univer, univerAPI } = createUniver({
         locale: LocaleType.EN_US,
         locales: {
-            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, {
+            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, sheetsTableEnUS, {
                 'sheets-sort': {
                     dialog: {
                         'sort-reminder': 'Sort Warning',
@@ -253,6 +256,7 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             }),
             UniverSheetsSortPreset(),
             UniverSheetsFilterPreset(),
+            UniverSheetsTablePreset(),
         ],
     });
 
