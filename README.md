@@ -23,7 +23,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M5 — `.xlsx` import/export via exceljs | [#5](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/5) |
 | ✅ | M6 — Named tables via Univer preset | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
 | ✅ | M7 + M8 — Anchored Chart.js charts with live updates | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
-| ⏳ | M9 — Excel structured-references + table import/export fidelity + borders | (this PR) |
+| ✅ | M9 — Excel structured-references + table import/export fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
 | ⏳ | M10 — Chart export to `.xlsx` (planned) | — |
 | ⏳ | M11 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (planned) | — |
 | ⏳ | M12 — Snapshot → HTML for Joplin's PDF/HTML export menu (planned) | — |
