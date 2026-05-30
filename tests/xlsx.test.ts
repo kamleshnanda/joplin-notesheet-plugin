@@ -143,6 +143,26 @@ describe('xlsx → snapshot import', () => {
         const snap = (await xlsxBufferToSnapshot(buf)) as unknown as Snapshot;
         expect(snap.sheetOrder.length).toBe(1);
     });
+
+    test('date cell stored as Excel serial number, not ISO string', async () => {
+        // Excel renders dates by combining a numeric serial with the cell's
+        // numFmt pattern. If we store the date as an ISO string, no formatter
+        // fires and the user sees "2025-12-02T00:00:00.000Z" instead of
+        // "12/2/2025". Confirm we serialize as numbers + carry the numFmt.
+        const buf = await buildXlsx((ws) => {
+            const c = ws.getCell('A1');
+            c.value = new Date(Date.UTC(2025, 11, 2));
+            c.numFmt = 'm/d/yy';
+        });
+        const snap = (await xlsxBufferToSnapshot(buf)) as unknown as Snapshot;
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        const cell = sheet.cellData[0][0];
+        // 2025-12-02 UTC → 45,993 days since 1899-12-30.
+        expect(cell.v).toBe(45993);
+        expect(cell.t).toBe(2);
+        const styleId = cell.s as string;
+        expect(snap.styles[styleId]?.n).toEqual({ pattern: 'm/d/yy' });
+    });
 });
 
 describe('snapshot → xlsx export', () => {

@@ -32,6 +32,8 @@ import sheetsFilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
 import sheetsTableEnUS from '@univerjs/preset-sheets-table/locales/en-US';
 import sheetsDrawingEnUS from '@univerjs/preset-sheets-drawing/locales/en-US';
 
+import { ColumnChartIcon } from '@univerjs/icons';
+
 import { xlsxBufferToSnapshot, snapshotToXlsxBuffer } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
 import { extractRangeAsChartData, type RangeAddress } from './charts/extractData';
@@ -57,6 +59,8 @@ const STATUS_ID = 'notesheet-action-status';
 const FILE_INPUT_ID = 'notesheet-xlsx-input';
 const CHART_MODAL_ID = 'notesheet-chart-modal';
 const CHART_COMPONENT_KEY = 'NotesheetChart';
+const CHART_ICON_KEY = 'NotesheetChartIcon';
+const CHART_MENU_ID = 'notesheet.menu.insert-chart';
 const READY_MESSAGE = { type: 'ready' };
 
 let activeUniver: { dispose: () => void } | null = null;
@@ -458,11 +462,6 @@ function ensureActionBar(): void {
     exportBtn.textContent = 'Export .xlsx';
     Object.assign(exportBtn.style, buttonStyle);
 
-    const chartBtn = document.createElement('button');
-    chartBtn.type = 'button';
-    chartBtn.textContent = 'Insert Chart';
-    Object.assign(chartBtn.style, buttonStyle);
-
     const status = document.createElement('span');
     status.id = STATUS_ID;
     Object.assign(status.style, {
@@ -486,11 +485,9 @@ function ensureActionBar(): void {
 
     importBtn.addEventListener('click', () => fileInput.click());
     exportBtn.addEventListener('click', () => void handleExport());
-    chartBtn.addEventListener('click', () => openChartModal());
 
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
-    bar.appendChild(chartBtn);
     bar.appendChild(status);
     bar.appendChild(fileInput);
     document.body.appendChild(bar);
@@ -564,6 +561,23 @@ function bootUniver(snapshot: Record<string, unknown>): void {
         univerAPI.registerComponent?.(CHART_COMPONENT_KEY, NotesheetChart);
     } catch (e) {
         console.warn('[Notesheet] could not register chart component', e);
+    }
+
+    // Add an "Insert Chart" entry to the Insert ribbon next to Univer's
+    // built-in image menu. Uses the public createMenu/appendTo Facade so we
+    // don't poke private services. Idempotent across bootUniver re-runs:
+    // createMenu().appendTo() with the same id is a no-op if already present.
+    try {
+        univerAPI.registerComponent?.(CHART_ICON_KEY, ColumnChartIcon);
+        univerAPI.createMenu?.({
+            id: CHART_MENU_ID,
+            title: 'Insert Chart',
+            icon: CHART_ICON_KEY,
+            tooltip: 'Insert a Chart.js chart anchored over the grid',
+            action: () => openChartModal(),
+        }).appendTo('ribbon.insert.media');
+    } catch (e) {
+        console.warn('[Notesheet] could not register chart menu', e);
     }
 
     // Persist on every workbook change. We debounce so rapid edits don't

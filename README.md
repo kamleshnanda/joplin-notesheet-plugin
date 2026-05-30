@@ -1,13 +1,15 @@
 # Notesheet — Spreadsheets for Joplin
 
-Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SDK](https://github.com/dream-num/univer), it gives Joplin first-class support for formulas, formatting, sorting, filtering, named tables, and `.xlsx` import/export — all inside the note editor pane you already use.
+Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SDK](https://github.com/dream-num/univer), it gives Joplin first-class support for formulas, formatting, sorting, filtering, named tables, anchored charts, and `.xlsx` import/export — all inside the note editor pane you already use.
 
 ## Features
 
 - **Spreadsheet inside any note.** A new "New Spreadsheet" command (Tools menu, toolbar button, or `Cmd/Ctrl+Shift+S`) creates a note that opens directly in a Univer-powered spreadsheet editor. Persistence, sync, and full-text search all use Joplin's normal note storage.
 - **Formulas, formatting, sort, filter** — out of the box via Univer's standard toolbar.
+- **Excel structured-reference formulas** — formulas like `=Table1[[#This Row],[Investment]]` from imported `.xlsx` files resolve natively because the table definition is preserved in the snapshot and registered with Univer's formula engine on load.
 - **Named tables** — Insert Table from the Data ribbon; right-click inside a table for row/column insert/remove.
-- **`.xlsx` import/export** — floating Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas, fonts, fills, alignment, number formats, and merged cells.
+- **Anchored charts** — Insert ribbon → "Insert Chart" opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via Chart.js.
+- **`.xlsx` import/export** — Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas (including structured references), fonts, fills, alignment, number formats, borders, merged cells, and named tables with their style.
 
 ## Milestones
 
@@ -20,10 +22,14 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M4 — Sort & Filter via Univer presets | [#4](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/4) |
 | ✅ | M5 — `.xlsx` import/export via exceljs | [#5](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/5) |
 | ✅ | M6 — Named tables via Univer preset | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
-| ⏳ | M7 — Charts (planned, Chart.js side-panel) | — |
-| ⏳ | M8 — Anchored/draggable charts in the grid (planned) | — |
+| ✅ | M7 + M8 — Anchored Chart.js charts with live updates | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
+| ⏳ | M9 — Excel structured-references + table import/export fidelity + borders | (this PR) |
+| ⏳ | M10 — Chart export to `.xlsx` (planned) | — |
+| ⏳ | M11 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (planned) | — |
+| ⏳ | M12 — Snapshot → HTML for Joplin's PDF/HTML export menu (planned) | — |
+| ⏳ | M13 — Chart import from `.xlsx` (planned) | — |
 
-> **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 will ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) instead.
+> **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
 
 ## How a Notesheet note is stored
 
@@ -60,7 +66,20 @@ Requires Node.js 18+. The build produces `publish/com.kamleshnanda.joplin-notesh
   cursor to the bottom-right corner of the sheet. This is an upstream Univer
   bug — track at [dream-num/univer#6988](https://github.com/dream-num/univer/issues/6988).
   Workaround: navigate to the edge with the mouse instead.
+- Joplin's **Export → PDF / HTML** menu (right-click on a note) currently
+  exports the raw fenced JSON for Notesheet notes instead of a rendered
+  table. To save a Notesheet as an Excel file, use the in-editor
+  **Export .xlsx** button. PDF/HTML export of rendered spreadsheet content
+  is planned for a future release.
+- **Cmd/Ctrl+K** opens Joplin's markdown link dialog instead of inserting a
+  link into the active spreadsheet cell. Use the Univer toolbar's Insert →
+  Link option from inside the spreadsheet.
+- **Hyperlinks** in imported `.xlsx` cells are flattened to their visible
+  text. Round-trip preservation is planned for a future release.
+- **Font fidelity**: workbook-default fonts (e.g. Aptos Narrow declared via
+  the Excel theme rather than per-cell) are not preserved on import. Cells
+  with explicit font names round-trip correctly.
 
 ## License
 
-MIT. Bundled libraries: Univer SDK is Apache-2.0, exceljs is MIT.
+MIT. Bundled libraries: Univer SDK is Apache-2.0, [exceljs](https://github.com/exceljs/exceljs) is MIT, [Chart.js](https://www.chartjs.org/) is MIT, [JSZip](https://stuk.github.io/jszip/) is MIT-or-GPLv3 (we use it under the MIT terms).
