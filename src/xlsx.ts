@@ -23,6 +23,7 @@ import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
 import type { UniverSnapshot } from './snapshot';
+import { injectChartsIntoZip } from './charts/xlsxChart';
 
 const HORIZONTAL = { left: 1, center: 2, right: 3 } as const;
 const VERTICAL = { top: 1, middle: 2, bottom: 3 } as const;
@@ -848,5 +849,8 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     }
 
     const buffer = await wb.xlsx.writeBuffer();
-    return buffer as ArrayBuffer;
+    // M10: post-process the zip to inject native OOXML chart parts. No-op
+    // when the snapshot has no NotesheetChart drawings; on error returns
+    // the original buffer (chart-less but valid).
+    return injectChartsIntoZip(buffer as ArrayBuffer, snapshot);
 }
