@@ -12,6 +12,7 @@ import '@univerjs/preset-sheets-sort/lib/index.css';
 import '@univerjs/preset-sheets-filter/lib/index.css';
 import '@univerjs/preset-sheets-table/lib/index.css';
 import '@univerjs/preset-sheets-drawing/lib/index.css';
+import '@univerjs/preset-sheets-hyper-link/lib/index.css';
 
 import {
     createUniver,
@@ -26,11 +27,13 @@ import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
+import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
 import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
 import sheetsSortEnUS from '@univerjs/preset-sheets-sort/locales/en-US';
 import sheetsFilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
 import sheetsTableEnUS from '@univerjs/preset-sheets-table/locales/en-US';
 import sheetsDrawingEnUS from '@univerjs/preset-sheets-drawing/locales/en-US';
+import sheetsHyperLinkEnUS from '@univerjs/preset-sheets-hyper-link/locales/en-US';
 
 import { ColumnChartIcon } from '@univerjs/icons';
 
@@ -507,7 +510,7 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     const { univer, univerAPI } = createUniver({
         locale: LocaleType.EN_US,
         locales: {
-            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, sheetsTableEnUS, sheetsDrawingEnUS, {
+            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, sheetsTableEnUS, sheetsDrawingEnUS, sheetsHyperLinkEnUS, {
                 'sheets-sort': {
                     dialog: {
                         'sort-reminder': 'Sort Warning',
@@ -548,6 +551,12 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             // Drawing preset enables the float-DOM machinery (CanvasFloatDomService),
             // which we use to anchor and drag/resize charts over the grid.
             UniverSheetsDrawingPreset(),
+            // Adds the hyperlink layer (cell.p.body.customRanges with
+            // CustomRangeType.HYPERLINK). On snapshot load the preset's
+            // RichTextRefRangeController walks every cell's `p` and
+            // registers the link with RefRangeService — making the URL
+            // clickable in the editor automatically.
+            UniverSheetsHyperLinkPreset(),
         ],
     });
 

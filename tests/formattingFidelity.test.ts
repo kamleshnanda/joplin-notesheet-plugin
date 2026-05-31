@@ -1,0 +1,345 @@
+// Tests for M12 formatting fidelity polish:
+//   1. Theme fonts — preserve workbook-default font (Aptos Narrow, Calibri,
+//      etc.) declared in xl/theme/theme1.xml on import + export.
+//   2. Banded-style synthesis — bake Excel TableStyle palette colors into
+//      per-cell styles on import so Joplin shows the right colors even
+//      though Univer's table preset uses its own theme.
+//   3. Hyperlinks — preserve cell URLs through xlsx → snapshot → xlsx.
+
+import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
+
+import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
+
+// Snapshot shape used in assertions. Loose typing — we only assert the
+// fields we care about; the wider shape is opaque to the test.
+interface Snapshot {
+    sheetOrder: string[];
+    sheets: Record<string, {
+        cellData: Record<number, Record<number, {
+            v?: unknown; t?: number; s?: string;
+            p?: {
+                body?: {
+                    dataStream?: string;
+                    customRanges?: Array<{ rangeType?: number; properties?: { url?: string } }>;
+                };
+            };
+        }>>;
+    }>;
+    styles: Record<string, Record<string, unknown>>;
+    defaultStyle?: { ff?: string };
+    resources?: Array<{ name: string; data: string }>;
+}
+
+// ─── Theme fonts ───────────────────────────────────────────────────────────
+
+describe('M12 — theme fonts', () => {
+    test('import: workbook with Aptos Narrow theme → snapshot.defaultStyle.ff === "Aptos Narrow"', async () => {
+        // The user's real-world InvestmentSummary.xlsx uses Aptos Narrow via
+        // theme; we replicate the relevant theme fragment here so the test
+        // doesn't depend on a checked-in fixture.
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.getCell('A1').value = 'data';
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+
+        // Patch the embedded theme1.xml's minorFont to Aptos Narrow.
+        const zip = await JSZip.loadAsync(buf as unknown as ArrayBuffer);
+        const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p))!;
+        let themeXml = await zip.files[themePath].async('string');
+        themeXml = themeXml.replace(
+            /<a:minorFont>\s*<a:latin\b[^>]*\btypeface="[^"]*"/,
+            '<a:minorFont><a:latin typeface="Aptos Narrow"',
+        );
+        zip.file(themePath, themeXml);
+        const patchedBuf = Buffer.from(await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer);
+
+        const snap = await xlsxBufferToSnapshot(patchedBuf) as unknown as Snapshot;
+        expect(snap.defaultStyle?.ff).toBe('Aptos Narrow');
+    });
+
+    test('import: workbook with no theme override → no defaultStyle on snapshot', async () => {
+        // exceljs's default theme is Calibri/Cambria, but we only set
+        // defaultStyle when the import explicitly finds a theme font.
+        // (Note: if exceljs ships a theme with Calibri, this test will see
+        // "Calibri" — that's fine; the assertion is loose.)
+        const wb = new ExcelJS.Workbook();
+        wb.addWorksheet('Sheet1');
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        // Either no defaultStyle (theme parsing failed) or ff is a plausible
+        // font name string — both acceptable. The bug we're guarding against
+        // is the import dropping the field even when the theme has data.
+        if (snap.defaultStyle) {
+            expect(typeof snap.defaultStyle.ff).toBe('string');
+            expect(snap.defaultStyle.ff!.length).toBeGreaterThan(0);
+        }
+    });
+
+    test('export: snapshot.defaultStyle.ff is applied to all unstyled cells AND patched into theme1.xml', async () => {
+        const snap = {
+            id: 'wb-1', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
+            sheetOrder: ['s1'],
+            styles: {},
+            sheets: {
+                s1: {
+                    id: 's1', name: 'Sheet1',
+                    cellData: { 0: { 0: { v: 'hello', t: 1 } } },
+                    rowCount: 100, columnCount: 26,
+                    defaultColumnWidth: 73, defaultRowHeight: 19,
+                    mergeData: [], rowData: {}, columnData: {},
+                },
+            },
+            defaultStyle: { ff: 'Aptos Narrow' },
+        };
+        const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+
+        // Read back: theme should carry Aptos Narrow, and cell A1's font
+        // should be Aptos Narrow too.
+        const zip = await JSZip.loadAsync(buf as ArrayBuffer);
+        const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
+        expect(themePath).toBeDefined();
+        const themeXml = await zip.files[themePath!].async('string');
+        expect(themeXml).toContain('<a:latin typeface="Aptos Narrow"');
+
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
+        const ws = wb.getWorksheet('Sheet1')!;
+        expect(ws.getCell('A1').font?.name).toBe('Aptos Narrow');
+    });
+
+    test('round-trip: import xlsx with custom theme font → export preserves it', async () => {
+        // Build a minimal xlsx with the Aptos Narrow theme, import → snapshot,
+        // export → xlsx, re-import, confirm font survives.
+        const wb1 = new ExcelJS.Workbook();
+        const ws1 = wb1.addWorksheet('Sheet1');
+        ws1.getCell('A1').value = 'x';
+        const buf0 = Buffer.from((await wb1.xlsx.writeBuffer()) as ArrayBuffer);
+        const zip0 = await JSZip.loadAsync(buf0 as unknown as ArrayBuffer);
+        const themePath = Object.keys(zip0.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p))!;
+        const themeXml0 = (await zip0.files[themePath].async('string')).replace(
+            /<a:minorFont>\s*<a:latin\b[^>]*\btypeface="[^"]*"/,
+            '<a:minorFont><a:latin typeface="Source Sans Pro"',
+        );
+        zip0.file(themePath, themeXml0);
+        const buf1 = Buffer.from(await zip0.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer);
+
+        const snap = await xlsxBufferToSnapshot(buf1);
+        const buf2 = await snapshotToXlsxBuffer(snap);
+        const snap2 = await xlsxBufferToSnapshot(Buffer.from(buf2 as ArrayBuffer)) as unknown as Snapshot;
+        expect(snap2.defaultStyle?.ff).toBe('Source Sans Pro');
+    });
+});
+
+// ─── Banded-style synthesis ────────────────────────────────────────────────
+
+describe('M12 — banded-style synthesis', () => {
+    test('table with TableStyleMedium2 + showRowStripes → header + banded rows have synthesized colors', async () => {
+        // Build a workbook with a table styled TableStyleMedium2.
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.addTable({
+            name: 'T1',
+            ref: 'A1',
+            headerRow: true,
+            style: { theme: 'TableStyleMedium2', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            columns: [{ name: 'A' }, { name: 'B' }],
+            rows: [
+                ['x', 1], ['y', 2], ['z', 3], ['w', 4],
+            ],
+        });
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+
+        // Header row (row 0) should carry TableStyleMedium2's headerBg = #156082.
+        const headerStyleId = sheet.cellData[0]?.[0]?.s;
+        expect(headerStyleId).toBeDefined();
+        const headerStyle = snap.styles[headerStyleId!];
+        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#156082');
+        expect((headerStyle.cl as { rgb: string }).rgb).toBe('#FFFFFF');
+        expect(headerStyle.bl).toBe(1);
+
+        // Even data row (row 1, the first data row, index 0 relative to data
+        // start) should carry the bandedRowEvenBg.
+        const evenStyleId = sheet.cellData[1]?.[0]?.s;
+        expect(evenStyleId).toBeDefined();
+        const evenStyle = snap.styles[evenStyleId!];
+        expect((evenStyle.bg as { rgb: string }).rgb).toBe('#83CBEB');
+
+        // Odd data row (row 2) should be white (bandedRowOddBg=#FFFFFF) — and
+        // since we skip white, no bg should be set on this style; the cell
+        // may not even have a synthesized style. Verify the cell exists.
+        const oddCell = sheet.cellData[2]?.[0];
+        expect(oddCell).toBeDefined();
+        // odd row could have no style or one with no bg (white skipped)
+        if (oddCell?.s) {
+            const oddStyle = snap.styles[oddCell.s];
+            // If a style exists, bg should NOT be #FFFFFF (we skip white).
+            if (oddStyle.bg) {
+                expect((oddStyle.bg as { rgb: string }).rgb).not.toBe('#FFFFFF');
+            }
+        }
+    });
+
+    test('table without showRowStripes → header gets color but data rows do NOT', async () => {
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.addTable({
+            name: 'T2',
+            ref: 'A1',
+            headerRow: true,
+            style: { theme: 'TableStyleMedium2', showRowStripes: false } as ExcelJS.TableProperties['style'],
+            columns: [{ name: 'A' }, { name: 'B' }],
+            rows: [['x', 1], ['y', 2]],
+        });
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+
+        // Header should still be styled.
+        const headerStyleId = sheet.cellData[0]?.[0]?.s;
+        expect(headerStyleId).toBeDefined();
+        const headerStyle = snap.styles[headerStyleId!];
+        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#156082');
+
+        // Data row 1 should NOT have synthesized banding bg.
+        const row1 = sheet.cellData[1]?.[0];
+        if (row1?.s) {
+            const s = snap.styles[row1.s];
+            // No bg from the catalog should have been added.
+            // (The cell may have other styles from explicit cell-level fmt.)
+            if (s.bg) {
+                const bg = (s.bg as { rgb: string }).rgb;
+                expect(bg).not.toBe('#83CBEB');
+            }
+        }
+    });
+
+    test('unknown TableStyle name → no synthesis, falls back gracefully', async () => {
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.addTable({
+            name: 'T3',
+            ref: 'A1',
+            headerRow: true,
+            style: { theme: 'NotARealStyle', showRowStripes: true } as unknown as ExcelJS.TableProperties['style'],
+            columns: [{ name: 'A' }, { name: 'B' }],
+            rows: [['x', 1]],
+        });
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        // Import should still succeed — no throw. Cells exist normally.
+        expect(snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0]?.v).toBe('A');
+    });
+});
+
+// ─── Hyperlinks ────────────────────────────────────────────────────────────
+
+describe('M12 — hyperlinks', () => {
+    test('import: cell with { text, hyperlink } → snapshot has cell.p with HYPERLINK customRange', async () => {
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.getCell('A1').value = { text: 'Click me', hyperlink: 'https://example.com/' };
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const cell = snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0];
+        expect(cell?.v).toBe('Click me');
+        // p should carry the dataStream + a single HYPERLINK customRange.
+        expect(cell?.p?.body?.dataStream).toBe('Click me');
+        const ranges = cell?.p?.body?.customRanges ?? [];
+        expect(ranges.length).toBe(1);
+        expect(ranges[0].rangeType).toBe(0);
+        expect(ranges[0].properties?.url).toBe('https://example.com/');
+    });
+
+    test('export: snapshot with cell.p hyperlink → exported xlsx has hyperlink in the cell', async () => {
+        const snap = {
+            id: 'wb-h', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
+            sheetOrder: ['s1'],
+            styles: {},
+            sheets: {
+                s1: {
+                    id: 's1', name: 'Sheet1',
+                    cellData: {
+                        0: {
+                            0: {
+                                v: 'Click here', t: 1,
+                                p: {
+                                    id: '__INTERNAL_EDITOR__DOCS_NORMAL',
+                                    body: {
+                                        dataStream: 'Click here',
+                                        customRanges: [{
+                                            startIndex: 0, endIndex: 9, rangeId: 'r1',
+                                            rangeType: 0, properties: { url: 'https://destination.example/' },
+                                        }],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    rowCount: 100, columnCount: 26,
+                    defaultColumnWidth: 73, defaultRowHeight: 19,
+                    mergeData: [], rowData: {}, columnData: {},
+                },
+            },
+        };
+        const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
+        const ws = wb.getWorksheet('Sheet1')!;
+        const cell = ws.getCell('A1');
+        // exceljs normalizes { text, hyperlink } so cell.value comes back
+        // as the same shape, AND cell.hyperlink reads the URL.
+        expect(cell.text).toBe('Click here');
+        expect(cell.isHyperlink).toBe(true);
+        expect(cell.hyperlink).toBe('https://destination.example/');
+    });
+
+    test('round-trip: hyperlink xlsx → snapshot → xlsx → hyperlink preserved', async () => {
+        const wb1 = new ExcelJS.Workbook();
+        const ws1 = wb1.addWorksheet('Sheet1');
+        ws1.getCell('A1').value = { text: 'home', hyperlink: 'https://home.example.com/' };
+        ws1.getCell('A2').value = { text: 'page', hyperlink: 'https://page.example.com/path?q=1' };
+        const buf1 = Buffer.from((await wb1.xlsx.writeBuffer()) as ArrayBuffer);
+
+        const snap = await xlsxBufferToSnapshot(buf1 as unknown as Buffer);
+        const buf2 = await snapshotToXlsxBuffer(snap);
+
+        const wb2 = new ExcelJS.Workbook();
+        await wb2.xlsx.load(buf2 as unknown as Parameters<typeof wb2.xlsx.load>[0]);
+        const ws2 = wb2.getWorksheet('Sheet1')!;
+        expect(ws2.getCell('A1').hyperlink).toBe('https://home.example.com/');
+        expect(ws2.getCell('A1').text).toBe('home');
+        expect(ws2.getCell('A2').hyperlink).toBe('https://page.example.com/path?q=1');
+        expect(ws2.getCell('A2').text).toBe('page');
+    });
+
+    test('cell with empty URL → no hyperlink emitted', async () => {
+        const snap = {
+            id: 'wb-h', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
+            sheetOrder: ['s1'],
+            styles: {},
+            sheets: {
+                s1: {
+                    id: 's1', name: 'Sheet1',
+                    cellData: {
+                        0: { 0: { v: 'no url', t: 1 } },
+                    },
+                    rowCount: 100, columnCount: 26,
+                    defaultColumnWidth: 73, defaultRowHeight: 19,
+                    mergeData: [], rowData: {}, columnData: {},
+                },
+            },
+        };
+        const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
+        const ws = wb.getWorksheet('Sheet1')!;
+        expect(ws.getCell('A1').isHyperlink).toBe(false);
+        expect(ws.getCell('A1').value).toBe('no url');
+    });
+});

@@ -9,7 +9,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 - **Excel structured-reference formulas** — formulas like `=Table1[[#This Row],[Investment]]` from imported `.xlsx` files resolve natively because the table definition is preserved in the snapshot and registered with Univer's formula engine on load.
 - **Named tables** — Insert Table from the Data ribbon; right-click inside a table for row/column insert/remove.
 - **Anchored charts** — Insert ribbon → "Insert Chart" opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via Chart.js.
-- **`.xlsx` import/export** — Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas (including structured references), fonts, fills, alignment, number formats, borders, merged cells, and named tables with their style.
+- **`.xlsx` import/export** — Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas (including structured references), fonts (theme-default workbook fonts like Aptos Narrow / Calibri preserved), fills, alignment, number formats, borders, merged cells, named tables with their built-in style (TableStyleMedium2 etc.), and hyperlinks.
 
 ## Milestones
 
@@ -26,7 +26,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M9 — Excel structured-references + table import/export fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
 | ⏳ | M10 — Chart export to `.xlsx` (native OOXML; planned, [plan](M10-plan.md) drafted) | — |
 | ⏳ | M11 — Dependency hygiene: Jest 29 → 30 to drop deprecated transitive `glob@7` (planned) | — |
-| ⏳ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (planned) | — |
+| ✅ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks | (this PR) |
 | ⏳ | M13 — Snapshot → HTML for Joplin's PDF/HTML export menu (planned) | — |
 | ⏳ | M14 — Chart import from `.xlsx` (planned) | — |
 
@@ -72,14 +72,11 @@ Requires Node.js 18+. The build produces `publish/com.kamleshnanda.joplin-notesh
   table. To save a Notesheet as an Excel file, use the in-editor
   **Export .xlsx** button. PDF/HTML export of rendered spreadsheet content
   is planned for a future release.
-- **Cmd/Ctrl+K** opens Joplin's markdown link dialog instead of inserting a
-  link into the active spreadsheet cell. Use the Univer toolbar's Insert →
-  Link option from inside the spreadsheet.
-- **Hyperlinks** in imported `.xlsx` cells are flattened to their visible
-  text. Round-trip preservation is planned for a future release.
-- **Font fidelity**: workbook-default fonts (e.g. Aptos Narrow declared via
-  the Excel theme rather than per-cell) are not preserved on import. Cells
-  with explicit font names round-trip correctly.
+- **Cmd/Ctrl+K** opens Joplin's markdown link dialog instead of Univer's
+  link insertion UI for the active cell. Use the Univer toolbar's Insert →
+  Link option from inside the spreadsheet. (Imported `.xlsx` hyperlinks are
+  preserved and clickable; this affects only typing a new link via the
+  keyboard shortcut.)
 
 ## License
 

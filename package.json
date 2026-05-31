@@ -38,6 +38,7 @@
     "@univerjs/preset-sheets-core": "^0.23.0",
     "@univerjs/preset-sheets-drawing": "^0.23.0",
     "@univerjs/preset-sheets-filter": "^0.23.0",
+    "@univerjs/preset-sheets-hyper-link": "^0.23.0",
     "@univerjs/preset-sheets-sort": "^0.23.0",
     "@univerjs/preset-sheets-table": "^0.23.0",
     "@univerjs/presets": "^0.23.0",

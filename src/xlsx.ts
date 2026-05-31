@@ -24,6 +24,7 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
+import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 
 const HORIZONTAL = { left: 1, center: 2, right: 3 } as const;
 const VERTICAL = { top: 1, middle: 2, bottom: 3 } as const;
@@ -73,6 +74,10 @@ interface CellRecord {
     f?: string;
     t?: number;
     s?: string;
+    // Univer rich-text body. Carries hyperlinks via customRanges with
+    // rangeType=CustomRangeType.HYPERLINK (=0). Constructed on import for
+    // cells that had {text,hyperlink} in the source xlsx.
+    p?: Record<string, unknown>;
 }
 
 interface SheetRecord {
@@ -212,7 +217,30 @@ function dateToExcelSerial(d: Date): number {
     return (d.getTime() - EXCEL_EPOCH_MS) / MS_PER_DAY;
 }
 
-function extractCellValue(cell: ExcelJS.Cell): { v?: string | number | boolean; f?: string; t?: number } {
+// Build a Univer cell.p (IDocumentData) carrying a hyperlink. The text
+// becomes body.dataStream; the URL lives on a CustomRange of type
+// HYPERLINK (=0). On snapshot load, sheets-hyper-link's controllers walk
+// the cell matrix, find these ranges, and register them with
+// RefRangeService — making the link clickable in Univer's editor without
+// any further wiring on our side.
+function buildHyperlinkCellP(text: string, url: string): Record<string, unknown> {
+    return {
+        id: '__INTERNAL_EDITOR__DOCS_NORMAL',
+        body: {
+            dataStream: text,
+            customRanges: [{
+                startIndex: 0,
+                endIndex: Math.max(0, text.length - 1),
+                rangeId: 'lnk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+                rangeType: 0, // CustomRangeType.HYPERLINK
+                properties: { url },
+            }],
+        },
+        documentStyle: { pageSize: { width: Infinity, height: Infinity } },
+    };
+}
+
+function extractCellValue(cell: ExcelJS.Cell): { v?: string | number | boolean; f?: string; t?: number; p?: Record<string, unknown> } {
     const raw = cell.value;
     if (raw === null || raw === undefined) return {};
 
@@ -244,9 +272,15 @@ function extractCellValue(cell: ExcelJS.Cell): { v?: string | number | boolean; 
         return out;
     }
 
-    // Hyperlink cell: keep the visible text, drop the URL for now (M5 scope).
+    // Hyperlink cell: keep both the visible text and the URL. Univer stores
+    // hyperlinks inside cell.p.body.customRanges (CustomRangeType.HYPERLINK).
+    // The cell value (v) holds the visible text so existing consumers that
+    // only look at v keep working; the link sits beside it on p.
     if (typeof raw === 'object' && 'text' in raw && 'hyperlink' in raw) {
-        return { v: String((raw as { text: unknown }).text ?? ''), t: VALUE_STRING };
+        const text = String((raw as { text: unknown }).text ?? '');
+        const url = String((raw as { hyperlink: unknown }).hyperlink ?? '');
+        const p = url ? buildHyperlinkCellP(text, url) : undefined;
+        return { v: text, t: VALUE_STRING, ...(p ? { p } : {}) };
     }
 
     // Rich text: flatten to plain text.
@@ -396,6 +430,30 @@ function parseTableXml(xml: string): RawTable | null {
 // Walk the zipped xlsx and return tables grouped by 1-based sheet index.
 // We map tables to sheets via xl/worksheets/_rels/sheet<N>.xml.rels which
 // contains <Relationship Type=".../table" Target="../tables/tableM.xml"/>.
+// Read xl/theme/theme1.xml's font scheme. Excel stores the workbook's
+// default font here (under <a:fontScheme><a:minorFont><a:latin typeface="..."/>)
+// rather than on individual cells, so cells with no explicit font.name
+// inherit from this. exceljs doesn't expose the theme XML, hence direct
+// zip access. Returns null if the file or attribute is absent.
+async function readThemeFont(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<{ minor?: string; major?: string } | null> {
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return null;
+    }
+    // Theme path is conventionally xl/theme/theme1.xml but tools occasionally
+    // use other numbers; pick the first matching file.
+    const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
+    if (!themePath) return null;
+    const xml = await zip.files[themePath].async('string');
+
+    const minor = /<a:minorFont>[^<]*<a:latin\b[^>]*\btypeface="([^"]+)"/.exec(xml)?.[1];
+    const major = /<a:majorFont>[^<]*<a:latin\b[^>]*\btypeface="([^"]+)"/.exec(xml)?.[1];
+    if (!minor && !major) return null;
+    return { minor, major };
+}
+
 async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<RawTableMap> {
     const result: RawTableMap = new Map();
     let zip: JSZip;
@@ -437,6 +495,89 @@ async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer):
 // list. Falls back to exceljs's view if the raw map didn't pick up any
 // tables (e.g. files we couldn't unzip — never happens in practice but
 // keeps the import resilient).
+// When an Excel table uses a built-in style like TableStyleMedium2, the
+// styled colors don't live on individual cells — Excel synthesizes them at
+// render time from the workbook theme + table style flags. exceljs gives us
+// no fill/font records to copy, so cells looked unstyled and Univer
+// rendered them with its own table-default-0 theme (light blue), which
+// looks nothing like the source's dark teal.
+//
+// This function walks the table's range and bakes the lookup-table-derived
+// header bg/fg + alternating row colors into the corresponding cellData
+// entries. Per-cell style records carry the overlay; existing user-set cell
+// styles take precedence (we only set fields that aren't already present).
+//
+// Returns a list of cellStyleAssignments to apply: { row, col, style }.
+// The caller is responsible for interning each style and assigning the
+// resulting style id to the cell record.
+interface CellStyleAssignment {
+    row: number;
+    column: number;
+    style: Record<string, unknown>;
+}
+
+function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Map<string, Record<string, unknown>>): CellStyleAssignment[] {
+    if (!table.styleName) return [];
+    const palette: ExcelTableStyle | undefined = EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
+    if (!palette) return [];
+
+    const range = parseA1Range(table.ref);
+    if (!range) return [];
+
+    const headerRows = table.headerRowCount > 0 ? 1 : 0;
+    const totalRows = table.totalsRowCount > 0 ? 1 : 0;
+    const dataStartRow = range.startRow + headerRows;
+    const dataEndRow = range.endRow - totalRows;
+
+    const out: CellStyleAssignment[] = [];
+
+    // Helper: build a cell style record additively. Only set fields not
+    // already present on the existing cell style — explicit per-cell
+    // formatting from the source workbook should win over the synthesized
+    // table styling.
+    const overlay = (row: number, col: number, addBg?: string, addFg?: string, bold?: boolean) => {
+        const key = `${row}:${col}`;
+        const existing = existingCellStyles.get(key) ?? {};
+        const next: Record<string, unknown> = { ...existing };
+        if (addBg && !('bg' in next)) next.bg = { rgb: addBg };
+        if (addFg && !('cl' in next)) next.cl = { rgb: addFg };
+        if (bold && next.bl !== 1) next.bl = 1;
+        // Skip if nothing to add.
+        if (Object.keys(next).length === Object.keys(existing).length) return;
+        out.push({ row, column: col, style: next });
+    };
+
+    // Header row.
+    if (headerRows === 1) {
+        for (let c = range.startColumn; c <= range.endColumn; c++) {
+            overlay(range.startRow, c, palette.headerBg, palette.headerFg, /* bold */ true);
+        }
+    }
+
+    // Data rows with alternating banding (only when showRowStripes is true).
+    if (table.showRowStripes) {
+        for (let r = dataStartRow; r <= dataEndRow; r++) {
+            const isEven = (r - dataStartRow) % 2 === 0;
+            const bg = isEven ? palette.bandedRowEvenBg : palette.bandedRowOddBg;
+            // Skip white (#FFFFFF) — no-op for default white background.
+            if (bg && bg.toUpperCase() !== '#FFFFFF') {
+                for (let c = range.startColumn; c <= range.endColumn; c++) {
+                    overlay(r, c, bg);
+                }
+            }
+        }
+    }
+
+    // Totals row.
+    if (totalRows === 1 && palette.totalsBg) {
+        for (let c = range.startColumn; c <= range.endColumn; c++) {
+            overlay(range.endRow, c, palette.totalsBg, palette.totalsFg, /* bold */ true);
+        }
+    }
+
+    return out;
+}
+
 function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): TableJson[] {
     const out: TableJson[] = [];
     for (const t of rawTables) {
@@ -488,6 +629,13 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // columns that have nested children and mis-defaults headerRowCount.
     const rawTablesByIndex = await readTablesFromXlsxZip(buffer);
 
+    // Read the workbook's theme font scheme. Excel cells without an explicit
+    // font.name inherit from the theme's minorFont (Calibri, Aptos Narrow,
+    // etc.). exceljs doesn't surface this, so cells looked font-less; Univer
+    // fell back to its own default and the imported sheet showed Arial
+    // regardless of source.
+    const themeFont = await readThemeFont(buffer);
+
     const sheetOrder: string[] = [];
     const sheets: Record<string, SheetRecord> = {};
     const styles: Record<string, Record<string, unknown>> = {};
@@ -528,6 +676,7 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                 if (value.v !== undefined) record.v = value.v;
                 if (value.f) record.f = value.f;
                 if (value.t !== undefined) record.t = value.t;
+                if (value.p) record.p = value.p;
                 if (styleId) record.s = styleId;
                 if (Object.keys(record).length === 0) return;
                 if (!cellData[r]) cellData[r] = {};
@@ -571,6 +720,43 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             });
         }
 
+        // ws.id is the 1-based worksheet index in xl/worksheets/sheetN.xml,
+        // which is exactly what readTablesFromXlsxZip keys by.
+        const rawTables = rawTablesByIndex.get(ws.id) ?? [];
+
+        // M12: bake table-style colors (TableStyleMedium2 etc.) into per-cell
+        // styles so the imported sheet looks like Excel even though Univer's
+        // table preset doesn't honor the original style name. The catalog
+        // ships every Office-2016+ built-in style. Done BEFORE sheets[sheetId]
+        // is sealed so rowCount/columnCount include the synthesized cells.
+        for (const t of rawTables) {
+            // Build a quick lookup of the existing styles keyed by row:col so
+            // the overlay can preserve user-set formatting.
+            const existingCellStyles = new Map<string, Record<string, unknown>>();
+            for (const rKey of Object.keys(cellData)) {
+                const r = Number(rKey);
+                const row = cellData[r];
+                if (!row) continue;
+                for (const cKey of Object.keys(row)) {
+                    const c = Number(cKey);
+                    const data = row[c];
+                    if (!data?.s) continue;
+                    const style = styles[data.s];
+                    if (style) existingCellStyles.set(`${r}:${c}`, style);
+                }
+            }
+            const assignments = synthesizeTableStyleAssignments(t, existingCellStyles);
+            for (const a of assignments) {
+                const styleId = internStyle(a.style);
+                if (!styleId) continue;
+                if (!cellData[a.row]) cellData[a.row] = {};
+                if (!cellData[a.row][a.column]) cellData[a.row][a.column] = {};
+                cellData[a.row][a.column].s = styleId;
+                if (a.row > maxRow) maxRow = a.row;
+                if (a.column > maxCol) maxCol = a.column;
+            }
+        }
+
         sheets[sheetId] = {
             id: sheetId,
             name: ws.name,
@@ -584,9 +770,6 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             columnData,
         };
 
-        // ws.id is the 1-based worksheet index in xl/worksheets/sheetN.xml,
-        // which is exactly what readTablesFromXlsxZip keys by.
-        const rawTables = rawTablesByIndex.get(ws.id) ?? [];
         const tablesForSheet = buildTableJsonForSheet(ws, rawTables);
         if (tablesForSheet.length > 0) {
             tableResource[sheetId] = {
@@ -628,6 +811,12 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         });
     }
 
+    // Workbook-level default style. Univer cells without an explicit `s`
+    // inherit from this. We use it to carry the source theme's body font
+    // (minorFont) so imported sheets render in Aptos Narrow / Calibri / etc.
+    // instead of Univer's hardcoded fallback.
+    const defaultStyle = themeFont?.minor ? { ff: themeFont.minor } : undefined;
+
     return {
         id: 'workbook-' + Date.now(),
         sheetOrder,
@@ -636,6 +825,7 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         locale: 'enUS',
         styles,
         sheets,
+        ...(defaultStyle ? { defaultStyle } : {}),
         ...(resources.length > 0 ? { resources } : {}),
     } as unknown as UniverSnapshot;
 }
@@ -647,6 +837,23 @@ function resolveStyle(snapshot: UniverSnapshot, ref: unknown): Record<string, un
         return styles?.[ref] ?? null;
     }
     if (typeof ref === 'object') return ref as Record<string, unknown>;
+    return null;
+}
+
+// Extract a hyperlink URL from a Univer cell.p (IDocumentData) by finding
+// the first customRange of rangeType=0 (HYPERLINK). Returns null when the
+// cell has no link. Used on export to feed exceljs's { text, hyperlink }
+// cell-value format, which it serializes into <hyperlinks> + rels.
+function extractHyperlinkFromCellP(p: unknown): string | null {
+    if (!p || typeof p !== 'object') return null;
+    const body = (p as { body?: { customRanges?: Array<{ rangeType?: number; properties?: { url?: unknown } }> } }).body;
+    const ranges = body?.customRanges;
+    if (!Array.isArray(ranges)) return null;
+    for (const r of ranges) {
+        if (r?.rangeType !== 0) continue; // HYPERLINK
+        const url = r?.properties?.url;
+        if (typeof url === 'string' && url) return url;
+    }
     return null;
 }
 
@@ -741,11 +948,23 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
     }
 }
 
+// Pull the workbook-level default font name out of the snapshot. Set on
+// import from the source xlsx's theme1.xml/minorFont; on export every cell
+// that doesn't already carry an explicit font.name inherits this so the
+// round-trip preserves Aptos Narrow / Calibri / etc.
+function readDefaultFontName(snapshot: UniverSnapshot): string | undefined {
+    const ds = (snapshot as { defaultStyle?: unknown }).defaultStyle;
+    if (!ds || typeof ds !== 'object') return undefined;
+    const ff = (ds as { ff?: unknown }).ff;
+    return typeof ff === 'string' && ff ? ff : undefined;
+}
+
 export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<ArrayBuffer> {
     const wb = new ExcelJS.Workbook();
     const sheetOrder = (snapshot as { sheetOrder?: string[] }).sheetOrder ?? [];
     const sheets = (snapshot as { sheets?: Record<string, SheetRecord> }).sheets ?? {};
     const tableResource = readTableResource(snapshot);
+    const defaultFontName = readDefaultFontName(snapshot);
 
     for (const sheetId of sheetOrder) {
         const sheet = sheets[sheetId];
@@ -762,15 +981,27 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 const data = row[c];
                 if (!data) continue;
                 const cell = ws.getCell(r + 1, c + 1);
+                const hyperlinkUrl = extractHyperlinkFromCellP(data.p);
                 if (data.f) {
                     const formula = data.f.startsWith('=') ? data.f.slice(1) : data.f;
                     const result = data.v;
                     cell.value = { formula, result } as ExcelJS.CellFormulaValue;
+                } else if (hyperlinkUrl && data.v !== undefined && data.v !== null) {
+                    // Hyperlink-bearing cells use exceljs's { text, hyperlink }
+                    // shape — exceljs writes the proper <hyperlinks> block
+                    // and the sheet rels entry pointing to the URL.
+                    cell.value = { text: String(data.v), hyperlink: hyperlinkUrl };
                 } else if (data.v !== undefined && data.v !== null) {
                     cell.value = data.v;
                 }
                 const style = resolveStyle(snapshot, data.s);
                 if (style) applyStyleToCell(cell, style);
+                // Apply the workbook-level default font when the cell didn't
+                // carry an explicit ff. Mirrors how Excel stores fonts: theme
+                // minorFont covers cells with no styled <font> reference.
+                if (defaultFontName && (!style || typeof style.ff !== 'string')) {
+                    cell.font = { ...(cell.font ?? {}), name: defaultFontName };
+                }
             }
         }
 
@@ -849,8 +1080,43 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     }
 
     const buffer = await wb.xlsx.writeBuffer();
-    // M10: post-process the zip to inject native OOXML chart parts. No-op
-    // when the snapshot has no NotesheetChart drawings; on error returns
-    // the original buffer (chart-less but valid).
-    return injectChartsIntoZip(buffer as ArrayBuffer, snapshot);
+    // Post-process pipeline. Each step is a no-op when its data isn't
+    // present and fails soft (returns the input buffer) on error.
+    //   1. M12: rewrite theme1.xml's font scheme so the exported workbook's
+    //      default font matches what was set on import.
+    //   2. M10: inject native OOXML chart parts.
+    let out = buffer as ArrayBuffer;
+    if (defaultFontName) {
+        out = await patchThemeFont(out, defaultFontName);
+    }
+    out = await injectChartsIntoZip(out, snapshot);
+    return out;
+}
+
+// Rewrite the workbook's xl/theme/theme1.xml to use the given font name as
+// both major and minor font's latin typeface. exceljs ships a hardcoded
+// Calibri/Cambria theme; without this patch, even though we set
+// cell.font.name on every cell, the exported file's "default font" picker
+// in Excel still says Calibri.
+async function patchThemeFont(buffer: ArrayBuffer, fontName: string): Promise<ArrayBuffer> {
+    try {
+        const zip = await JSZip.loadAsync(buffer);
+        const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
+        if (!themePath) return buffer;
+        const xml = await zip.files[themePath].async('string');
+        // Replace the latin typeface attribute inside the major/minor font
+        // blocks. We only touch <a:latin typeface="..."/> right after the
+        // opening <a:majorFont>/<a:minorFont> tag — the script-specific
+        // <a:font script="..."> entries are left as-is.
+        const safeName = fontName.replace(/"/g, '&quot;').replace(/&/g, '&amp;');
+        const patched = xml
+            .replace(/(<a:majorFont>\s*<a:latin\b[^>]*\btypeface=")[^"]*(")/, `$1${safeName}$2`)
+            .replace(/(<a:minorFont>\s*<a:latin\b[^>]*\btypeface=")[^"]*(")/, `$1${safeName}$2`);
+        if (patched === xml) return buffer;
+        zip.file(themePath, patched);
+        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+    } catch (e) {
+        console.warn('[Notesheet] patchThemeFont failed; theme keeps Calibri default', e);
+        return buffer;
+    }
 }
