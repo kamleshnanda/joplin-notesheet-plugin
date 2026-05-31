@@ -24,10 +24,11 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M6 — Named tables via Univer preset | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
 | ✅ | M7 + M8 — Anchored Chart.js charts with live updates | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
 | ✅ | M9 — Excel structured-references + table import/export fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
-| ⏳ | M10 — Chart export to `.xlsx` (planned) | — |
-| ⏳ | M11 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (planned) | — |
-| ⏳ | M12 — Snapshot → HTML for Joplin's PDF/HTML export menu (planned) | — |
-| ⏳ | M13 — Chart import from `.xlsx` (planned) | — |
+| ⏳ | M10 — Chart export to `.xlsx` (native OOXML; planned, [plan](M10-plan.md) drafted) | — |
+| ⏳ | M11 — Dependency hygiene: Jest 29 → 30 to drop deprecated transitive `glob@7` (planned) | — |
+| ⏳ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (planned) | — |
+| ⏳ | M13 — Snapshot → HTML for Joplin's PDF/HTML export menu (planned) | — |
+| ⏳ | M14 — Chart import from `.xlsx` (planned) | — |
 
 > **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
 
