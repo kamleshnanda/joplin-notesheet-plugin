@@ -69,6 +69,30 @@ const TABLE_PLUGIN_NAME = 'SHEET_TABLE_PLUGIN';
 // with `_`, so this key never collides.
 const TABLE_RESOURCE_SCHEMA = '0.23';
 
+// Notesheet-private resource that records which per-cell style fields the
+// M12 table-style synthesizer added during import. The map shape is
+//   { [sheetId]: { [`${row}:${col}`]: ['bg', 'cl', 'bd.t', ...] } }
+// On export, applyStyleToCell consults this map and skips writing any
+// listed fields, so Excel paints the table style cleanly without our
+// synthesized decoration doubling on top.
+// IResourceName must match `${'SHEET'|'DOC'}_${string}_PLUGIN` per Univer's
+// type definition (services/resource-manager/type.d.ts). The resource
+// manager's `getResources()` produces the snapshot's `resources` array by
+// iterating registered hook objects; entries that don't come from a
+// registered hook are stripped on save. So Notesheet registers hooks at
+// editor boot for these names, with a per-unitId in-memory map serving as
+// the storage. The names below are the same strings used as the hook's
+// pluginName.
+export const NOTESHEET_SYNTH_STYLES_RESOURCE = 'SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN';
+
+// Captures the workbook's <a:clrScheme> on import (raw XML fragment) so
+// the export can splice it back into theme1.xml. Without this, exceljs
+// emits its own Office-2007 default palette, and the same TableStyle name
+// (e.g. TableStyleMedium4 = accent3) renders against a different RGB —
+// which is why a round-tripped file looks "darker green" than the source
+// even though both declare the same style.
+export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN';
+
 interface CellRecord {
     v?: string | number | boolean;
     f?: string;
@@ -146,11 +170,31 @@ function hexToArgb(hex: string | undefined): string | undefined {
 
 // Style canonicalization. Two cells with the same visual style should share a
 // style id so the snapshot is compact and round-trips deterministically.
-function styleKey(style: Record<string, unknown>): string {
-    return JSON.stringify(style, Object.keys(style).sort());
+//
+// The second arg of JSON.stringify acts as a recursive *whitelist* of keys —
+// any key not in the list is silently dropped at every level of nesting.
+// Earlier this used `Object.keys(style).sort()` as that whitelist, which
+// silently truncated nested objects (e.g. cells with different border sides
+// `bd: { t, l }` vs `bd: { t, r }` both collapsed to `bd: {}`, so the
+// interner gave them the same id).
+//
+// `sortedJsonStringify` walks objects recursively, sorting each level's
+// keys, and produces a deterministic key without dropping any data.
+function sortedJsonStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) {
+        return '[' + value.map(sortedJsonStringify).join(',') + ']';
+    }
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + sortedJsonStringify(obj[k])).join(',') + '}';
 }
 
-function buildStyleFromExcelCell(cell: ExcelJS.Cell): Record<string, unknown> | null {
+function styleKey(style: Record<string, unknown>): string {
+    return sortedJsonStringify(style);
+}
+
+function buildStyleFromExcelCell(cell: ExcelJS.Cell, themePalette: ThemePalette | null = null): Record<string, unknown> | null {
     const style: Record<string, unknown> = {};
 
     const font = cell.font;
@@ -161,13 +205,13 @@ function buildStyleFromExcelCell(cell: ExcelJS.Cell): Record<string, unknown> | 
         if (font.italic) style.it = 1;
         if (font.underline) style.ul = { s: 1 };
         if (font.strike) style.st = { s: 1 };
-        const fontColor = argbToHex(font.color?.argb);
+        const fontColor = resolveExceljsColor(font.color as ExceljsColor, themePalette);
         if (fontColor) style.cl = { rgb: fontColor };
     }
 
     const fill = cell.fill;
     if (fill && fill.type === 'pattern' && fill.pattern === 'solid') {
-        const bgColor = argbToHex(fill.fgColor?.argb);
+        const bgColor = resolveExceljsColor(fill.fgColor as ExceljsColor, themePalette);
         if (bgColor) style.bg = { rgb: bgColor };
     }
 
@@ -197,8 +241,17 @@ function buildStyleFromExcelCell(cell: ExcelJS.Cell): Record<string, unknown> | 
             if (!side?.style) continue;
             const styleNum = BORDER_STYLE_TO_UNIVER[side.style];
             if (styleNum === undefined) continue;
-            const argb = (side.color as { argb?: string } | undefined)?.argb;
-            const rgb = argbToHex(argb) ?? '#000000';
+            const resolved = resolveExceljsColor(side.color as ExceljsColor, themePalette);
+            const hasColorRef = side.color && typeof side.color === 'object' && Object.keys(side.color).length > 0;
+            // If color is fully absent, default to Excel's "automatic" =
+            // black border. If color IS specified but theme-based and we
+            // can't resolve it (e.g. theme=4 tint=0.4 with no theme
+            // palette), drop the border rather than render bold black —
+            // that looks like a stray underline against a banded row,
+            // while "no border" is closer to what Excel paints when the
+            // tint resolves to a near-bg hue.
+            const rgb = resolved ?? (hasColorRef ? null : '#000000');
+            if (!rgb) continue;
             bd[univerKey] = { s: styleNum, cl: { rgb } };
         }
         if (Object.keys(bd).length > 0) style.bd = bd;
@@ -223,20 +276,48 @@ function dateToExcelSerial(d: Date): number {
 // the cell matrix, find these ranges, and register them with
 // RefRangeService — making the link clickable in Univer's editor without
 // any further wiring on our side.
+//
+// Shape mirrors `createDocumentModelWithStyle` in @univerjs/engine-render
+// (the helper Univer's runtime hyperlink controller calls) so the
+// documentSkeleton lays out a real page when sheets-ui's
+// `_calcActiveCell` → `calcPadding` reads `skeletonData.pages[0].height`
+// during mouse hover. Required pieces:
+//
+//   - dataStream ends with "\r\n" (DEFAULT_EMPTY_DOCUMENT_VALUE in core)
+//   - a paragraph mark + sectionBreak at the right offsets
+//   - a finite documentStyle.pageSize that survives JSON serialization
+//
+// The runtime version uses `pageSize: { width: Infinity, height: Infinity }`
+// but that path lives in memory only. JSON.stringify converts Infinity to
+// `null`, after which the documentSkeleton lays out zero pages and any
+// mouse-move over a cell with our `p` throws "Cannot read properties of
+// undefined (reading 'height')". 1e9 is well below MAX_SAFE_INTEGER and
+// far larger than any practical cell, so it acts as effectively "no wrap"
+// while round-tripping cleanly.
+const HYPERLINK_PAGE_SIZE = 1_000_000_000;
 function buildHyperlinkCellP(text: string, url: string): Record<string, unknown> {
+    const len = text.length;
     return {
         id: '__INTERNAL_EDITOR__DOCS_NORMAL',
         body: {
-            dataStream: text,
+            dataStream: text + '\r\n',
+            textRuns: [{ st: 0, ed: len, ts: {} }],
+            paragraphs: [{ startIndex: len, paragraphStyle: {} }],
+            sectionBreaks: [{ startIndex: len + 1 }],
             customRanges: [{
                 startIndex: 0,
-                endIndex: Math.max(0, text.length - 1),
+                endIndex: Math.max(0, len - 1),
                 rangeId: 'lnk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
                 rangeType: 0, // CustomRangeType.HYPERLINK
                 properties: { url },
             }],
         },
-        documentStyle: { pageSize: { width: Infinity, height: Infinity } },
+        documentStyle: {
+            pageSize: {
+                width: HYPERLINK_PAGE_SIZE,
+                height: HYPERLINK_PAGE_SIZE,
+            },
+        },
     };
 }
 
@@ -454,6 +535,117 @@ async function readThemeFont(buffer: ArrayBuffer | Uint8Array | Buffer): Promise
     return { minor, major };
 }
 
+// Read xl/theme/theme1.xml's <a:clrScheme>. Excel resolves named colors
+// like "accent1" through this scheme — and the same TableStyle (e.g.
+// TableStyleMedium4) renders different hues depending on which theme is
+// active. exceljs ships its own Office-2007 default theme, so an export
+// that doesn't preserve the source theme's palette will look noticeably
+// different even if the table style name is identical. We capture the raw
+// <a:clrScheme>...</a:clrScheme> as a string here and splice it back into
+// the exported theme1.xml on save. Returns the captured XML and a
+// 12-entry RGB palette indexed by Excel theme color id (0..11) for
+// resolving cell-level `{theme: N, tint: T}` color references.
+interface ThemePalette {
+    raw: string;
+    rgb: string[]; // index 0..11 → '#RRGGBB'
+}
+async function readThemeClrScheme(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<ThemePalette | null> {
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return null;
+    }
+    const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
+    if (!themePath) return null;
+    const xml = await zip.files[themePath].async('string');
+    const m = /<a:clrScheme\b[^>]*>[\s\S]*?<\/a:clrScheme>/.exec(xml);
+    if (!m) return null;
+    const raw = m[0];
+    // Per the OOXML spec, the cell <color theme="N"/> index uses a permuted
+    // mapping of the clrScheme elements: 0=lt1, 1=dk1, 2=lt2, 3=dk2,
+    // 4=accent1..9=accent6, 10=hlink, 11=folHlink. Note that the cell
+    // index swaps lt1↔dk1 and lt2↔dk2 relative to the scheme's element
+    // order.
+    const ELEMENT_ORDER: Array<'lt1' | 'dk1' | 'lt2' | 'dk2' | 'accent1' | 'accent2' | 'accent3' | 'accent4' | 'accent5' | 'accent6' | 'hlink' | 'folHlink'> = [
+        'lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink',
+    ];
+    const rgb: string[] = [];
+    for (const elName of ELEMENT_ORDER) {
+        const elRe = new RegExp(`<a:${elName}\\b[^>]*>([\\s\\S]*?)</a:${elName}>`);
+        const elMatch = elRe.exec(raw);
+        if (!elMatch) { rgb.push('#000000'); continue; }
+        const inner = elMatch[1];
+        // Either <a:srgbClr val="RRGGBB"/> or <a:sysClr val="..." lastClr="RRGGBB"/>.
+        const srgb = /<a:srgbClr\b[^>]*\bval="([0-9A-Fa-f]{6})"/.exec(inner);
+        const sys = /<a:sysClr\b[^>]*\blastClr="([0-9A-Fa-f]{6})"/.exec(inner);
+        const hex = (srgb?.[1] ?? sys?.[1] ?? '000000').toUpperCase();
+        rgb.push('#' + hex);
+    }
+    return { raw, rgb };
+}
+
+// OOXML tint applied in HSL luminance, per Microsoft's spec:
+//   tint > 0  →  L = L*(1-tint) + tint     (lighten toward white)
+//   tint < 0  →  L = L*(1+tint)            (darken toward black)
+// Used to resolve cell-level `{theme: N, tint: T}` color references.
+function applyOoxmlTint(hex: string, tint: number): string {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    let l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+    }
+    if (tint < 0) l = l * (1 + tint);
+    else l = l * (1 - tint) + tint;
+    const hue2rgb = (p: number, q: number, t: number): number => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    let r2: number, g2: number, b2: number;
+    if (s === 0) { r2 = g2 = b2 = l; }
+    else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r2 = hue2rgb(p, q, h + 1 / 3);
+        g2 = hue2rgb(p, q, h);
+        b2 = hue2rgb(p, q, h - 1 / 3);
+    }
+    const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
+    return ('#' + toHex(r2) + toHex(g2) + toHex(b2)).toUpperCase();
+}
+
+// Resolve an exceljs color descriptor. exceljs exposes either:
+//   - { argb: 'AARRGGBB' } — explicit RGB; we strip alpha and return.
+//   - { theme: N, tint?: T } — references the workbook's clrScheme; needs
+//     the import-time palette to resolve.
+// Returns null when no resolvable color is present (e.g. {tint: 0.4} alone
+// or a missing palette). Callers should treat null as "no color set".
+type ExceljsColor = { argb?: string; theme?: number; tint?: number } | null | undefined;
+function resolveExceljsColor(color: ExceljsColor, palette: ThemePalette | null): string | undefined {
+    if (!color || typeof color !== 'object') return undefined;
+    const direct = argbToHex(color.argb);
+    if (direct) return direct;
+    if (typeof color.theme === 'number' && palette) {
+        const base = palette.rgb[color.theme];
+        if (!base) return undefined;
+        return typeof color.tint === 'number' && color.tint !== 0 ? applyOoxmlTint(base, color.tint) : base;
+    }
+    return undefined;
+}
+
 async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<RawTableMap> {
     const result: RawTableMap = new Map();
     let zip: JSZip;
@@ -514,6 +706,12 @@ interface CellStyleAssignment {
     row: number;
     column: number;
     style: Record<string, unknown>;
+    // List of dotted-path fields we added on top of any pre-existing user
+    // style (e.g. `bg`, `cl`, `bl`, `bd.t`, `bd.b`, `bd.l`, `bd.r`). The
+    // exporter uses this to subtract our synthesized decoration before
+    // writing the cell, so the table style painted by Excel doesn't double
+    // up with ours.
+    addedFields: string[];
 }
 
 function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Map<string, Record<string, unknown>>): CellStyleAssignment[] {
@@ -531,26 +729,71 @@ function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Ma
 
     const out: CellStyleAssignment[] = [];
 
+    // Side keys mirror Univer's bd shape: top/right/bottom/left.
+    type BorderSide = 't' | 'r' | 'b' | 'l';
+    type BorderEntry = { s: number; cl: { rgb: string } };
+
     // Helper: build a cell style record additively. Only set fields not
     // already present on the existing cell style — explicit per-cell
     // formatting from the source workbook should win over the synthesized
-    // table styling.
-    const overlay = (row: number, col: number, addBg?: string, addFg?: string, bold?: boolean) => {
+    // table styling. Borders merge per side (we only add a side if the
+    // existing bd doesn't already have that side set).
+    const overlay = (
+        row: number, col: number,
+        addBg?: string, addFg?: string, bold?: boolean,
+        addBorders?: Partial<Record<BorderSide, BorderEntry>>,
+    ) => {
         const key = `${row}:${col}`;
         const existing = existingCellStyles.get(key) ?? {};
         const next: Record<string, unknown> = { ...existing };
-        if (addBg && !('bg' in next)) next.bg = { rgb: addBg };
-        if (addFg && !('cl' in next)) next.cl = { rgb: addFg };
-        if (bold && next.bl !== 1) next.bl = 1;
-        // Skip if nothing to add.
-        if (Object.keys(next).length === Object.keys(existing).length) return;
-        out.push({ row, column: col, style: next });
+        const addedFields: string[] = [];
+        if (addBg && !('bg' in next)) {
+            next.bg = { rgb: addBg };
+            addedFields.push('bg');
+        }
+        if (addFg && !('cl' in next)) {
+            next.cl = { rgb: addFg };
+            addedFields.push('cl');
+        }
+        if (bold && next.bl !== 1) {
+            next.bl = 1;
+            addedFields.push('bl');
+        }
+        if (addBorders) {
+            const existingBd = (existing.bd as Partial<Record<BorderSide, BorderEntry>> | undefined) ?? {};
+            const mergedBd: Partial<Record<BorderSide, BorderEntry>> = { ...existingBd };
+            let added = false;
+            for (const side of Object.keys(addBorders) as BorderSide[]) {
+                if (!mergedBd[side] && addBorders[side]) {
+                    mergedBd[side] = addBorders[side]!;
+                    addedFields.push('bd.' + side);
+                    added = true;
+                }
+            }
+            if (added) next.bd = mergedBd;
+        }
+        if (sortedJsonStringify(next) === sortedJsonStringify(existing)) return;
+        out.push({ row, column: col, style: next, addedFields });
     };
+
+    // TableStyleMedium2 (and most Medium themes) draw a thin border along
+    // the table's outer edges + a thin border under the header in the same
+    // accent color used for the header bg. Inner row separators are NOT
+    // drawn when showRowStripes is on — the alternating fill is the
+    // separator. Skip border synthesis if the catalog has no borderColor.
+    const borderRgb = palette.borderColor;
+    const thinBorder: BorderEntry | undefined = borderRgb ? { s: BORDER_STYLE_TO_UNIVER.thin, cl: { rgb: borderRgb } } : undefined;
 
     // Header row.
     if (headerRows === 1) {
         for (let c = range.startColumn; c <= range.endColumn; c++) {
-            overlay(range.startRow, c, palette.headerBg, palette.headerFg, /* bold */ true);
+            const headerBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
+                t: thinBorder,
+                b: thinBorder,
+                ...(c === range.startColumn ? { l: thinBorder } : {}),
+                ...(c === range.endColumn ? { r: thinBorder } : {}),
+            } : undefined;
+            overlay(range.startRow, c, palette.headerBg, palette.headerFg, /* bold */ true, headerBorders);
         }
     }
 
@@ -560,10 +803,26 @@ function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Ma
             const isEven = (r - dataStartRow) % 2 === 0;
             const bg = isEven ? palette.bandedRowEvenBg : palette.bandedRowOddBg;
             // Skip white (#FFFFFF) — no-op for default white background.
-            if (bg && bg.toUpperCase() !== '#FFFFFF') {
-                for (let c = range.startColumn; c <= range.endColumn; c++) {
-                    overlay(r, c, bg);
-                }
+            const useBg = bg && bg.toUpperCase() !== '#FFFFFF' ? bg : undefined;
+            for (let c = range.startColumn; c <= range.endColumn; c++) {
+                const rowBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
+                    ...(c === range.startColumn ? { l: thinBorder } : {}),
+                    ...(c === range.endColumn ? { r: thinBorder } : {}),
+                    ...(r === dataEndRow && totalRows === 0 ? { b: thinBorder } : {}),
+                } : undefined;
+                if (useBg || rowBorders) overlay(r, c, useBg, undefined, false, rowBorders);
+            }
+        }
+    } else if (thinBorder) {
+        // Even without banding we still want the table's outer border.
+        for (let r = dataStartRow; r <= dataEndRow; r++) {
+            for (let c = range.startColumn; c <= range.endColumn; c++) {
+                const rowBorders: Partial<Record<BorderSide, BorderEntry>> = {
+                    ...(c === range.startColumn ? { l: thinBorder } : {}),
+                    ...(c === range.endColumn ? { r: thinBorder } : {}),
+                    ...(r === dataEndRow && totalRows === 0 ? { b: thinBorder } : {}),
+                };
+                if (Object.keys(rowBorders).length > 0) overlay(r, c, undefined, undefined, false, rowBorders);
             }
         }
     }
@@ -571,7 +830,13 @@ function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Ma
     // Totals row.
     if (totalRows === 1 && palette.totalsBg) {
         for (let c = range.startColumn; c <= range.endColumn; c++) {
-            overlay(range.endRow, c, palette.totalsBg, palette.totalsFg, /* bold */ true);
+            const totalsBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
+                t: thinBorder,
+                b: thinBorder,
+                ...(c === range.startColumn ? { l: thinBorder } : {}),
+                ...(c === range.endColumn ? { r: thinBorder } : {}),
+            } : undefined;
+            overlay(range.endRow, c, palette.totalsBg, palette.totalsFg, /* bold */ true, totalsBorders);
         }
     }
 
@@ -635,6 +900,9 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // fell back to its own default and the imported sheet showed Arial
     // regardless of source.
     const themeFont = await readThemeFont(buffer);
+    // Captured for export-time replay so the workbook's table-style colors
+    // resolve against the same accent palette they did originally.
+    const themeClrScheme = await readThemeClrScheme(buffer);
 
     const sheetOrder: string[] = [];
     const sheets: Record<string, SheetRecord> = {};
@@ -645,6 +913,15 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // the eachSheet walk and serialized into the SHEET_TABLE_PLUGIN resource
     // at the end so Univer's formula engine sees the tables on snapshot load.
     const tableResource: Record<string, { tables: TableJson[]; tableFilteredOutRows: number[] }> = {};
+
+    // Per-cell record of which style fields the M12 table-style synthesizer
+    // added on top of the source cell's own style. Keyed `${sheetId}` →
+    // `${row}:${col}` → ['bg', 'cl', 'bl', 'bd.t', ...]. Persisted as a
+    // snapshot resource so the exporter can subtract our synthesized
+    // decoration before writing the cell — Excel re-paints those colors
+    // from the table style at render time, and a doubled-up paint reads
+    // visually heavier than the original.
+    const synthStyleSidecar: Record<string, Record<string, string[]>> = {};
 
     function internStyle(style: Record<string, unknown> | null): string | undefined {
         if (!style) return undefined;
@@ -670,7 +947,7 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
                 const c = colNumber - 1;
                 const value = extractCellValue(cell);
-                const style = buildStyleFromExcelCell(cell);
+                const style = buildStyleFromExcelCell(cell, themeClrScheme);
                 const styleId = internStyle(style);
                 const record: CellRecord = {};
                 if (value.v !== undefined) record.v = value.v;
@@ -754,6 +1031,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                 cellData[a.row][a.column].s = styleId;
                 if (a.row > maxRow) maxRow = a.row;
                 if (a.column > maxCol) maxCol = a.column;
+                if (a.addedFields.length > 0) {
+                    if (!synthStyleSidecar[sheetId]) synthStyleSidecar[sheetId] = {};
+                    synthStyleSidecar[sheetId][`${a.row}:${a.column}`] = a.addedFields;
+                }
             }
         }
 
@@ -810,6 +1091,18 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             data: JSON.stringify({ version: TABLE_RESOURCE_SCHEMA }),
         });
     }
+    if (Object.keys(synthStyleSidecar).length > 0) {
+        resources.push({
+            name: NOTESHEET_SYNTH_STYLES_RESOURCE,
+            data: JSON.stringify(synthStyleSidecar),
+        });
+    }
+    if (themeClrScheme) {
+        resources.push({
+            name: NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
+            data: themeClrScheme.raw,
+        });
+    }
 
     // Workbook-level default style. Univer cells without an explicit `s`
     // inherit from this. We use it to carry the source theme's body font
@@ -857,23 +1150,29 @@ function extractHyperlinkFromCellP(p: unknown): string | null {
     return null;
 }
 
-function applyStyleToCell(cell: ExcelJS.Cell, style: Record<string, unknown>): void {
+function applyStyleToCell(
+    cell: ExcelJS.Cell,
+    style: Record<string, unknown>,
+    skipFields?: ReadonlySet<string>,
+): void {
+    const skip = skipFields ?? EMPTY_SKIP_SET;
+
     const font: Partial<ExcelJS.Font> = {};
     if (typeof style.ff === 'string') font.name = style.ff;
     if (typeof style.fs === 'number') font.size = style.fs;
-    if (style.bl === 1) font.bold = true;
+    if (style.bl === 1 && !skip.has('bl')) font.bold = true;
     if (style.it === 1) font.italic = true;
     if (style.ul && (style.ul as { s?: number }).s === 1) font.underline = true;
     if (style.st && (style.st as { s?: number }).s === 1) font.strike = true;
     const cl = style.cl as { rgb?: string } | undefined;
-    if (cl?.rgb) {
+    if (cl?.rgb && !skip.has('cl')) {
         const argb = hexToArgb(cl.rgb);
         if (argb) font.color = { argb };
     }
     if (Object.keys(font).length > 0) cell.font = font;
 
     const bg = style.bg as { rgb?: string } | undefined;
-    if (bg?.rgb) {
+    if (bg?.rgb && !skip.has('bg')) {
         const argb = hexToArgb(bg.rgb);
         if (argb) {
             cell.fill = {
@@ -905,6 +1204,7 @@ function applyStyleToCell(cell: ExcelJS.Cell, style: Record<string, unknown>): v
             ['t', 'top'], ['r', 'right'], ['b', 'bottom'], ['l', 'left'],
         ];
         for (const [univerKey, exceljsKey] of SIDES) {
+            if (skip.has('bd.' + univerKey)) continue;
             const side = bd[univerKey];
             if (!side || typeof side.s !== 'number') continue;
             const styleName = BORDER_STYLE_TO_EXCELJS[side.s];
@@ -917,6 +1217,8 @@ function applyStyleToCell(cell: ExcelJS.Cell, style: Record<string, unknown>): v
         if (Object.keys(out).length > 0) cell.border = out as Partial<ExcelJS.Borders>;
     }
 }
+
+const EMPTY_SKIP_SET: ReadonlySet<string> = new Set();
 
 // 0-based column index → A1 column letters (A, B, ..., Z, AA, AB, ...).
 function colLetters(idx: number): string {
@@ -948,6 +1250,24 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
     }
 }
 
+// Read the NOTESHEET_SYNTH_STYLES sidecar that records which per-cell style
+// fields the M12 table-style synthesizer added during import. Returns a
+// `${sheetId}` → `${row}:${col}` → string[] map; the exporter consults this
+// to skip those fields so Excel's TableStyle paint isn't doubled up by ours.
+function readSynthStylesSidecar(snapshot: UniverSnapshot): Record<string, Record<string, string[]>> {
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    if (!Array.isArray(resources)) return {};
+    const entry = resources.find((r) => r?.name === NOTESHEET_SYNTH_STYLES_RESOURCE);
+    if (!entry || typeof entry.data !== 'string') return {};
+    try {
+        const parsed = JSON.parse(entry.data);
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed as Record<string, Record<string, string[]>>;
+    } catch {
+        return {};
+    }
+}
+
 // Pull the workbook-level default font name out of the snapshot. Set on
 // import from the source xlsx's theme1.xml/minorFont; on export every cell
 // that doesn't already carry an explicit font.name inherits this so the
@@ -964,12 +1284,15 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     const sheetOrder = (snapshot as { sheetOrder?: string[] }).sheetOrder ?? [];
     const sheets = (snapshot as { sheets?: Record<string, SheetRecord> }).sheets ?? {};
     const tableResource = readTableResource(snapshot);
+    const synthStylesBySheet = readSynthStylesSidecar(snapshot);
     const defaultFontName = readDefaultFontName(snapshot);
 
     for (const sheetId of sheetOrder) {
         const sheet = sheets[sheetId];
         if (!sheet) continue;
         const ws = wb.addWorksheet(sheet.name || sheetId);
+
+        const synthForSheet = synthStylesBySheet[sheetId] ?? {};
 
         const cellData = sheet.cellData ?? {};
         for (const rowKey of Object.keys(cellData)) {
@@ -995,13 +1318,19 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                     cell.value = data.v;
                 }
                 const style = resolveStyle(snapshot, data.s);
-                if (style) applyStyleToCell(cell, style);
-                // Apply the workbook-level default font when the cell didn't
-                // carry an explicit ff. Mirrors how Excel stores fonts: theme
-                // minorFont covers cells with no styled <font> reference.
-                if (defaultFontName && (!style || typeof style.ff !== 'string')) {
-                    cell.font = { ...(cell.font ?? {}), name: defaultFontName };
+                if (style) {
+                    const skipFields = synthForSheet[`${r}:${c}`];
+                    const skip = skipFields && skipFields.length > 0 ? new Set(skipFields) : undefined;
+                    applyStyleToCell(cell, style, skip);
                 }
+                // Workbook-default font (Aptos Narrow / Calibri / etc.) is
+                // already inherited via theme1.xml's minorFont — see
+                // patchThemeFont. Don't write a redundant per-cell
+                // `font.name` here: doing so flips applyFont="1" on the
+                // cell's xf, which prevents Excel from applying TableStyle
+                // dxfs (most visibly: the white-on-color header text of
+                // styled tables ends up rendered black because the cell's
+                // explicit-font flag overrides the table-style font.)
             }
         }
 
@@ -1089,8 +1418,40 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     if (defaultFontName) {
         out = await patchThemeFont(out, defaultFontName);
     }
+    const sourceClrScheme = readSourceClrScheme(snapshot);
+    if (sourceClrScheme) {
+        out = await patchThemeClrScheme(out, sourceClrScheme);
+    }
     out = await injectChartsIntoZip(out, snapshot);
     return out;
+}
+
+function readSourceClrScheme(snapshot: UniverSnapshot): string | null {
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    if (!Array.isArray(resources)) return null;
+    const entry = resources.find((r) => r?.name === NOTESHEET_THEME_CLR_SCHEME_RESOURCE);
+    return entry && typeof entry.data === 'string' ? entry.data : null;
+}
+
+async function patchThemeClrScheme(buffer: ArrayBuffer, clrSchemeXml: string): Promise<ArrayBuffer> {
+    try {
+        const zip = await JSZip.loadAsync(buffer);
+        const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
+        if (!themePath) return buffer;
+        const xml = await zip.files[themePath].async('string');
+        // Splice over the existing <a:clrScheme>...</a:clrScheme>, leaving
+        // the rest of the theme XML (font scheme, format scheme, etc.)
+        // untouched.
+        const re = /<a:clrScheme\b[^>]*>[\s\S]*?<\/a:clrScheme>/;
+        if (!re.test(xml)) return buffer;
+        const patched = xml.replace(re, clrSchemeXml);
+        if (patched === xml) return buffer;
+        zip.file(themePath, patched);
+        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+    } catch (e) {
+        console.warn('[Notesheet] patchThemeClrScheme failed; theme keeps exceljs defaults', e);
+        return buffer;
+    }
 }
 
 // Rewrite the workbook's xl/theme/theme1.xml to use the given font name as

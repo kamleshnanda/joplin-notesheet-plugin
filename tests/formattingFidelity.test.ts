@@ -21,7 +21,13 @@ interface Snapshot {
             p?: {
                 body?: {
                     dataStream?: string;
+                    paragraphs?: Array<{ startIndex: number; paragraphStyle?: Record<string, unknown> }>;
+                    sectionBreaks?: Array<{ startIndex: number }>;
+                    textRuns?: Array<{ st: number; ed: number; ts?: Record<string, unknown> }>;
                     customRanges?: Array<{ rangeType?: number; properties?: { url?: string } }>;
+                };
+                documentStyle?: {
+                    pageSize?: { width?: number; height?: number };
                 };
             };
         }>>;
@@ -76,7 +82,14 @@ describe('M12 — theme fonts', () => {
         }
     });
 
-    test('export: snapshot.defaultStyle.ff is applied to all unstyled cells AND patched into theme1.xml', async () => {
+    test('export: snapshot.defaultStyle.ff is patched into theme1.xml so unstyled cells inherit it', async () => {
+        // Cells with no explicit font in their style record do NOT get a
+        // per-cell font.name written on export — Excel inherits from
+        // theme1.xml's minorFont. Writing a per-cell font.name would flip
+        // the cell's xf applyFont="1" and prevent Excel's TableStyle dxfs
+        // from applying (the most visible regression: white-on-color
+        // header text rendering as black on the exported xlsx). So we
+        // verify the theme is patched and rely on render-time inheritance.
         const snap = {
             id: 'wb-1', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
             sheetOrder: ['s1'],
@@ -94,18 +107,21 @@ describe('M12 — theme fonts', () => {
         };
         const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
 
-        // Read back: theme should carry Aptos Narrow, and cell A1's font
-        // should be Aptos Narrow too.
+        // Theme carries Aptos Narrow.
         const zip = await JSZip.loadAsync(buf as ArrayBuffer);
         const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
         expect(themePath).toBeDefined();
         const themeXml = await zip.files[themePath!].async('string');
         expect(themeXml).toContain('<a:latin typeface="Aptos Narrow"');
 
+        // Cell has NO explicit font (so the table-style dxf path stays
+        // open). exceljs's getCell().font returns undefined for cells
+        // with no <font> in their xf.
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
         const ws = wb.getWorksheet('Sheet1')!;
-        expect(ws.getCell('A1').font?.name).toBe('Aptos Narrow');
+        const fontEntry = ws.getCell('A1').font;
+        expect(fontEntry === undefined || fontEntry.name === undefined).toBe(true);
     });
 
     test('round-trip: import xlsx with custom theme font → export preserves it', async () => {
@@ -183,6 +199,140 @@ describe('M12 — banded-style synthesis', () => {
         }
     });
 
+    test('table with TableStyleMedium2 → synthesized header + outer borders (TableStyleMedium2 borderColor)', async () => {
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.addTable({
+            name: 'TB',
+            ref: 'A1',
+            headerRow: true,
+            style: { theme: 'TableStyleMedium2', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            columns: [{ name: 'A' }, { name: 'B' }],
+            rows: [['x', 1], ['y', 2], ['z', 3]],
+        });
+        const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot & {
+            sheets: Record<string, { cellData: Record<number, Record<number, { s?: string }>> }>;
+        };
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        const styleAt = (r: number, c: number) => {
+            const id = sheet.cellData[r]?.[c]?.s;
+            return id ? snap.styles[id] : undefined;
+        };
+
+        const BORDER_RGB = '#156082';
+        const headerStyle = styleAt(0, 0)!;
+        const headerBd = headerStyle.bd as Record<string, { s: number; cl: { rgb: string } }>;
+        // Header has top + bottom borders, plus left on the first column.
+        expect(headerBd.t.cl.rgb).toBe(BORDER_RGB);
+        expect(headerBd.b.cl.rgb).toBe(BORDER_RGB);
+        expect(headerBd.l.cl.rgb).toBe(BORDER_RGB);
+
+        // The right edge (column 1) gets a right border.
+        const headerRightStyle = styleAt(0, 1)!;
+        const headerRightBd = headerRightStyle.bd as Record<string, { s: number; cl: { rgb: string } }>;
+        expect(headerRightBd.r.cl.rgb).toBe(BORDER_RGB);
+
+        // Data rows: outer left/right edges have borders, inner rows do NOT
+        // get top/bottom (banding fill is the separator). Last data row gets
+        // a bottom border.
+        const dataLeftStyle = styleAt(2, 0)!; // middle data row, left edge
+        const dataLeftBd = dataLeftStyle.bd as Record<string, { s: number; cl: { rgb: string } }> | undefined;
+        expect(dataLeftBd?.l?.cl.rgb).toBe(BORDER_RGB);
+        expect(dataLeftBd?.t).toBeUndefined();
+        expect(dataLeftBd?.b).toBeUndefined();
+
+        // Last data row (row 3 = dataStartRow=1 + 2 data rows after first)
+        // gets bottom border.
+        const lastRow = 3;
+        const lastRowLeft = styleAt(lastRow, 0)!;
+        const lastRowLeftBd = lastRowLeft.bd as Record<string, { s: number; cl: { rgb: string } }>;
+        expect(lastRowLeftBd.b.cl.rgb).toBe(BORDER_RGB);
+    });
+
+    test('export: synthesized table-style fields are stripped (no double-paint)', async () => {
+        // Round-trip a table with TableStyleMedium2 through import → export.
+        // The exported xlsx should NOT carry per-cell <fill>/<border> records
+        // for the cells we synthesized; Excel paints them from the table
+        // style at render time, and a doubled paint reads visually heavier
+        // than the original.
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        ws.addTable({
+            name: 'TS',
+            ref: 'A1',
+            headerRow: true,
+            style: { theme: 'TableStyleMedium2', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            columns: [{ name: 'A' }, { name: 'B' }],
+            rows: [['x', 1], ['y', 2], ['z', 3]],
+        });
+        const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+        const snap = await xlsxBufferToSnapshot(buf0 as unknown as Buffer);
+
+        // Sidecar should be present.
+        const synth = (snap as unknown as Snapshot).resources?.find((r) => r.name === 'SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN');
+        expect(synth).toBeDefined();
+        const sidecar = JSON.parse(synth!.data) as Record<string, Record<string, string[]>>;
+        const sheetSidecar = sidecar[(snap as unknown as Snapshot).sheetOrder[0]];
+        expect(sheetSidecar).toBeDefined();
+        // Header cell at (0,0): bg, cl, bl, bd.t, bd.b, bd.l should be tagged.
+        expect(sheetSidecar['0:0']).toEqual(expect.arrayContaining(['bg', 'cl', 'bl', 'bd.t', 'bd.b', 'bd.l']));
+
+        const buf1 = await snapshotToXlsxBuffer(snap);
+        const wb1 = new ExcelJS.Workbook();
+        await wb1.xlsx.load(buf1 as unknown as Parameters<typeof wb1.xlsx.load>[0]);
+        const ws1 = wb1.getWorksheet('Sheet1')!;
+
+        // The header cell should NOT have an explicit fill or border in the
+        // round-tripped file — Excel renders TableStyleMedium2 on top, and
+        // we don't want our synth doubled. exceljs reads "no fill" as
+        // either undefined or `{ pattern: 'none' }` (depending on whether
+        // the source xlsx had a <fill index='0'/> placeholder); both shapes
+        // mean "no color painted on this cell".
+        const a1 = ws1.getCell('A1');
+        const a1Fill = a1.fill as { pattern?: string; fgColor?: { argb?: string } } | undefined;
+        expect(a1Fill?.pattern === 'solid' || (a1Fill?.fgColor?.argb)).toBeFalsy();
+        // Border object should also be empty (or undefined).
+        const a1Border = a1.border as Record<string, unknown> | undefined;
+        expect(a1Border ? Object.keys(a1Border).length === 0 : true).toBe(true);
+        // Bold attribute should not have been emitted from the synthesized bl.
+        expect(a1.font?.bold).toBeFalsy();
+    });
+
+    test('import resolves theme + tint colors against the workbook clrScheme', async () => {
+        // Build a workbook with custom accent palette, set a cell's font
+        // color to {theme: 4, tint: -0.25} (= darken accent1 by 25%), and
+        // confirm the import resolves it to RGB rather than dropping it.
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Sheet1');
+        const c = ws.getCell('A1');
+        c.value = 'colored';
+        // exceljs accepts color: { theme, tint } shape on cell.font.
+        c.font = { color: { theme: 4, tint: -0.25 } as unknown as ExcelJS.Color };
+        const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+        // exceljs's default theme has accent1 = #4F81BD. tint -0.25 = darken
+        // by multiplying L by 0.75.
+        const snap = await xlsxBufferToSnapshot(buf0 as unknown as Buffer) as unknown as Snapshot;
+        const cellData = snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0];
+        const styleId = cellData?.s;
+        expect(styleId).toBeDefined();
+        const style = snap.styles[styleId!];
+        const rgb = (style.cl as { rgb?: string } | undefined)?.rgb;
+        expect(rgb).toBeDefined();
+        // Resolved color must NOT be #000000 (the old fallback that hid
+        // theme references) and must NOT be the raw accent1 #4F81BD
+        // (without the tint applied).
+        expect(rgb).not.toBe('#000000');
+        expect(rgb).not.toBe('#4F81BD');
+        // It should look like a darker shade of accent1.
+        const r = parseInt(rgb!.slice(1, 3), 16);
+        const g = parseInt(rgb!.slice(3, 5), 16);
+        const b = parseInt(rgb!.slice(5, 7), 16);
+        // accent1 #4F81BD → blue dominant. Darker shade keeps blue dominant.
+        expect(b).toBeGreaterThan(r);
+        expect(b).toBeGreaterThan(g);
+    });
+
     test('table without showRowStripes → header gets color but data rows do NOT', async () => {
         const wb = new ExcelJS.Workbook();
         const ws = wb.addWorksheet('Sheet1');
@@ -248,12 +398,37 @@ describe('M12 — hyperlinks', () => {
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
         const cell = snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0];
         expect(cell?.v).toBe('Click me');
-        // p should carry the dataStream + a single HYPERLINK customRange.
-        expect(cell?.p?.body?.dataStream).toBe('Click me');
-        const ranges = cell?.p?.body?.customRanges ?? [];
+        // p must mirror Univer's runtime hyperlink doc model so its layout
+        // pipeline produces a real page on hover (otherwise mouse-move over
+        // the cell throws "Cannot read properties of undefined (reading
+        // 'height')" — see buildHyperlinkCellP comment).
+        const body = cell?.p?.body;
+        expect(body?.dataStream).toBe('Click me\r\n');
+        expect(body?.paragraphs).toEqual([
+            { startIndex: 'Click me'.length, paragraphStyle: {} },
+        ]);
+        expect(body?.sectionBreaks).toEqual([
+            { startIndex: 'Click me'.length + 1 },
+        ]);
+        expect(body?.textRuns).toEqual([
+            { st: 0, ed: 'Click me'.length, ts: {} },
+        ]);
+        const ranges = body?.customRanges ?? [];
         expect(ranges.length).toBe(1);
         expect(ranges[0].rangeType).toBe(0);
         expect(ranges[0].properties?.url).toBe('https://example.com/');
+
+        // documentStyle.pageSize must be finite & JSON-safe so the
+        // documentSkeleton actually lays out a page on load.
+        const ds = (cell?.p as { documentStyle?: { pageSize?: { width?: unknown; height?: unknown } } } | undefined)?.documentStyle;
+        expect(ds?.pageSize?.width).toBeDefined();
+        expect(ds?.pageSize?.height).toBeDefined();
+        expect(Number.isFinite(ds?.pageSize?.width as number)).toBe(true);
+        expect(Number.isFinite(ds?.pageSize?.height as number)).toBe(true);
+        // Round-trip-safe: JSON.stringify shouldn't drop these to null.
+        const roundTripped = JSON.parse(JSON.stringify(cell));
+        expect(roundTripped.p.documentStyle.pageSize.width).toBe(ds?.pageSize?.width);
+        expect(roundTripped.p.documentStyle.pageSize.height).toBe(ds?.pageSize?.height);
     });
 
     test('export: snapshot with cell.p hyperlink → exported xlsx has hyperlink in the cell', async () => {
