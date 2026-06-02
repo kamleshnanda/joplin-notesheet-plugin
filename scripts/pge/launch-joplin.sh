@@ -8,14 +8,14 @@
 # real notes. This matches the operator's existing workflow.
 set -euo pipefail
 
-API_BASE="${JOPLIN_API:-http://localhost:41184}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TIMEOUT_SECONDS="${JOPLIN_BOOT_TIMEOUT:-30}"
 JOPLIN_BIN="${JOPLIN_BIN:-/Applications/Joplin.app/Contents/MacOS/Joplin}"
 JOPLIN_ENV_FLAG="${JOPLIN_ENV:---env dev}"
 
-# 1. Already up? (Web Clipper /ping returns 'JoplinClipperServer')
-if curl -sf -m 2 "$API_BASE/ping" >/dev/null 2>&1; then
-    echo "joplin: already up at $API_BASE"
+# 1. Already up? Discover the dev profile's Web Clipper port and probe.
+if HOSTPORT=$("$SCRIPT_DIR/discover-api-port.sh" 2>/dev/null); then
+    echo "joplin: already up at http://$HOSTPORT"
     exit 0
 fi
 
@@ -44,21 +44,23 @@ disown
 # 4. Poll until the Data API responds, or until timeout.
 deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
 while true; do
-    if curl -sf -m 2 "$API_BASE/ping" >/dev/null 2>&1; then
-        echo "joplin: up (Web Clipper API responding)"
+    if HOSTPORT=$("$SCRIPT_DIR/discover-api-port.sh" 2>/dev/null); then
+        echo "joplin: up at http://$HOSTPORT"
         exit 0
     fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
         cat >&2 <<EOF
 joplin: timed out after ${TIMEOUT_SECONDS}s waiting for Web Clipper
-Data API at $API_BASE.
+Data API.
 
 Possible causes:
-  - First launch of dev profile? Web Clipper is OFF by default — open
-    Joplin → Tools → Options → Web Clipper and enable it once. The
-    setting persists across restarts so this is a one-time step.
+  - First launch of dev profile? Web Clipper is OFF by default. Open
+    the dev Joplin → menu bar → Joplin → Settings → Web Clipper, and
+    click "Enable Web Clipper Service". The setting persists.
   - Joplin first launch is slow; bump JOPLIN_BOOT_TIMEOUT.
-  - Port $API_BASE not actually 41184. Set JOPLIN_API env var.
+  - The dev profile's port is recorded in
+    ~/.config/joplindev-desktop/log-clipper.txt. discover-api-port.sh
+    reads it from there.
 EOF
         exit 1
     fi

@@ -11,9 +11,42 @@
 // appended as ?token=... on every request.
 
 const fs = require('fs');
+const { execSync } = require('child_process');
+const path = require('path');
 
-const API = process.env.JOPLIN_API || 'http://localhost:41184';
-const TOKEN = process.env.JOPLIN_TOKEN || '';
+function discoverApi() {
+    if (process.env.JOPLIN_API) return process.env.JOPLIN_API;
+    // Joplin's dev profile Clipper port is allocated at boot (defaults
+    // to 41184 if free; on this machine that's taken by the main
+    // profile). discover-api-port.sh reads the chosen port from
+    // ~/.config/joplindev-desktop/log-clipper.txt and verifies it
+    // responds.
+    try {
+        const script = path.resolve(__dirname, 'discover-api-port.sh');
+        const out = execSync(`bash "${script}"`, { stdio: ['ignore', 'pipe', 'pipe'] });
+        return 'http://' + out.toString().trim();
+    } catch {
+        // Fall back to the default; caller will see a clear error
+        // when the request fails.
+        return 'http://localhost:41184';
+    }
+}
+
+function discoverToken() {
+    if (process.env.JOPLIN_TOKEN) return process.env.JOPLIN_TOKEN;
+    // Token kept locally (gitignored). Created once per machine; the
+    // operator copies it from Joplin → Settings → Web Clipper →
+    // Authorization tokens.
+    const tokenFile = path.resolve(__dirname, '..', '..', '.claude', 'joplin-token.local');
+    try {
+        return fs.readFileSync(tokenFile, 'utf8').trim();
+    } catch {
+        return '';
+    }
+}
+
+const API = discoverApi();
+const TOKEN = discoverToken();
 
 function url(path, query = {}) {
     const q = new URLSearchParams(query);

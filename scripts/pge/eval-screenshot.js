@@ -1,30 +1,19 @@
 // Evaluator's authoritative screenshot capture. Launches Joplin via
-// Playwright's Electron driver, opens the test note for a feature,
-// waits for Univer to render, screenshots the editor pane, saves
-// under screenshots/<feature-id>/eval-<utc-timestamp>.png.
+// Playwright's Electron driver with the dev profile, waits for the
+// Web Clipper API to come up (proves the app finished booting),
+// creates or selects the feature's test note via the API + the
+// joplin:// URL scheme, waits for Univer to render, and saves a
+// screenshot under screenshots/<feature-id>/eval-<utc>.png.
 //
-// The evaluator agent invokes this via Bash; the agent then opens
-// the resulting PNG with the Read tool and judges its contents.
+// The evaluator agent invokes this via Bash, then opens the
+// resulting PNG with the Read tool and judges its contents.
 //
 // Usage:
 //   node eval-screenshot.js <feature-id>
-//
-// Configuration (env):
-//   JOPLIN_API   — Joplin Web Clipper Data API base, default
-//                  http://localhost:41184. Used to find the most
-//                  recent test note matching a per-feature title
-//                  prefix.
-//   JOPLIN_PATH  — Path to Joplin's Electron binary (default
-//                  /Applications/Joplin.app/Contents/MacOS/Joplin).
-//   PGE_NOTE_ID  — If set, opens this note id directly instead of
-//                  searching by title.
-//
-// Output:
-//   - screenshots/<feature-id>/eval-<utc>.png on success.
-//   - Non-zero exit + stderr on failure.
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const FEATURE_ID = process.argv[2];
 if (!FEATURE_ID) {
@@ -37,27 +26,58 @@ const SHOT_DIR = path.join(REPO_ROOT, 'screenshots', FEATURE_ID);
 const JOPLIN_PATH = process.env.JOPLIN_PATH ||
     '/Applications/Joplin.app/Contents/MacOS/Joplin';
 
-// Per-feature note title convention. The smoke creates notes with
-// titles starting "PGE smoke note ". When we extend to real M13
-// features, each feature spec specifies its own title prefix and
-// this map gets that prefix.
+// Per-feature note title prefix. The smoke creates notes with titles
+// starting "PGE smoke note ". When we extend to real M13 features,
+// each spec specifies a title prefix.
 const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-smoke-red-cell': 'PGE smoke note ',
 };
 
-async function findLatestNoteByTitle(prefix) {
-    const api = process.env.JOPLIN_API || 'http://localhost:41184';
-    const tok = process.env.JOPLIN_TOKEN || '';
+function discoverApiPort() {
+    const script = path.resolve(__dirname, 'discover-api-port.sh');
+    try {
+        return execSync(`bash "${script}"`, {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 5000,
+        }).toString().trim();
+    } catch {
+        return null;
+    }
+}
+
+function discoverToken() {
+    if (process.env.JOPLIN_TOKEN) return process.env.JOPLIN_TOKEN;
+    const tokenFile = path.resolve(REPO_ROOT, '.claude', 'joplin-token.local');
+    try { return fs.readFileSync(tokenFile, 'utf8').trim(); }
+    catch { return ''; }
+}
+
+async function waitForApi(timeoutMs = 30000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const hostPort = discoverApiPort();
+        if (hostPort) {
+            try {
+                const r = await fetch(`http://${hostPort}/ping`, { signal: AbortSignal.timeout(2000) });
+                if (r.ok) return hostPort;
+            } catch { /* not ready, retry */ }
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error(`Joplin Web Clipper API did not respond within ${timeoutMs / 1000}s`);
+}
+
+async function findLatestNoteByTitle(hostPort, token, prefix) {
     const q = new URLSearchParams({ fields: 'id,title,updated_time' });
-    if (tok) q.set('token', tok);
-    const res = await fetch(`${api}/notes?${q}`);
+    if (token) q.set('token', token);
+    const res = await fetch(`http://${hostPort}/notes?${q}`);
     if (!res.ok) throw new Error(`Joplin API list-notes failed: ${res.status}`);
     const body = await res.json();
     const matches = (body.items ?? [])
         .filter((n) => (n.title || '').startsWith(prefix))
         .sort((a, b) => (b.updated_time ?? 0) - (a.updated_time ?? 0));
     if (matches.length === 0) {
-        throw new Error(`no Joplin note with title prefix "${prefix}" — generator should have created one`);
+        throw new Error(`no Joplin note with title prefix "${prefix}" — generator should have created one before invoking the evaluator`);
     }
     return matches[0].id;
 }
@@ -74,7 +94,6 @@ async function main() {
         console.error([
             'Playwright not installed. Run from repo root:',
             '    npm install --save-dev playwright',
-            '    npx playwright install chromium',
             '',
             'Playwright bundles its Electron driver with the base',
             'install — no separate package needed.',
@@ -82,64 +101,73 @@ async function main() {
         process.exit(3);
     }
 
-    let noteId = process.env.PGE_NOTE_ID;
-    if (!noteId) {
-        const prefix = TITLE_PREFIX_BY_FEATURE[FEATURE_ID];
-        if (!prefix) {
-            throw new Error(
-                `eval-screenshot.js does not yet know the title prefix for ` +
-                `feature "${FEATURE_ID}". Add it to TITLE_PREFIX_BY_FEATURE ` +
-                `at the top of this file.`
-            );
-        }
-        noteId = await findLatestNoteByTitle(prefix);
-    }
-    console.error(`eval-screenshot: using note id ${noteId}`);
-
-    // Launch Joplin via Electron with the dev profile. Joplin must
-    // NOT already be running — Playwright's _electron.launch spawns
-    // a new instance, and a running Joplin will error out trying to
-    // acquire the single-instance lock. The wrapper script handles
-    // this by detecting a running Joplin and asking the operator to
-    // quit it first.
-    //
-    // `--env dev` selects ~/.config/joplindev-desktop/, isolating PGE
-    // cycles from the operator's main Joplin notes.
+    // 1. Launch Joplin (must NOT be already running — Electron's
+    // single-instance lock would error out).
     const { _electron: electron } = playwright;
+    console.error('eval-screenshot: launching Joplin --env dev via Electron...');
     const app = await electron.launch({
         executablePath: JOPLIN_PATH,
         args: ['--env', 'dev'],
         timeout: 30_000,
     });
 
+    let savedPath = null;
     try {
-        // Wait for the main window. Joplin's first window is the
-        // editor; its title contains "Joplin".
         const window = await app.firstWindow({ timeout: 30_000 });
         await window.waitForLoadState('domcontentloaded', { timeout: 30_000 });
 
-        // Joplin doesn't accept an "open this note" CLI arg; instead
-        // we navigate via its in-app routing. Easiest path: simulate
-        // Cmd+G "Goto note ID" doesn't exist either. So we use the
-        // "search" sidebar to find the note by id (which Joplin's
-        // search supports as `id:<id>`). If that fails, fall back to
-        // clicking the most-recent note in the All Notes view.
-        // For the smoke, we'll just wait and assume the operator's
-        // "selected" note in Joplin's sidebar is what's open.
-        //
-        // TODO: make this deterministic. For the smoke we accept
-        // that the generator must select the test note in Joplin
-        // before the evaluator runs.
-        await window.waitForTimeout(3_000); // give Univer time to hydrate
+        // 2. Wait for the Web Clipper Data API to come up inside the
+        // launched Joplin. This is also our signal that the editor
+        // service is alive.
+        const hostPort = await waitForApi(45_000);
+        console.error(`eval-screenshot: API up at http://${hostPort}`);
 
+        const token = discoverToken();
+        if (!token) {
+            throw new Error(
+                'No Joplin Web Clipper token found. Set JOPLIN_TOKEN env var, or write the token to .claude/joplin-token.local. Get the token from Joplin → Settings → Web Clipper → Authorization tokens.'
+            );
+        }
+
+        // 3. Find the test note for this feature.
+        const prefix = TITLE_PREFIX_BY_FEATURE[FEATURE_ID];
+        if (!prefix) {
+            throw new Error(
+                `eval-screenshot.js does not know the title prefix for "${FEATURE_ID}". Add it to TITLE_PREFIX_BY_FEATURE.`
+            );
+        }
+        const noteId = process.env.PGE_NOTE_ID || await findLatestNoteByTitle(hostPort, token, prefix);
+        console.error(`eval-screenshot: opening note id ${noteId}`);
+
+        // 4. Open the note via Joplin's URL scheme. Joplin's main
+        // process registers `joplin://` and routes openNote to its
+        // internal navigation. We dispatch via the Electron app's
+        // first window.
+        await window.evaluate((id) => {
+            const a = document.createElement('a');
+            a.href = `joplin://x-callback-url/openNote?id=${id}`;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }, noteId);
+
+        // 5. Give Univer time to hydrate the editor.
+        await window.waitForTimeout(5_000);
+
+        // 6. Screenshot the active window.
         await window.screenshot({ path: out, fullPage: false });
+        savedPath = out;
         console.error(`eval-screenshot: saved ${out}`);
     } finally {
         await app.close();
     }
 
-    // Print the saved path on stdout for the evaluator agent to read.
-    process.stdout.write(out + '\n');
+    if (savedPath) {
+        process.stdout.write(savedPath + '\n');
+    } else {
+        process.exit(1);
+    }
 }
 
 main().catch((e) => {

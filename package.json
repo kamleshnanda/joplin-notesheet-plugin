@@ -21,11 +21,12 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "chalk": "^4.1.0",
-    "copy-webpack-plugin": "^11.0.0",
+    "copy-webpack-plugin": "^14.0.0",
     "css-loader": "^7.1.4",
     "fs-extra": "^10.1.0",
     "glob": "^11.1.0",
     "jest": "^30.4.2",
+    "playwright": "^1.60.0",
     "style-loader": "^4.0.0",
     "tar": "^7.5.9",
     "ts-jest": "^29.4.11",
@@ -43,7 +44,7 @@
     "@univerjs/preset-sheets-table": "^0.23.0",
     "@univerjs/presets": "^0.23.0",
     "chart.js": "^4.5.1",
-    "exceljs": "^4.4.0",
+    "exceljs": "^3.4.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   }
