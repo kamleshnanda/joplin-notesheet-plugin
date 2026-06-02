@@ -620,6 +620,108 @@ async function readThemeClrScheme(buffer: ArrayBuffer | Uint8Array | Buffer): Pr
     return { raw, rgb };
 }
 
+// Pattern B hyperlink detection. exceljs surfaces cells styled with the
+// built-in "Hyperlink" cellStyle (cellStyleXfs builtinId=8) as plain
+// strings — `cell.value = "https://..."` with `cell.isHyperlink = false`.
+// Excel still renders them as clickable blue-underlined links in the UI
+// because the named-style font carries underline + theme=10 color, but
+// our import path treats them as ordinary cells.
+//
+// We resolve Pattern B by reading the raw zip:
+//   1. xl/styles.xml's <cellStyles> → find the xfId that points at
+//      builtinId=8 (or name="Hyperlink").
+//   2. xl/styles.xml's <cellXfs> → collect every cellXfs index whose
+//      `xfId` attribute matches the named-Hyperlink xfId.
+//   3. Per worksheet, xl/worksheets/sheet*.xml → collect every <c r="A1"
+//      s="N"/> where N is in the named-Hyperlink set.
+//
+// Returns a map: sheetIndex (1-based, matching exceljs's ws.id) → Set
+// of A1-format cell refs. The import loop consults this set to decide
+// whether to synthesize a hyperlink cell.p for cells exceljs reports as
+// plain strings.
+//
+// IMPORTANT: This is import-only. On export we keep emitting Pattern A
+// (`{text, hyperlink}` cell value + <hyperlinks> block), which Excel
+// renders identically. Round-tripping the named-style itself would
+// require reconstructing builtin cellStyle entries in the exported
+// styles.xml, which exceljs doesn't expose cleanly.
+async function readNamedHyperlinkCells(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<Map<number, Set<string>>> {
+    const result = new Map<number, Set<string>>();
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return result;
+    }
+
+    const stylesPath = 'xl/styles.xml';
+    if (!zip.files[stylesPath]) return result;
+    const stylesXml = await zip.files[stylesPath].async('string');
+
+    // Step 1: find the xfId of <cellStyle name="Hyperlink"> (or
+    // builtinId=8). Excel always emits builtinId=8 for Hyperlink, but
+    // the name attribute is the safer match because OOXML treats
+    // builtinId as a hint, not a contract.
+    const cellStylesMatch = /<cellStyles\b[^>]*>([\s\S]*?)<\/cellStyles>/.exec(stylesXml);
+    if (!cellStylesMatch) return result;
+    const namedHyperlinkXfIds = new Set<string>();
+    const styleEntryRe = /<cellStyle\b[^>]*\/>/g;
+    let m: RegExpExecArray | null;
+    while ((m = styleEntryRe.exec(cellStylesMatch[1])) !== null) {
+        const tag = m[0];
+        const isHyperlink = /\bname="Hyperlink"/.test(tag) || /\bbuiltinId="8"/.test(tag);
+        if (!isHyperlink) continue;
+        const xfIdMatch = /\bxfId="(\d+)"/.exec(tag);
+        if (xfIdMatch) namedHyperlinkXfIds.add(xfIdMatch[1]);
+    }
+    if (namedHyperlinkXfIds.size === 0) return result;
+
+    // Step 2: walk <cellXfs> and collect cellXfs indices whose xfId
+    // attribute is in the set.
+    const cellXfsMatch = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(stylesXml);
+    if (!cellXfsMatch) return result;
+    const xfRe = /<xf\b[^>]*\/>/g;
+    const linkCellXfIndices = new Set<number>();
+    let xfIdx = 0;
+    let xfMatch: RegExpExecArray | null;
+    while ((xfMatch = xfRe.exec(cellXfsMatch[1])) !== null) {
+        const tag = xfMatch[0];
+        const xfIdAttr = /\bxfId="(\d+)"/.exec(tag);
+        if (xfIdAttr && namedHyperlinkXfIds.has(xfIdAttr[1])) {
+            linkCellXfIndices.add(xfIdx);
+        }
+        xfIdx++;
+    }
+    if (linkCellXfIndices.size === 0) return result;
+
+    // Step 3: per worksheet, collect <c r="A1" s="N"/> where N is in
+    // linkCellXfIndices. We don't try to track which worksheet this is
+    // by name — exceljs ws.id is the same 1-based index used in the
+    // sheet path "xl/worksheets/sheetN.xml".
+    for (const fpath of Object.keys(zip.files)) {
+        const sheetMatch = /^xl\/worksheets\/sheet(\d+)\.xml$/.exec(fpath);
+        if (!sheetMatch) continue;
+        const sheetIdx = parseInt(sheetMatch[1], 10);
+        const sheetXml = await zip.files[fpath].async('string');
+        const cellRe = /<c\b[^>]*\/?>/g;
+        const a1Set = new Set<string>();
+        let cellMatch: RegExpExecArray | null;
+        while ((cellMatch = cellRe.exec(sheetXml)) !== null) {
+            const tag = cellMatch[0];
+            const sAttr = /\bs="(\d+)"/.exec(tag);
+            if (!sAttr) continue;
+            if (!linkCellXfIndices.has(parseInt(sAttr[1], 10))) continue;
+            const rAttr = /\br="([A-Z]+\d+)"/.exec(tag);
+            if (rAttr) a1Set.add(rAttr[1]);
+        }
+        if (a1Set.size > 0) result.set(sheetIdx, a1Set);
+    }
+
+    return result;
+}
+
 // OOXML tint applied in HSL luminance, per Microsoft's spec:
 //   tint > 0  →  L = L*(1-tint) + tint     (lighten toward white)
 //   tint < 0  →  L = L*(1+tint)            (darken toward black)
@@ -967,6 +1069,11 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // Captured for export-time replay so the workbook's table-style colors
     // resolve against the same accent palette they did originally.
     const themeClrScheme = await readThemeClrScheme(buffer);
+    // Pattern B hyperlinks: cells styled with the built-in "Hyperlink"
+    // cellStyle (cellStyleXfs builtinId=8). exceljs surfaces these as
+    // plain string values — we synthesize cell.p from the string so
+    // Univer's hyperlink layer treats them as clickable links.
+    const namedHyperlinkCellsBySheet = await readNamedHyperlinkCells(buffer);
 
     const sheetOrder: string[] = [];
     const sheets: Record<string, SheetRecord> = {};
@@ -1005,12 +1112,29 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         const cellData: Record<number, Record<number, CellRecord>> = {};
         let maxRow = 0;
         let maxCol = 0;
+        const namedHyperlinkCells = namedHyperlinkCellsBySheet.get(ws.id) ?? new Set<string>();
 
         ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
             const r = rowNumber - 1; // exceljs is 1-based
             row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
                 const c = colNumber - 1;
                 const value = extractCellValue(cell);
+                // Pattern B hyperlink synthesis. extractCellValue may already
+                // have produced a `p` (Pattern A: cell.value was {text, hyperlink}).
+                // For Pattern B (cell.value is a plain URL string AND the cell's
+                // xf chain leads to the named "Hyperlink" cellStyle), we
+                // construct the same shape of p ourselves so Univer renders
+                // the link consistently. extractCellValue's URL-pattern
+                // sniffing isn't enough on its own: a cell typed as a plain
+                // string value isn't always a link, only when explicitly
+                // styled with the named-Hyperlink xf.
+                if (
+                    !value.p
+                    && typeof value.v === 'string'
+                    && namedHyperlinkCells.has(cell.address)
+                ) {
+                    value.p = buildHyperlinkCellP(value.v, value.v);
+                }
                 const style = buildStyleFromExcelCell(cell, themeClrScheme);
                 const styleId = internStyle(style);
                 const record: CellRecord = {};

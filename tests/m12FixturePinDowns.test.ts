@@ -112,16 +112,11 @@ describe('M12 fixtures — basic smoke', () => {
 // of these, the test must fail.
 
 describe('M12 pin-down — hyperlink documentSkeleton', () => {
-    // KNOWN SHORTCOMING: the FormattingSmorgasboard.xlsx fixture stores
-    // its hyperlinks via the *Hyperlink named cell style* (Excel UI:
-    // Format → Cell Styles → Hyperlink), which sets the cell's value to
-    // a plain URL string and relies on the named style's `<u/>` +
-    // `theme=10` to paint it. exceljs surfaces this as `{value: 'https://...'}`
-    // with `isHyperlink === false`, NOT as `{text, hyperlink}`. Our
-    // import path only recognizes the {text, hyperlink} shape and so
-    // these cells become plain string cells with link-styled text but
-    // NO `cell.p`. Tracked separately; for THIS pin-down (the Bug 1
-    // crash regression) we build a Pattern-A workbook in-process.
+    // We build the workbook in-process here (Pattern A: cell.value =
+    // {text, hyperlink}) rather than rely on a fixture, because the test
+    // is about cell.p shape — independent of which import path produced
+    // the hyperlink. Pattern B (named-Hyperlink cellStyle) is exercised
+    // separately by the FormattingSmorgasboard pin-down in this file.
     test('hyperlink cell.p has finite pageSize + paragraphs + sectionBreaks + dataStream "\\r\\n" terminator', async () => {
         const wb = new ExcelJS.Workbook();
         const ws = wb.addWorksheet('Sheet1');
@@ -394,36 +389,94 @@ describe('M12 round-trip golden — table structure', () => {
         ]);
     });
 
-    // KNOWN SHORTCOMING: Both formatting-testdata fixtures store
-    // hyperlinks via the named "Hyperlink" cell style rather than as
-    // `<hyperlinks>` block + `{text, hyperlink}` cell value. We
-    // currently only round-trip the latter shape; the former produces
-    // round-tripped cells with the URL preserved as plain text and the
-    // link styling (underline + theme=10 color) preserved, but
-    // `isHyperlink` returns false. Tracked as part of M12 follow-up.
-    //
-    // Once we land named-style hyperlink support, replace the body of
-    // this test with the original 9-link-count assertion.
-    test('Aptos fixture: round-trip preserves URL strings in column B (named-Hyperlink workaround)', async () => {
+    // Pattern B (named-Hyperlink cellStyle) round-trip. The Aptos
+    // fixture's column B cells use Excel's built-in "Hyperlink" cell
+    // style (Format → Cell Styles → Hyperlink) rather than the
+    // {text, hyperlink} value shape. Our import recognizes the cellStyle
+    // chain and synthesizes cell.p; on export we re-emit Pattern A
+    // (`<hyperlinks>` block + cell value `{text, hyperlink}`), which
+    // Excel renders identically. So the round-tripped cells now read as
+    // `cell.isHyperlink === true` even though the source used Pattern B.
+    test('Aptos fixture: round-trip preserves all 8 named-Hyperlink cells in column B', async () => {
         const snap = await importFixture(APTOS);
         const { wb } = await roundTrip(snap);
         const ws = wb.getWorksheet('Sheet1')!;
-        // The fixture has 8 hyperlink rows in column B (rows 2-9, all
-        // unique URLs). Row 10 is the totals row with no URL.
-        let urlCellCount = 0;
+        let linkCount = 0;
         const seenUrls = new Set<string>();
         ws.eachRow({ includeEmpty: false }, (row, rowIdx) => {
             if (rowIdx === 1 || rowIdx === 10) return; // skip header + totals
             const c = row.getCell(2); // B = column 2
-            const v = c.value;
-            const url = typeof v === 'string' ? v
-                : (v && typeof v === 'object' && 'text' in v ? (v as { text: string }).text : null);
-            if (url && url.startsWith('https://')) {
-                urlCellCount++;
-                seenUrls.add(url);
+            if (c.isHyperlink) {
+                linkCount++;
+                const url = (c.value as { hyperlink?: string }).hyperlink;
+                if (url) seenUrls.add(url);
             }
         });
-        expect(urlCellCount).toBe(8);
+        expect(linkCount).toBe(8);
         expect(seenUrls.size).toBe(8);
+    });
+
+    test('Aptos fixture: theme=10 hyperlink color resolves to the source workbook hlink (Aptos #467886)', async () => {
+        // REGRESSION HISTORY: Before the theme+tint resolver landed
+        // (2026-05-31 evening), `font.color = {theme: 10}` resolved to
+        // undefined → fell back to no color → cell rendered black-on-bg.
+        // Symptom in the user's InvestmentSummary.xlsx: Vendor/Start Date
+        // hyperlinks looked like plain black underlined text instead of
+        // the dark teal-blue (Aptos hlink). The resolver maps theme=10
+        // to the workbook clrScheme's <a:hlink> element.
+        const snap = await importFixture(APTOS);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        const cell = sheet.cellData[1]?.[1];
+        const style = cell?.s ? snap.styles[cell.s] : null;
+        // ul (underline) AND cl (color) both come from the named-Hyperlink
+        // font (font 1 in styles.xml: <font><u/><sz/><color theme="10"/>
+        // <name val="Aptos Narrow"/>...</font>).
+        expect((style?.ul as { s: number } | undefined)?.s).toBe(1);
+        const cl = style?.cl as { rgb: string } | undefined;
+        // Aptos workbook theme: <a:hlink><a:srgbClr val="467886"/>.
+        // Anything other than #467886 means the resolver fell back to
+        // black or skipped the theme reference — both are P1 regressions.
+        expect(cl?.rgb).toBe('#467886');
+    });
+
+    test('Aptos fixture: theme=10 hyperlink color survives round-trip', async () => {
+        const snap = await importFixture(APTOS);
+        const { wb } = await roundTrip(snap);
+        const ws = wb.getWorksheet('Sheet1')!;
+        // Snapshot row 1 col 1 = Excel B2.
+        const c = ws.getCell('B2');
+        const argb = c.font?.color?.argb;
+        // exceljs serializes the resolved RGB as 'FFRRGGBB' (alpha=FF).
+        expect(argb?.toUpperCase()).toBe('FF467886');
+    });
+
+    test('Classic fixture: theme=10 hyperlink color resolves against Classic clrScheme (#0563C1)', async () => {
+        // Classic theme's <a:hlink> is #0563C1. Same code path as Aptos
+        // but a different RGB result; this pin-down ensures the
+        // resolver isn't accidentally hardcoded to one workbook's
+        // palette.
+        const snap = await importFixture(CLASSIC);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        const cell = sheet.cellData[1]?.[1];
+        const style = cell?.s ? snap.styles[cell.s] : null;
+        const cl = style?.cl as { rgb: string } | undefined;
+        expect(cl?.rgb).toBe('#0563C1');
+    });
+
+    test('Aptos fixture: import emits cell.p for Pattern B (named-Hyperlink) cells in B2', async () => {
+        // The B2 cell (snapshot row 1, col 1) is plain string-valued in
+        // exceljs (`isHyperlink === false`) but uses the named-Hyperlink
+        // cellStyle. Our import detects this via xl/styles.xml's
+        // cellStyles + cellXfs chain and synthesizes a hyperlink cell.p.
+        // Without that detection (the bug we shipped before adding
+        // readNamedHyperlinkCells), Vendor/Start Date columns rendered
+        // as black-underlined plain text instead of clickable links.
+        const snap = await importFixture(APTOS);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        const cell = sheet.cellData[1]?.[1];
+        expect(cell?.p).toBeDefined();
+        const ranges = cell!.p!.body!.customRanges ?? [];
+        const link = ranges.find((r) => r.rangeType === 0);
+        expect(link?.properties?.url).toBe('https://example.com/alpha');
     });
 });
