@@ -262,16 +262,30 @@ function buildStyleFromExcelCell(cell: ExcelJS.Cell, themePalette: ThemePalette 
             if (!side?.style) continue;
             const styleNum = BORDER_STYLE_TO_UNIVER[side.style];
             if (styleNum === undefined) continue;
-            const resolved = resolveExceljsColor(side.color as ExceljsColor, themePalette);
-            const hasColorRef = side.color && typeof side.color === 'object' && Object.keys(side.color).length > 0;
-            // If color is fully absent, default to Excel's "automatic" =
-            // black border. If color IS specified but theme-based and we
-            // can't resolve it (e.g. theme=4 tint=0.4 with no theme
-            // palette), drop the border rather than render bold black —
-            // that looks like a stray underline against a banded row,
-            // while "no border" is closer to what Excel paints when the
-            // tint resolves to a near-bg hue.
-            const rgb = resolved ?? (hasColorRef ? null : '#000000');
+            // Border color resolution. Three cases:
+            //   1. side.color has an argb (e.g. "FF000000" for black) →
+            //      use it directly. argbToHex's "all-zero RGB → undefined"
+            //      heuristic is correct for FILLS but WRONG for borders —
+            //      a user-selected black border has argb FF000000 and we
+            //      must not drop it. We bypass argbToHex here for argb
+            //      borders.
+            //   2. side.color is a theme reference (e.g. {theme:4, tint:0.4}).
+            //      Try the palette resolver; if it can't resolve (no theme
+            //      palette imported), drop the border rather than render
+            //      bold black — a wrong-color black border looks like a
+            //      stray underline on a banded row.
+            //   3. side.color is absent or empty → Excel's "automatic" =
+            //      black. Use #000000.
+            const argb = (side.color as { argb?: string } | undefined)?.argb;
+            const isThemeRef = side.color && typeof side.color === 'object' && 'theme' in (side.color as object);
+            let rgb: string | null = null;
+            if (typeof argb === 'string' && /^[0-9A-Fa-f]{8}$/.test(argb)) {
+                rgb = '#' + argb.slice(2).toUpperCase();
+            } else if (isThemeRef) {
+                rgb = resolveExceljsColor(side.color as ExceljsColor, themePalette) ?? null;
+            } else {
+                rgb = '#000000';
+            }
             if (!rgb) continue;
             bd[univerKey] = { s: styleNum, cl: { rgb } };
         }
