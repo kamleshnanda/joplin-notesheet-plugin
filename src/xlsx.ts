@@ -93,6 +93,27 @@ export const NOTESHEET_SYNTH_STYLES_RESOURCE = 'SHEET_NOTESHEET_SYNTH_STYLES_PLU
 // even though both declare the same style.
 export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN';
 
+// Typed error surface for .xlsx import failures. exceljs's reconcile pipeline
+// has a few known crash sites we can't fix without forking (chart drawings
+// that lose their drawing reference, multi-sheet workbooks with multiple
+// named tables). When those fire, the caller would otherwise see a raw
+// `TypeError: Cannot read properties of undefined (reading 'anchors')`
+// stack from deep inside node_modules. Wrap them in this typed error so
+// the user-facing dialog (src/index.ts) and editor status bar
+// (src/editorView.tsx) can show something a Notesheet user can act on.
+//
+// `code` values are stable strings; the next agent + docs may key off them.
+export class NotesheetImportError extends Error {
+    public readonly code: string;
+    public readonly cause?: unknown;
+    constructor(code: string, message: string, cause?: unknown) {
+        super(message);
+        this.name = 'NotesheetImportError';
+        this.code = code;
+        this.cause = cause;
+    }
+}
+
 interface CellRecord {
     v?: string | number | boolean;
     f?: string;
@@ -888,7 +909,36 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     const wb = new ExcelJS.Workbook();
     // exceljs accepts Buffer in Node and ArrayBuffer in the browser; both are valid
     // at runtime but the .d.ts only types Buffer. Cast away to satisfy TS.
-    await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+    //
+    // The try/catch around load() catches three reproducible exceljs reconcile
+    // crashes: chart drawings whose drawing reference doesn't resolve (`anchors`
+    // crash in lib/xlsx/xlsx.js:100) and multi-sheet workbooks with multiple
+    // named tables (`name` crash in lib/doc/worksheet.js:920 inside the tables
+    // reduce). We classify by stack frame rather than message alone because
+    // "name" is too generic to key off — multiple unrelated exceljs paths
+    // can produce a "Cannot read properties of undefined (reading 'name')".
+    try {
+        await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+    } catch (err) {
+        const e = err as Error;
+        const msg = e?.message ?? String(err);
+        const stack = e?.stack ?? '';
+        if (msg.includes("'anchors'") || msg.includes('anchors')) {
+            throw new NotesheetImportError(
+                'xlsx-charts-unsupported',
+                "This .xlsx contains chart drawings that Notesheet can't import yet. The file imports correctly in Excel but cannot be opened in Notesheet.",
+                err,
+            );
+        }
+        if ((msg.includes("'name'") || msg.includes('name')) && /worksheet\.js/.test(stack)) {
+            throw new NotesheetImportError(
+                'xlsx-multi-table-unsupported',
+                "This .xlsx has a structure (multiple sheets each with their own named tables) that Notesheet can't import yet.",
+                err,
+            );
+        }
+        throw new NotesheetImportError('xlsx-import-failed', msg, err);
+    }
 
     // Read tables directly from the xlsx zip — exceljs's table parser drops
     // columns that have nested children and mis-defaults headerRowCount.
