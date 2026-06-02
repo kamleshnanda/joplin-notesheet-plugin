@@ -53,67 +53,47 @@ async function loadAndCatch(file: string): Promise<unknown> {
     }
 }
 
-// ─── Crashing fixtures: must reject with NotesheetImportError ─────────
+// ─── Previously-crashing fixtures: M13 zip pre-process unblocks them ──
+//
+// HISTORY: M12 caught three exceljs reconcile crashes
+// (xlsx-charts-unsupported × 2, xlsx-multi-table-unsupported × 1) and
+// reported friendly errors. M13 added a zip pre-process step
+// (preProcessForExceljs in src/xlsx.ts) that strips chart drawings
+// AND rewrites absolute rel Targets to relative form before exceljs
+// loads the buffer. All three previously-crashing fixtures now import
+// cleanly. The friendly-error pin-downs in this block are kept (now
+// flipped to assert "imports cleanly") so we'd notice if the
+// pre-process step ever regresses.
+//
+// NotesheetImportError + the three error codes remain exported because
+// the catch in xlsxBufferToSnapshot still classifies any crash that
+// somehow slips past the pre-process. New code paths that introduce
+// fresh exceljs crashes will fall into the generic xlsx-import-failed
+// branch.
 
-describe('M12 import recovery — crashing fixtures throw typed errors', () => {
-    test('MultiSheet.xlsx → xlsx-charts-unsupported with a friendly message', async () => {
+describe('M13 import recovery — previously-crashing fixtures now import (chart strip + rel rewrite)', () => {
+    test('MultiSheet.xlsx imports without throwing (was xlsx-charts-unsupported)', async () => {
         const err = await loadAndCatch('MultiSheet.xlsx');
-        expect(err).toBeInstanceOf(NotesheetImportError);
-        const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-charts-unsupported');
-
-        // The user-facing message must NOT carry exceljs's raw stack
-        // shape. The prior cryptic crash text included "anchors",
-        // "undefined", and "TypeError"; the wrapped message must avoid
-        // all three.
-        expect(e.message).not.toMatch(/anchors/i);
-        expect(e.message).not.toMatch(/undefined/i);
-        expect(e.message).not.toMatch(/TypeError/i);
-
-        // Friendly explanation must be present.
-        expect(e.message).toMatch(/chart/i);
-        expect(e.message).toMatch(/Notesheet/);
-
-        // Original error preserved for debugging — keep `cause` populated
-        // so a developer triaging from logs can still see the exceljs
-        // stack via `e.cause`.
-        expect(e.cause).toBeDefined();
-        expect((e.cause as Error).message).toMatch(/anchors/);
+        expect(err).toBeNull();
     });
 
-    test('LargeWorkbook.xlsx → xlsx-charts-unsupported (same crash class as MultiSheet)', async () => {
+    test('LargeWorkbook.xlsx imports without throwing (was xlsx-charts-unsupported)', async () => {
         const err = await loadAndCatch('LargeWorkbook.xlsx');
-        expect(err).toBeInstanceOf(NotesheetImportError);
-        const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-charts-unsupported');
-        expect(e.message).not.toMatch(/anchors/i);
-        expect(e.message).not.toMatch(/undefined/i);
-        expect(e.message).not.toMatch(/TypeError/i);
-        expect(e.message).toMatch(/chart/i);
-        expect(e.cause).toBeDefined();
+        expect(err).toBeNull();
     });
 
-    test('FormulasAndStructuredRefs.xlsx → xlsx-multi-table-unsupported', async () => {
+    test('FormulasAndStructuredRefs.xlsx imports without throwing (was xlsx-multi-table-unsupported)', async () => {
         const err = await loadAndCatch('FormulasAndStructuredRefs.xlsx');
-        expect(err).toBeInstanceOf(NotesheetImportError);
-        const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-multi-table-unsupported');
+        expect(err).toBeNull();
+    });
 
-        // Same negative checks as above. The raw exceljs error here is
-        // "Cannot read properties of undefined (reading 'name')" — the
-        // bare word "name" is too generic to forbid in the message
-        // (our friendly text legitimately uses "named tables"), so we
-        // only check that the cryptic shape is gone.
-        expect(e.message).not.toMatch(/undefined/i);
-        expect(e.message).not.toMatch(/TypeError/i);
-        expect(e.message).not.toMatch(/Cannot read properties/);
-
-        // Friendly explanation must mention what's unsupported.
-        expect(e.message).toMatch(/table/i);
-        expect(e.message).toMatch(/Notesheet/);
-
-        expect(e.cause).toBeDefined();
-        expect((e.cause as Error).message).toMatch(/name/);
+    test('NotesheetImportError remains exported (still used for unforeseen crash classes)', () => {
+        // Forces a code-path through the catch wrapper. We synthesize an
+        // error here rather than try to reproduce a real exceljs crash
+        // class — those are pre-processed away.
+        const e = new NotesheetImportError('xlsx-import-failed', 'sample', null);
+        expect(e).toBeInstanceOf(Error);
+        expect(e.code).toBe('xlsx-import-failed');
     });
 });
 

@@ -1044,6 +1044,136 @@ function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): T
     return out;
 }
 
+// Pre-process the in-memory zip to work around two known exceljs
+// reconcile bugs that block import:
+//
+//   1. Chart drawings — exceljs's `XLSX.reconcile` (lib/xlsx/xlsx.js:100)
+//      crashes reading `drawing.anchors` because of a structural mismatch
+//      in chart drawings emitted by openpyxl and modern Excel saves.
+//      Strip xl/drawings/* + xl/charts/* + their references from sheet
+//      rels and sheet XML. Charts vanish from the imported sheet (M14
+//      territory) but the rest of the workbook survives intact.
+//
+//   2. Absolute rel Targets — openpyxl emits `Target="/xl/tables/X.xml"`
+//      (absolute path with leading slash) but exceljs's resolver
+//      (worksheet-xform.js:522) does `options.tables[rel.Target]`
+//      against a map keyed by the RELATIVE form `../tables/X.xml`
+//      (xlsx.js:166). The mismatch yields `undefined` table entries,
+//      which then crash `worksheet.js:920`'s `tables.reduce` reading
+//      `.name`. We rewrite absolute Targets to relative form across
+//      all *.rels files so exceljs's resolver finds the parts.
+//
+// Returns the (possibly modified) buffer. The other readers in this
+// module (readTablesFromXlsxZip, readThemeFont, readThemeClrScheme,
+// readNamedHyperlinkCells) keep using the ORIGINAL `buffer` argument
+// so they see the unmodified workbook. Only the exceljs path gets the
+// pre-processed version.
+async function preProcessForExceljs(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<ArrayBuffer | Uint8Array | Buffer> {
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return buffer;
+    }
+    let modified = false;
+
+    const drawingPaths = Object.keys(zip.files).filter((p) =>
+        /^xl\/drawings\//.test(p) || /^xl\/charts\//.test(p));
+
+    // Remove the parts themselves.
+    for (const p of drawingPaths) {
+        zip.remove(p);
+        modified = true;
+    }
+
+    // (1) Remove drawing references from each sheet rels file + drop
+    // the corresponding <drawing r:id="..."/> from each sheet XML.
+    if (drawingPaths.length > 0) {
+        for (const p of Object.keys(zip.files)) {
+            if (/^xl\/worksheets\/_rels\/sheet\d+\.xml\.rels$/.test(p)) {
+                const relsXml = await zip.files[p].async('string');
+                const cleanedRels = relsXml.replace(
+                    /<Relationship\b[^>]*Type="[^"]*\/drawing"[^>]*\/>/g,
+                    '',
+                );
+                if (cleanedRels !== relsXml) {
+                    zip.file(p, cleanedRels);
+                    modified = true;
+                }
+            }
+            if (/^xl\/worksheets\/sheet\d+\.xml$/.test(p)) {
+                const xml = await zip.files[p].async('string');
+                const cleaned = xml.replace(/<drawing\b[^>]*\/>/g, '');
+                if (cleaned !== xml) {
+                    zip.file(p, cleaned);
+                    modified = true;
+                }
+            }
+        }
+        // Remove drawing/chart entries from [Content_Types].xml. exceljs
+        // tolerates extra Content_Types entries that point at missing
+        // parts, but cleaning them up keeps the zip self-consistent.
+        if (zip.files['[Content_Types].xml']) {
+            const ctXml = await zip.files['[Content_Types].xml'].async('string');
+            const cleaned = ctXml
+                .replace(/<Override\b[^>]*PartName="\/xl\/drawings\/[^"]*"[^>]*\/>/g, '')
+                .replace(/<Override\b[^>]*PartName="\/xl\/charts\/[^"]*"[^>]*\/>/g, '');
+            if (cleaned !== ctXml) {
+                zip.file('[Content_Types].xml', cleaned);
+                modified = true;
+            }
+        }
+    }
+
+    // (2) Rewrite absolute rel Targets to the path-relative form
+    // exceljs's resolver expects. For each .rels file at
+    // `xl/.../_rels/foo.xml.rels`, the owner XML lives in `xl/.../` and
+    // any `Target="/X/Y/Z.xml"` resolves against that owner directory.
+    //
+    // openpyxl emits absolute Targets ("/xl/tables/tableN.xml"); exceljs's
+    // resolver (worksheet-xform.js:522) treats the Target as a literal
+    // map key without normalization, and the map (xlsx.js:166) is keyed
+    // by the relative form. The mismatch yields undefined entries that
+    // crash worksheet.js:920's `tables.reduce` reading `.name`.
+    //
+    // Examples:
+    //   xl/_rels/workbook.xml.rels (owner = xl/), Target="/xl/worksheets/sheet1.xml"
+    //     → Target="worksheets/sheet1.xml"
+    //   xl/worksheets/_rels/sheet1.xml.rels (owner = xl/worksheets/), Target="/xl/tables/table1.xml"
+    //     → Target="../tables/table1.xml"
+    for (const p of Object.keys(zip.files)) {
+        if (!p.endsWith('.xml.rels')) continue;
+        const xml = await zip.files[p].async('string');
+        // Owner directory = the path with `_rels/<name>.xml.rels` stripped.
+        // For "xl/_rels/workbook.xml.rels" → "xl"; for
+        // "xl/worksheets/_rels/sheet1.xml.rels" → "xl/worksheets".
+        const ownerDir = p.replace(/(?:^|\/)_rels\/[^/]+$/, '');
+        const ownerSegs = ownerDir.length > 0 ? ownerDir.split('/') : [];
+        const cleaned = xml.replace(
+            /\bTarget="\/([^"]+)"/g,
+            (_match, absPath: string) => {
+                // absPath is e.g. "xl/tables/table1.xml". Compute the
+                // relative form from ownerSegs to the absolute path.
+                const targetSegs = absPath.split('/');
+                let i = 0;
+                while (i < ownerSegs.length && i < targetSegs.length && ownerSegs[i] === targetSegs[i]) i++;
+                const upHops = ownerSegs.length - i;
+                const rel = ('../'.repeat(upHops)) + targetSegs.slice(i).join('/');
+                return `Target="${rel}"`;
+            },
+        );
+        if (cleaned !== xml) {
+            zip.file(p, cleaned);
+            modified = true;
+        }
+    }
+
+    if (!modified) return buffer;
+    return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+}
+
 export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<UniverSnapshot> {
     const wb = new ExcelJS.Workbook();
     // exceljs accepts Buffer in Node and ArrayBuffer in the browser; both are valid
@@ -1056,8 +1186,15 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // reduce). We classify by stack frame rather than message alone because
     // "name" is too generic to key off — multiple unrelated exceljs paths
     // can produce a "Cannot read properties of undefined (reading 'name')".
+    //
+    // Pre-process: strip chart drawings + normalize absolute rel
+    // Targets in the in-memory zip first so exceljs doesn't trip on
+    // the broken anchor reconcile or the table-resolver mismatch. The
+    // original `buffer` arg is preserved for the other zip readers
+    // below.
+    const exceljsBuffer = await preProcessForExceljs(buffer);
     try {
-        await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+        await wb.xlsx.load(exceljsBuffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
     } catch (err) {
         const e = err as Error;
         const msg = e?.message ?? String(err);

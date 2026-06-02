@@ -103,27 +103,21 @@ accidentally changes.
   After round-trip the resolved RGB is fixed in the snapshot, so a
   later theme change in the host won't update the rendering.
 
-### `.xlsx` import — unsupported shapes (handled with friendly errors)
+### `.xlsx` import — unforeseen crashes (handled with friendly errors)
 
-These trip exceljs's internal reconcile pipeline. Notesheet wraps the
-crash with a `NotesheetImportError` carrying a stable `code` so the
-host UI can show an actionable message instead of a raw stack trace.
+If exceljs's reconcile pipeline ever throws on a workbook shape we
+haven't pre-processed (M13 strips chart drawings + rewrites absolute
+rel Targets to relative form before exceljs sees the buffer, which
+unblocked all known crash classes), the catch wrapper produces a
+`NotesheetImportError` with code `xlsx-import-failed` and preserves
+the original error in `.cause`. The host UI shows a single-line
+explanation instead of a raw stack trace.
 
-- **Workbooks with chart drawings** → `xlsx-charts-unsupported`. exceljs's
-  drawing-reconcile crashes on chart anchor structures that openpyxl
-  and modern Excel emit. M13/M15 will work around this — M13 by hardening
-  our import path to skip drawings before they reach exceljs, and M15 by
-  reading the chart structure directly with a lightweight OOXML reader
-  similar to the M10 export path.
-- **Multi-sheet workbooks where each sheet has its own named table**
-  → `xlsx-multi-table-unsupported`. exceljs's table-reduce crashes when
-  more than one sheet has a `<tableParts>` block.
-- **Other reconcile failures** → `xlsx-import-failed` (generic wrapper,
-  preserves the original error message in `.cause`).
-
-You can still import the same workbooks if you remove the offending
-content (delete charts, or move all tables onto one sheet) and
-re-save in Excel before importing.
+The two M12-era classifications (`xlsx-charts-unsupported`,
+`xlsx-multi-table-unsupported`) are no longer reached by any known
+fixture but remain wired up — they fire if a future workbook variant
+re-exposes the underlying exceljs bug. Charts in imported workbooks
+are silently dropped on import; chart-as-data import is M15.
 
 ## License
 
