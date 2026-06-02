@@ -9,7 +9,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 - **Excel structured-reference formulas** — formulas like `=Table1[[#This Row],[Investment]]` from imported `.xlsx` files resolve natively because the table definition is preserved in the snapshot and registered with Univer's formula engine on load.
 - **Named tables** — Insert Table from the Data ribbon; right-click inside a table for row/column insert/remove.
 - **Anchored charts** — Insert ribbon → "Insert Chart" opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via Chart.js.
-- **`.xlsx` import/export** — Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas (including structured references), fonts (theme-default workbook fonts like Aptos Narrow / Calibri preserved), fills, alignment, number formats, borders, merged cells, named tables with their built-in style (TableStyleMedium2 etc.), and hyperlinks (both `{text, hyperlink}` cell values and the named-Hyperlink cell style). Workbook theme palette (`<a:clrScheme>`) is preserved on round-trip so the same `TableStyleMediumN` resolves the same accent in the exported file.
+- **`.xlsx` import/export** — Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas (including structured references), fonts (theme-default workbook fonts like Aptos Narrow / Calibri preserved), fills, alignment (including text rotation), number formats, borders, merged cells, named tables with their built-in style (TableStyleMedium2 etc.), per-run rich-text formatting inside a single cell (bold + plain, multi-color, etc.), and hyperlinks (both `{text, hyperlink}` cell values and the named-Hyperlink cell style). Workbook theme palette (`<a:clrScheme>`) is preserved on round-trip, AND the in-Joplin renderer resolves table-style banding against the workbook's own accent palette so what Joplin shows matches what Excel renders. Workbooks with chart drawings or unusual zip layouts that previously crashed import are now pre-processed before they reach exceljs.
 
 ## Milestones
 
@@ -27,7 +27,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M10 — Chart export to `.xlsx` (native OOXML) | [#13](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/13) |
 | ✅ | M11 — Dependency hygiene: Jest 29 → 30 to drop deprecated transitive `glob@7` | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
 | ✅ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (Pattern A `{text, hyperlink}` + Pattern B named cell style), workbook theme palette round-trip, table grid border synthesis, friendly errors for unsupported `.xlsx` shapes | (this PR) |
-| ⏳ | M13 — Theme-aware banding accuracy + import recovery beyond exceljs limits (rotated text, rich-text formatting, charts in imported workbooks) | planned |
+| ✅ | M13 — Theme-aware banding accuracy, rotated text, rich-text within a single cell, import recovery (chart drawings + absolute rel Targets stripped before exceljs) | (this PR) |
 | ⏳ | M14 — Snapshot → HTML for Joplin's PDF/HTML export menu | planned |
 | ⏳ | M15 — Chart import from `.xlsx` | planned |
 | ⏳ | M16 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set) | planned |
@@ -94,10 +94,6 @@ accidentally changes.
 - **Conditional formatting**: color scale / data bar / cell-is /
   top-N / icon-set rules are dropped on import and not re-emitted on
   export. Cell values themselves survive. → M16.
-- **Rich-text within a single cell**: bold runs, color runs, or
-  multi-format text inside one cell flatten to plain text on import.
-  Only the hyperlink-only case (a single-format cell with `cell.hyperlink`
-  set) survives because we model that as `cell.p`. → M13.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a

@@ -342,6 +342,62 @@ function dateToExcelSerial(d: Date): number {
 // far larger than any practical cell, so it acts as effectively "no wrap"
 // while round-tripping cleanly.
 const HYPERLINK_PAGE_SIZE = 1_000_000_000;
+
+// Build a Univer ITextStyle (ITextRun.ts) from an exceljs run-level Font.
+// Mirrors the font-extraction block in buildStyleFromExcelCell but
+// scoped to a single rich-text run, and resolves theme/tint colors via
+// the same applyOoxmlTint path so a rich-text run that uses theme=10
+// resolves consistently with cell-level fonts.
+function buildTextStyleFromExceljsFont(
+    font: ExcelJS.Font | undefined,
+    themePalette: ThemePalette | null,
+): Record<string, unknown> {
+    if (!font) return {};
+    const ts: Record<string, unknown> = {};
+    if (font.name) ts.ff = font.name;
+    if (typeof font.size === 'number') ts.fs = font.size;
+    if (font.bold) ts.bl = 1;
+    if (font.italic) ts.it = 1;
+    if (font.underline) ts.ul = { s: 1 };
+    if (font.strike) ts.st = { s: 1 };
+    const color = resolveExceljsColor(font.color as ExceljsColor, themePalette);
+    if (color) ts.cl = { rgb: color };
+    return ts;
+}
+
+// Build a Univer cell.p (IDocumentData) carrying multi-run rich text.
+// Same documentSkeleton shape as buildHyperlinkCellP — a finite
+// pageSize that survives JSON.stringify, paragraphs/sectionBreaks at
+// the right offsets — so Univer's layout pipeline doesn't crash on
+// hover. Each input run becomes one textRun with character offsets
+// computed from the concatenated text.
+function buildRichTextCellP(
+    runs: Array<{ text: string; ts: Record<string, unknown> }>,
+): Record<string, unknown> {
+    const dataStream = runs.map((r) => r.text).join('');
+    let pos = 0;
+    const textRuns = runs.map((r) => {
+        const start = pos;
+        pos += r.text.length;
+        return { st: start, ed: pos, ts: r.ts };
+    });
+    return {
+        id: '__INTERNAL_EDITOR__DOCS_NORMAL',
+        body: {
+            dataStream: dataStream + '\r\n',
+            textRuns,
+            paragraphs: [{ startIndex: dataStream.length, paragraphStyle: {} }],
+            sectionBreaks: [{ startIndex: dataStream.length + 1 }],
+        },
+        documentStyle: {
+            pageSize: {
+                width: HYPERLINK_PAGE_SIZE,
+                height: HYPERLINK_PAGE_SIZE,
+            },
+        },
+    };
+}
+
 function buildHyperlinkCellP(text: string, url: string): Record<string, unknown> {
     const len = text.length;
     return {
@@ -368,7 +424,10 @@ function buildHyperlinkCellP(text: string, url: string): Record<string, unknown>
     };
 }
 
-function extractCellValue(cell: ExcelJS.Cell): { v?: string | number | boolean; f?: string; t?: number; p?: Record<string, unknown> } {
+function extractCellValue(
+    cell: ExcelJS.Cell,
+    themePalette: ThemePalette | null = null,
+): { v?: string | number | boolean; f?: string; t?: number; p?: Record<string, unknown> } {
     const raw = cell.value;
     if (raw === null || raw === undefined) return {};
 
@@ -411,10 +470,28 @@ function extractCellValue(cell: ExcelJS.Cell): { v?: string | number | boolean; 
         return { v: text, t: VALUE_STRING, ...(p ? { p } : {}) };
     }
 
-    // Rich text: flatten to plain text.
+    // Rich text: a cell with multiple per-run formatting blocks
+    // (e.g. bold word + plain word in one cell). exceljs surfaces this
+    // as `cell.value = { richText: [{font, text}, ...] }`. We emit
+    // cell.p with one textRun per source run so Univer's editor can
+    // render the formatting; cell.v carries the plain-text concat for
+    // string-only consumers.
+    //
+    // Single-run "rich text" (length 1) collapses to a plain string —
+    // emitting cell.p just for one uniformly-styled run would bloat
+    // every cell exceljs sometimes wraps as a 1-element richText.
     if (typeof raw === 'object' && 'richText' in raw && Array.isArray((raw as { richText: unknown }).richText)) {
-        const segments = (raw as { richText: Array<{ text?: string }> }).richText;
-        return { v: segments.map((s) => s.text ?? '').join(''), t: VALUE_STRING };
+        const segments = (raw as { richText: Array<{ text?: string; font?: ExcelJS.Font }> }).richText;
+        const plain = segments.map((s) => s.text ?? '').join('');
+        if (segments.length <= 1) {
+            return { v: plain, t: VALUE_STRING };
+        }
+        const runs = segments.map((s) => ({
+            text: s.text ?? '',
+            ts: buildTextStyleFromExceljsFont(s.font, themePalette),
+        }));
+        const p = buildRichTextCellP(runs);
+        return { v: plain, t: VALUE_STRING, p };
     }
 
     // Date — convert to Excel's serial-number representation (days since
@@ -1278,7 +1355,7 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             const r = rowNumber - 1; // exceljs is 1-based
             row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
                 const c = colNumber - 1;
-                const value = extractCellValue(cell);
+                const value = extractCellValue(cell, themeClrScheme);
                 // Pattern B hyperlink synthesis. extractCellValue may already
                 // have produced a `p` (Pattern A: cell.value was {text, hyperlink}).
                 // For Pattern B (cell.value is a plain URL string AND the cell's
@@ -1481,6 +1558,66 @@ function resolveStyle(snapshot: UniverSnapshot, ref: unknown): Record<string, un
     return null;
 }
 
+// Convert a Univer ITextStyle (the `ts` field of an ITextRun) into an
+// exceljs run-level Font. Inverse of buildTextStyleFromExceljsFont.
+// Used on export when a multi-run cell.p needs to come out as
+// `cell.value = { richText: [{font, text}, ...] }` so Excel renders
+// the per-run formatting.
+function buildExceljsFontFromTextStyle(ts: Record<string, unknown> | undefined): Partial<ExcelJS.Font> {
+    if (!ts) return {};
+    const font: Partial<ExcelJS.Font> = {};
+    if (typeof ts.ff === 'string') font.name = ts.ff;
+    if (typeof ts.fs === 'number') font.size = ts.fs;
+    if (ts.bl === 1) font.bold = true;
+    if (ts.it === 1) font.italic = true;
+    if ((ts.ul as { s?: number } | undefined)?.s === 1) font.underline = true;
+    if ((ts.st as { s?: number } | undefined)?.s === 1) font.strike = true;
+    const cl = ts.cl as { rgb?: string } | undefined;
+    if (cl?.rgb) {
+        const argb = hexToArgb(cl.rgb);
+        if (argb) font.color = { argb };
+    }
+    return font;
+}
+
+// Extract multi-run rich-text from a Univer cell.p. Returns null when:
+//   - cell.p is missing or has < 2 text runs (single-run cells round-trip
+//     as plain strings; the M13 import path collapses 1-element richText
+//     to plain text and we don't want export to re-promote).
+//   - cell.p carries a hyperlink customRange (the hyperlink Pattern A
+//     emission wins; multi-run hyperlink text is M13a territory).
+//
+// The returned array is in exceljs's RichText shape: each element has a
+// `text` field and an optional `font` carrying the run's formatting.
+function extractRichTextRunsFromCellP(p: unknown): Array<{ text: string; font?: Partial<ExcelJS.Font> }> | null {
+    if (!p || typeof p !== 'object') return null;
+    const body = (p as { body?: {
+        dataStream?: string;
+        textRuns?: Array<{ st: number; ed: number; ts?: Record<string, unknown> }>;
+        customRanges?: Array<{ rangeType?: number }>;
+    } }).body;
+    if (!body) return null;
+    // Skip when a hyperlink customRange is present — Pattern A handles it.
+    const ranges = body.customRanges;
+    if (Array.isArray(ranges) && ranges.some((r) => r?.rangeType === 0)) return null;
+    const runs = body.textRuns;
+    if (!Array.isArray(runs) || runs.length < 2) return null;
+    const stream = body.dataStream;
+    if (typeof stream !== 'string') return null;
+    // The dataStream ends with '\r\n' (paragraph mark + section break);
+    // textRun offsets address the text BEFORE that terminator, so it's
+    // safe to slice each run's range without trimming the dataStream.
+    const out: Array<{ text: string; font?: Partial<ExcelJS.Font> }> = [];
+    for (const r of runs) {
+        if (typeof r.st !== 'number' || typeof r.ed !== 'number') continue;
+        const text = stream.slice(r.st, r.ed);
+        const font = buildExceljsFontFromTextStyle(r.ts);
+        if (Object.keys(font).length > 0) out.push({ text, font });
+        else out.push({ text });
+    }
+    return out.length >= 2 ? out : null;
+}
+
 // Extract a hyperlink URL from a Univer cell.p (IDocumentData) by finding
 // the first customRange of rangeType=0 (HYPERLINK). Returns null when the
 // cell has no link. Used on export to feed exceljs's { text, hyperlink }
@@ -1661,6 +1798,7 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 if (!data) continue;
                 const cell = ws.getCell(r + 1, c + 1);
                 const hyperlinkUrl = extractHyperlinkFromCellP(data.p);
+                const richTextRuns = hyperlinkUrl ? null : extractRichTextRunsFromCellP(data.p);
                 if (data.f) {
                     const formula = data.f.startsWith('=') ? data.f.slice(1) : data.f;
                     const result = data.v;
@@ -1670,6 +1808,11 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                     // shape — exceljs writes the proper <hyperlinks> block
                     // and the sheet rels entry pointing to the URL.
                     cell.value = { text: String(data.v), hyperlink: hyperlinkUrl };
+                } else if (richTextRuns) {
+                    // Multi-run cell with no hyperlink: emit exceljs's
+                    // RichText shape so Excel renders the per-run
+                    // formatting (bold word + plain word in one cell, etc.).
+                    cell.value = { richText: richTextRuns } as unknown as ExcelJS.CellValue;
                 } else if (data.v !== undefined && data.v !== null) {
                     cell.value = data.v;
                 }
