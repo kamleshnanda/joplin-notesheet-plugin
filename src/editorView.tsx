@@ -16,6 +16,7 @@ import '@univerjs/preset-sheets-hyper-link/lib/index.css';
 
 import {
     createUniver,
+    IResourceManagerService,
     LocaleType,
     LogLevel,
     UniverInstanceType,
@@ -28,6 +29,8 @@ import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
 import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
+
+import { withFlatTableTheme } from './univerTableTheme';
 import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
 import sheetsSortEnUS from '@univerjs/preset-sheets-sort/locales/en-US';
 import sheetsFilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
@@ -37,7 +40,12 @@ import sheetsHyperLinkEnUS from '@univerjs/preset-sheets-hyper-link/locales/en-U
 
 import { ColumnChartIcon } from '@univerjs/icons';
 
-import { xlsxBufferToSnapshot, snapshotToXlsxBuffer } from './xlsx';
+import {
+    xlsxBufferToSnapshot,
+    snapshotToXlsxBuffer,
+    NOTESHEET_SYNTH_STYLES_RESOURCE,
+    NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
+} from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
 import { extractRangeAsChartData, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
@@ -547,7 +555,26 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             }),
             UniverSheetsSortPreset(),
             UniverSheetsFilterPreset(),
-            UniverSheetsTablePreset(),
+            // Univer's table plugin auto-applies one of 6 default themes
+            // (`table-default-0..5`) as a RangeThemeStyle on top of any cell
+            // that's part of an ITableJson. Even though our snapshot already
+            // synthesizes per-cell `bg`/`cl` values that match the source
+            // Excel TableStyleMedium2, the theme overlay shows lavender
+            // (#BAC6F8) banding instead of the imported teal (#83CBEB).
+            //
+            // The fix is to register a no-op "passthrough" theme as
+            // userThemes[0] and set defaultThemeIndex: 0. The theme controller
+            // resolves the active theme as `userThemes.concat(defaultThemes)`,
+            // so ours wins. With every style slot empty, the theme overlay
+            // contributes nothing and our synthesized cell colors render
+            // unaltered.
+            //
+            // See sheets-table/lib/es/index.js: SheetsTableThemeController
+            // _initUserTableTheme + tableAdd$.subscribe — when fromJSON loads
+            // a table from the snapshot the tableAdd event lacks tableStyleId,
+            // so the controller falls back to the default index. We use that
+            // hook by making index 0 our passthrough theme.
+            withFlatTableTheme(UniverSheetsTablePreset()),
             // Drawing preset enables the float-DOM machinery (CanvasFloatDomService),
             // which we use to anchor and drag/resize charts over the grid.
             UniverSheetsDrawingPreset(),
@@ -559,6 +586,47 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             UniverSheetsHyperLinkPreset(),
         ],
     });
+
+    // Register Notesheet's snapshot resources with Univer's resource manager.
+    // Univer's `loadResources` (called from inside createUnit) iterates the
+    // currently-registered hooks and dispatches the matching entries from
+    // the input snapshot to each hook's onLoad. Conversely `getResources`
+    // (called from workbook.save()) produces output `resources` ONLY from
+    // registered hooks. So unregistered resources arrive in the snapshot
+    // but get silently dropped on save — which was breaking our theme +
+    // synth-styles round-trip when going Joplin save → Joplin reload →
+    // Export.
+    //
+    // Each hook keeps a per-unitId map (so multiple workbooks could
+    // coexist in one Univer instance, though Notesheet only uses one).
+    // toJson serializes back to the original string we received on import;
+    // parseJson does the inverse. Both data types are already strings, so
+    // these are identity transforms.
+    try {
+        const injector = (univer as { __getInjector?: () => unknown }).__getInjector?.();
+        const resourceManager = (injector as { get?: (id: unknown) => unknown } | undefined)?.get?.(IResourceManagerService) as
+            | { registerPluginResource: (hook: unknown) => unknown }
+            | undefined;
+        if (resourceManager?.registerPluginResource) {
+            for (const name of [NOTESHEET_SYNTH_STYLES_RESOURCE, NOTESHEET_THEME_CLR_SCHEME_RESOURCE]) {
+                const stash = new Map<string, string>();
+                resourceManager.registerPluginResource({
+                    pluginName: name,
+                    businesses: [UniverInstanceType.UNIVER_SHEET],
+                    onLoad: (unitId: string, resource: string) => {
+                        if (typeof resource === 'string' && resource) stash.set(unitId, resource);
+                    },
+                    onUnLoad: (unitId: string) => { stash.delete(unitId); },
+                    toJson: (unitId: string) => stash.get(unitId) ?? '',
+                    parseJson: (raw: string) => raw,
+                });
+            }
+        } else {
+            console.warn('[Notesheet] could not get IResourceManagerService — synth styles + theme palette won\'t round-trip on save');
+        }
+    } catch (e) {
+        console.warn('[Notesheet] resource hook registration failed', e);
+    }
 
     univer.createUnit(UniverInstanceType.UNIVER_SHEET, snapshot);
     activeUniver = univer;
