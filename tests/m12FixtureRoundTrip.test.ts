@@ -417,17 +417,37 @@ describe('M12 round-trip — MergedCellsAndAlignment fixture', () => {
         expect(merges).toEqual(expect.arrayContaining(['A1:B2', 'C1:D1']));
     });
 
-    test('KNOWN SHORTCOMING — rotated-text cells lose their rotation on import (→ M13)', async () => {
+    test('import: rotated-text cells preserve their angle in style.tr', async () => {
         // Source row 6 cells have Alignment(text_rotation=45/90/135).
-        // Our buildStyleFromExcelCell currently doesn't read align.textRotation,
-        // so the cells arrive in the snapshot without a `tr` field.
-        // M13 will plumb rotation through the snapshot + exporter.
+        // openpyxl writes those values into the OOXML; exceljs decodes
+        // the 135 (= 90 + 45 in OOXML's CW encoding) back to a signed
+        // -45. Our import surfaces both as `style.tr.a` carrying the
+        // exceljs angle directly. Univer's ITextRotation.a follows the
+        // same signed-int convention.
         const snap = await importFixture('MergedCellsAndAlignment.xlsx');
-        for (const col of [0, 1, 2]) {
+        const expected = [
+            { col: 0, a: 45 },
+            { col: 1, a: 90 },
+            { col: 2, a: -45 },
+        ];
+        for (const { col, a } of expected) {
             const cell = snapshotCell(snap, 0, 5, col);
-            expect(cell.style).toBeDefined();
-            expect(cell.style!.tr).toBeUndefined();
+            const tr = cell.style?.tr as { a?: number; v?: number } | undefined;
+            expect(tr).toBeDefined();
+            expect(tr?.a).toBe(a);
+            // None of these are "vertical-stacked" mode (Excel's 255).
+            expect(tr?.v).toBeFalsy();
         }
+    });
+
+    test('round-trip: rotation survives export → re-import', async () => {
+        const snap = await importFixture('MergedCellsAndAlignment.xlsx');
+        const rt = await roundTrip(snap);
+        const ws = rt.wb.getWorksheet(1)!;
+        // exceljs is 1-based, snapshot row 5 → exceljs row 6.
+        expect(ws.getCell('A6').alignment?.textRotation).toBe(45);
+        expect(ws.getCell('B6').alignment?.textRotation).toBe(90);
+        expect(ws.getCell('C6').alignment?.textRotation).toBe(-45);
     });
 });
 

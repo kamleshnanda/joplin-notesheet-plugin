@@ -102,8 +102,6 @@ accidentally changes.
 - **Conditional formatting**: color scale / data bar / cell-is /
   top-N / icon-set rules are dropped on import and not re-emitted on
   export. Cell values themselves survive. → M16.
-- **Rotated text**: cells with `text_rotation` set in Excel lose
-  their rotation on import (`tr` is not extracted). → M13.
 - **Rich-text within a single cell**: bold runs, color runs, or
   multi-format text inside one cell flatten to plain text on import.
   Only the hyperlink-only case (a single-format cell with `cell.hyperlink`
