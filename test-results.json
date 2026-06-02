@@ -1,0 +1,8 @@
+{
+  "feature-1-smoke-red-cell": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  }
+}

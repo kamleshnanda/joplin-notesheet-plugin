@@ -3,3 +3,12 @@ node_modules/
 publish/
 build.log
 .DS_Store
+
+# PGE harness — per-user state (don't commit)
+.claude/settings.local.json
+.claude/.evidence-reads
+AGENT_STOP
+
+# PGE harness — generator/operator-managed scratch (DO commit BUILD_PLAN.md,
+# PROGRESS.md, OPERATOR_ASK.md, test-results.json, NEXT_FINDINGS.md, and
+# everything under screenshots/)

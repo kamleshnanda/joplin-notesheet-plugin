@@ -1,0 +1,4 @@
+Per-feature screenshots are committed to git so the evaluator
+(running in a separate process from the generator) can read what
+the generator captured AND its own captures. See
+scripts/pge/README.md for the full screenshot convention.
