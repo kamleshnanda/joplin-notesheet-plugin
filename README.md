@@ -91,14 +91,6 @@ Each is pinned by a `KNOWN SHORTCOMING` test in
 `tests/m12FixtureRoundTrip.test.ts` so we notice if the behavior
 accidentally changes.
 
-- **Theme-aware banding**: Joplin renders synthesized table-style
-  banding from a hardcoded catalog (Office 2007 RGBs). When a workbook
-  uses a different theme — for example Aptos's `accent3 = #196B24`
-  vs Office Classic's `#9BBB59` — the in-Joplin display can disagree
-  with what the same file renders in Excel. The exported `.xlsx`
-  preserves the source's `<a:clrScheme>`, so opening the round-tripped
-  file back in Excel renders it correctly; only the in-Joplin paint
-  is hardcoded. → M13.
 - **Conditional formatting**: color scale / data bar / cell-is /
   top-N / icon-set rules are dropped on import and not re-emitted on
   export. Cell values themselves survive. → M16.

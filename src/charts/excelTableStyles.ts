@@ -141,3 +141,171 @@ export const EXCEL_TABLE_STYLES: ExcelTableStyle[] = [
 // Convenience lookup map.
 export const EXCEL_TABLE_STYLE_BY_NAME: Record<string, ExcelTableStyle> =
   Object.fromEntries(EXCEL_TABLE_STYLES.map(s => [s.styleName, s]));
+
+// =============================================================================
+// Theme-aware resolution (M13 — workstream A).
+//
+// The catalog above is computed against a single fixed theme palette
+// (Aptos). Workbooks authored against any other theme — Office 2007
+// (exceljs's writer default), Office 2013-2022 Classic, custom themes —
+// would produce visibly wrong colors in Joplin even though the exported
+// xlsx round-trips the source clrScheme correctly.
+//
+// `resolveTableStylePalette()` takes a TableStyle name + the workbook's
+// own 12-entry theme palette (RGB values indexed by Excel theme color
+// id 0..11; same shape as ThemePalette.rgb in src/xlsx.ts) and returns
+// an ExcelTableStyle computed against THAT palette. When the palette
+// is null (workbook ships no theme1.xml), fall back to the hardcoded
+// catalog.
+//
+// Mapping cycle for "Light"/"Medium"/"Dark" styles:
+//   Each variant has 21+/28+/11+ entries. The first cycle entry
+//   (TableStyleMediumN where (N-1) mod 7 === 0: M1, M8, M15, M22) uses
+//   a neutral grey palette and ignores theme accents. The remaining
+//   entries cycle through accent1..accent6:
+//
+//     (N-1) mod 7 === 0  →  grey palette (no theme reference)
+//     (N-1) mod 7 === 1  →  accent1
+//     (N-1) mod 7 === 2  →  accent2
+//     (N-1) mod 7 === 3  →  accent3
+//     (N-1) mod 7 === 4  →  accent4
+//     (N-1) mod 7 === 5  →  accent5
+//     (N-1) mod 7 === 6  →  accent6
+//
+// "Light" styles use the same accent for headerBg + a much lighter
+// banded row (tint +0.80). "Medium" uses tint +0.60. "Dark" uses
+// inverted greys for bands and a slightly darkened accent (-0.25) for
+// the header.
+
+// Excel theme color indices (cell-level <color theme="N"/> map):
+//   0 = lt1, 1 = dk1, 2 = lt2, 3 = dk2,
+//   4 = accent1, 5 = accent2, 6 = accent3, 7 = accent4,
+//   8 = accent5, 9 = accent6, 10 = hlink, 11 = folHlink.
+const ACCENT_INDICES_FROM_CYCLE = [
+    -1, // (N-1) mod 7 === 0 → no accent
+    4,  // accent1
+    5,  // accent2
+    6,  // accent3
+    7,  // accent4
+    8,  // accent5
+    9,  // accent6
+];
+
+// Apply OOXML's HSL-luminance tint, identical to applyOoxmlTint() in
+// src/xlsx.ts. Duplicated here to avoid a cross-package import; the
+// math is small and rarely changes.
+function applyTint(hex: string, tint: number): string {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    let l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h /= 6;
+    }
+    if (tint < 0) l = l * (1 + tint);
+    else l = l * (1 - tint) + tint;
+    const hue2rgb = (p: number, q: number, t: number): number => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    let r2: number, g2: number, b2: number;
+    if (s === 0) { r2 = g2 = b2 = l; }
+    else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r2 = hue2rgb(p, q, h + 1 / 3);
+        g2 = hue2rgb(p, q, h);
+        b2 = hue2rgb(p, q, h - 1 / 3);
+    }
+    const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
+    return ('#' + toHex(r2) + toHex(g2) + toHex(b2)).toUpperCase();
+}
+
+// Parse "TableStyleLightN" / "TableStyleMediumN" / "TableStyleDarkN" →
+// ('Light' | 'Medium' | 'Dark', N). Returns null on unrecognized input.
+function parseTableStyleName(name: string): { variant: 'Light' | 'Medium' | 'Dark'; n: number } | null {
+    const m = /^TableStyle(Light|Medium|Dark)(\d+)$/.exec(name);
+    if (!m) return null;
+    return { variant: m[1] as 'Light' | 'Medium' | 'Dark', n: parseInt(m[2], 10) };
+}
+
+// Resolve a TableStyle name against the workbook's theme palette.
+// Returns null when:
+//   - The style name isn't recognized (caller should try the catalog).
+//   - The palette is missing AND the catalog also has no entry.
+// Returns the catalog entry when the palette is missing but the
+// catalog has a fallback. Returns a freshly-computed entry when the
+// palette is present.
+export function resolveTableStylePalette(
+    styleName: string,
+    palette: string[] | null | undefined,
+): ExcelTableStyle | undefined {
+    // Fall back to the catalog when there's no workbook theme to resolve
+    // against, OR when the style is one of the cycle-0 "neutral grey"
+    // entries that intentionally ignores theme accents.
+    const parsed = parseTableStyleName(styleName);
+    const cycle = parsed ? (parsed.n - 1) % 7 : -1;
+    if (!palette || cycle === 0) return EXCEL_TABLE_STYLE_BY_NAME[styleName];
+    if (!parsed) return EXCEL_TABLE_STYLE_BY_NAME[styleName];
+
+    const accentIdx = ACCENT_INDICES_FROM_CYCLE[cycle];
+    const accent = palette[accentIdx];
+    if (!accent) return EXCEL_TABLE_STYLE_BY_NAME[styleName];
+
+    if (parsed.variant === 'Medium') {
+        // Header = full accent, banded even = tint(+0.6) of accent,
+        // banded odd = white, totals = same as banded even, border =
+        // accent. Matches the structure of EXCEL_TABLE_STYLES Medium
+        // entries; only the RGBs change.
+        const band = applyTint(accent, 0.6);
+        return {
+            styleName,
+            headerBg: accent,
+            headerFg: '#FFFFFF',
+            bandedRowEvenBg: band,
+            bandedRowOddBg: '#FFFFFF',
+            totalsBg: band,
+            totalsFg: '#000000',
+            borderColor: accent,
+        };
+    }
+    if (parsed.variant === 'Light') {
+        // Header = full accent, banded = tint(+0.8) of accent (paler),
+        // borders use the accent.
+        const band = applyTint(accent, 0.8);
+        return {
+            styleName,
+            headerBg: accent,
+            headerFg: '#FFFFFF',
+            bandedRowEvenBg: band,
+            bandedRowOddBg: '#FFFFFF',
+            totalsBg: '#FFFFFF',
+            totalsFg: accent,
+            borderColor: accent,
+        };
+    }
+    // Dark variant: header = darkened accent (-0.25), bands = neutral
+    // greys, totals = black/white inverted, border = white.
+    const headerBg = applyTint(accent, -0.25);
+    return {
+        styleName,
+        headerBg,
+        headerFg: '#FFFFFF',
+        bandedRowEvenBg: '#404040',
+        bandedRowOddBg: '#595959',
+        totalsBg: '#000000',
+        totalsFg: '#FFFFFF',
+        borderColor: '#FFFFFF',
+    };
+}

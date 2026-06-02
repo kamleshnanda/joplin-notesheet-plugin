@@ -24,7 +24,7 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
-import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
+import { EXCEL_TABLE_STYLE_BY_NAME, resolveTableStylePalette, type ExcelTableStyle } from './charts/excelTableStyles';
 
 const HORIZONTAL = { left: 1, center: 2, right: 3 } as const;
 const VERTICAL = { top: 1, middle: 2, bottom: 3 } as const;
@@ -863,9 +863,20 @@ interface CellStyleAssignment {
     addedFields: string[];
 }
 
-function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Map<string, Record<string, unknown>>): CellStyleAssignment[] {
+function synthesizeTableStyleAssignments(
+    table: RawTable,
+    existingCellStyles: Map<string, Record<string, unknown>>,
+    themePalette: ThemePalette | null = null,
+): CellStyleAssignment[] {
     if (!table.styleName) return [];
-    const palette: ExcelTableStyle | undefined = EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
+    // Theme-aware resolution: if we have the workbook's clrScheme, derive
+    // the table-style palette from THAT (so TableStyleMediumN renders the
+    // same hue Joplin would see if Excel rendered the same file).
+    // Otherwise fall back to the hardcoded Aptos catalog.
+    const palette: ExcelTableStyle | undefined = resolveTableStylePalette(
+        table.styleName,
+        themePalette?.rgb ?? null,
+    ) ?? EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
     if (!palette) return [];
 
     const range = parseA1Range(table.ref);
@@ -1222,7 +1233,7 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                     if (style) existingCellStyles.set(`${r}:${c}`, style);
                 }
             }
-            const assignments = synthesizeTableStyleAssignments(t, existingCellStyles);
+            const assignments = synthesizeTableStyleAssignments(t, existingCellStyles, themeClrScheme);
             for (const a of assignments) {
                 const styleId = internStyle(a.style);
                 if (!styleId) continue;

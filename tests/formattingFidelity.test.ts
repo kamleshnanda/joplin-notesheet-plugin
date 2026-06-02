@@ -169,11 +169,17 @@ describe('M12 — banded-style synthesis', () => {
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
 
-        // Header row (row 0) should carry TableStyleMedium2's headerBg = #156082.
+        // The workbook is built via exceljs's writer which ships its own
+        // Office 2007 default theme (accent1 = #4F81BD), so M13's
+        // theme-aware resolver synthesizes TableStyleMedium2 → accent1
+        // → header #4F81BD, banded row tint(+0.6) ≈ #B9CDE5. Note: the
+        // M12 baseline expected Aptos colors (#156082 / #83CBEB) here
+        // because the catalog was hardcoded to Aptos; the M13 fix makes
+        // the import resolver theme-aware.
         const headerStyleId = sheet.cellData[0]?.[0]?.s;
         expect(headerStyleId).toBeDefined();
         const headerStyle = snap.styles[headerStyleId!];
-        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#156082');
+        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#4F81BD');
         expect((headerStyle.cl as { rgb: string }).rgb).toBe('#FFFFFF');
         expect(headerStyle.bl).toBe(1);
 
@@ -182,7 +188,7 @@ describe('M12 — banded-style synthesis', () => {
         const evenStyleId = sheet.cellData[1]?.[0]?.s;
         expect(evenStyleId).toBeDefined();
         const evenStyle = snap.styles[evenStyleId!];
-        expect((evenStyle.bg as { rgb: string }).rgb).toBe('#83CBEB');
+        expect((evenStyle.bg as { rgb: string }).rgb).toBe('#B9CDE5');
 
         // Odd data row (row 2) should be white (bandedRowOddBg=#FFFFFF) — and
         // since we skip white, no bg should be set on this style; the cell
@@ -220,7 +226,9 @@ describe('M12 — banded-style synthesis', () => {
             return id ? snap.styles[id] : undefined;
         };
 
-        const BORDER_RGB = '#156082';
+        // M13 theme-aware: programmatic exceljs writer ships Office 2007
+        // theme, so TableStyleMedium2 → accent1 #4F81BD.
+        const BORDER_RGB = '#4F81BD';
         const headerStyle = styleAt(0, 0)!;
         const headerBd = headerStyle.bd as Record<string, { s: number; cl: { rgb: string } }>;
         // Header has top + bottom borders, plus left on the first column.
@@ -349,21 +357,26 @@ describe('M12 — banded-style synthesis', () => {
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
 
-        // Header should still be styled.
+        // Header should still be styled. M13 theme-aware: exceljs's
+        // writer ships Office 2007 theme, so TableStyleMedium2 → accent1
+        // #4F81BD.
         const headerStyleId = sheet.cellData[0]?.[0]?.s;
         expect(headerStyleId).toBeDefined();
         const headerStyle = snap.styles[headerStyleId!];
-        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#156082');
+        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#4F81BD');
 
         // Data row 1 should NOT have synthesized banding bg.
         const row1 = sheet.cellData[1]?.[0];
         if (row1?.s) {
             const s = snap.styles[row1.s];
-            // No bg from the catalog should have been added.
-            // (The cell may have other styles from explicit cell-level fmt.)
+            // No banded-row bg should have been synthesized when stripes
+            // are off. (Cell may carry other styles from explicit cell-level
+            // formatting; just ensure we didn't paint either palette's band
+            // color over the data row.)
             if (s.bg) {
                 const bg = (s.bg as { rgb: string }).rgb;
-                expect(bg).not.toBe('#83CBEB');
+                expect(bg).not.toBe('#83CBEB'); // Aptos band
+                expect(bg).not.toBe('#B9CDE5'); // Office 2007 band
             }
         }
     });

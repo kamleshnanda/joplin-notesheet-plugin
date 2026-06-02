@@ -243,8 +243,13 @@ describe('M12 round-trip — EmptyAndDegenerate fixture', () => {
         const snap = await importFixture('EmptyAndDegenerate.xlsx');
         const sheet = snap.sheets[snap.sheetOrder[2]];
         expect(Object.keys(sheet.cellData)).toHaveLength(2);
-        // Row 0 cells carry the table header synthesis (bg #156082).
-        expect((snapshotCell(snap, 2, 0, 0).style!.bg as { rgb: string }).rgb).toBe('#156082');
+        // Row 0 cells carry the table header synthesis. The fixture
+        // uses TableStyleMedium9 (cycle index 1 → accent1) and
+        // openpyxl ships the Office 2007 default theme
+        // (accent1 = #4F81BD), so M13's theme-aware resolver produces
+        // that hue. (M12 baseline expected #156082 because the
+        // catalog was hardcoded to Aptos.)
+        expect((snapshotCell(snap, 2, 0, 0).style!.bg as { rgb: string }).rgb).toBe('#4F81BD');
     });
 
     test('round-trip: header-only table survives back into table1.xml', async () => {
