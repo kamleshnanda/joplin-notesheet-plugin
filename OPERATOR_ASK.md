@@ -1,217 +1,223 @@
-# Operator ask — M13/D: rich-text within a single cell
+# Operator ask — M13/E: theme-aware banding
 
-Second real-feature cycle through the PGE harness. Workstream D from
-the reverted M13 PR #16 — multi-run rich-text formatting inside one
-cell — is the target. M13/C (rotated text, PR #19) is shipped.
+Third real-feature cycle through the PGE harness. M13/C (rotated text,
+PR #19) and M13/D (rich text, PR #20) shipped via this same loop.
+M13/E is the last M13 workstream — theme-aware banding accuracy —
+and finishes M13.
 
 ## Why this matters
 
-PR #16's commit `6f33f3a` added rich-text import/export plus 8 new
-Jest tests (test count moved 199 → 207) and dropped the README
-"Rich-text within a single cell" known-shortcoming entry. All Jest
-tests passed. The PR was reverted because workstream C broke
-visually — workstream D was collateral damage. The PGE harness now
-exists to gate exactly this class of "Jest passes, Univer renders
-broken." We restore D and prove it the same way C just did.
+Notesheet's import path bakes per-cell `bg` / `cl` / `bd` into
+`cellData[row][col].s` for every cell of an imported `.xlsx` table,
+synthesizing the colours from `EXCEL_TABLE_STYLE_BY_NAME` in
+`src/charts/excelTableStyles.ts`. That catalog is hardcoded against
+the **Office 2016+ Aptos theme** (accent1 `#156082`, accent3
+`#196B24` green, etc.).
+
+When a user imports a workbook that ships a non-Aptos `<a:clrScheme>`
+— for example the project-owned fixture
+`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
+whose accent3 is `#A5A5A5` (grey) and whose
+`xl/tables/table1.xml` declares `TableStyleMedium4` (an accent3-keyed
+style) — the in-Joplin render paints **green** header + bands instead
+of the grey Excel would render. The exported `.xlsx` round-trips the
+source clrScheme correctly (verified by an existing pin-down in
+`tests/m12FixturePinDowns.test.ts`), so re-opening the file in Excel
+shows the right colours; only the Joplin-side render is wrong.
+
+The README's "Theme-aware banding" entry under "Known shortcomings"
+flags this as `→ M13/E`. PR #21 is the most recent edit to that
+entry.
 
 ## The feature
 
-When a user imports
-`tests/ExcelBaseTestData/formatting-testdata/RichTextInOneCell.xlsx`
-into a Notesheet note, the rich-text cells on the "RichText" sheet
-must render in Univer with **per-run formatting visibly preserved**:
+When a user imports any workbook that ships its own `<a:clrScheme>`
+(any non-Aptos theme), the in-Joplin render of every named-style
+table (`TableStyleLight*`, `TableStyleMedium*`, `TableStyleDark*`)
+matches what Excel renders for that workbook. Concretely, the
+synthesizer must derive per-cell `bg` / `cl` / `borderColor` from the
+**source workbook's clrScheme** when present, falling back to the
+hardcoded Aptos catalog only when no clrScheme is detected.
 
-- **A1** "Hello world" — the word `Hello` renders **bolder** than
-  ` world` in the same cell. Visibly heavier stroke, not flat plain
-  text.
-- **A2** "Red and Blue text" — `Red` renders **red**, ` and ` renders
-  in the default text colour, `Blue` renders **blue**, ` text`
-  renders in the default text colour. Three distinct colours visible
-  in the same cell.
-- **A3** "Visit example.com for more info" — single-format hyperlink
-  cell. Renders as a hyperlink (Pattern A — `cell.p` with one
-  uniform run, `customRange` for the link target). Does NOT regress
-  to plain text and does NOT get downgraded to two-run rich-text.
+The two project-owned fixtures pin down the two halves of this:
 
-Plus: exporting the same note back to `.xlsx` via the existing
-export command must produce a workbook where exceljs reads
-`cell.value = { richText: [{font, text}, ...] }` for A1 and A2 with
-the per-run font preserved. A3 must round-trip as a plain
-`{ text, hyperlink }` cell value (Pattern A wins for single-format
-hyperlinks; rich-text path explicitly skips when a hyperlink
-customRange is present).
+- **Aptos** (`FormattingSmorgasboard.xlsx`, `TableStyleMedium4`,
+  accent3 `#196B24`) — header bg renders **green** `#196B24`, band
+  rows light green `#C2F1C8` (or whatever the catalog already
+  emits). This is the existing behaviour; M13/E must not regress it.
+- **Classic** (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`,
+  `TableStyleMedium4`, accent3 `#A5A5A5`) — header bg renders
+  **grey** `#A5A5A5`, band rows light grey (whatever
+  `tint(+0.6, #A5A5A5)` produces under Excel's tint formula). This
+  is the failure mode being fixed.
 
 ## Acceptance criteria
 
 The evaluator must verify ALL of:
 
-1. **Visual — per-run formatting is visible in pixels.** Evaluator's
-   Playwright-captured screenshot of the imported note shows:
-   - **A1**: the leading `Hello` glyphs are visibly heavier (bolder
-     stroke / wider glyph weight) than the trailing ` world` glyphs
-     in the same cell. The evaluator must explicitly call out the
-     weight contrast.
-   - **A2**: the cell carries at least three distinct foreground
-     colours in the visible glyphs — red on `Red`, default on ` and `,
-     blue on `Blue`, default on ` text`. The evaluator must explicitly
-     name the red and blue runs.
-   - **A3**: renders as a single-format hyperlink cell — typically
-     blue underlined text. NOT plain black text and NOT two-tone
-     rich-text. (Pattern A regression sentinel.)
-2. **Pixel sidecar — per-run colours land in the histogram.** The
-   `<screenshot>.pixels.json` sidecar emitted alongside the
-   evaluator's screenshot, sampled over the A1:A2 vertical band of
-   the canvas, contains:
-   - red ink (R≥200, G≤80, B≤80) with at least 30 hits — proves A2's
-     `Red` run rendered.
-   - blue ink (R≤80, G≤80, B≥200) with at least 30 hits — proves A2's
-     `Blue` run rendered. (A3's hyperlink also contributes blue, so
-     a single-row sample of A2 alone is preferable; the harness can
-     pick either A2-only or A1+A2 region as long as the colour signal
-     is present.)
-   - The evaluator may use a region helper analogous to
-     `rotatedRowRegion` from M13/C.
-3. **Jest — reverted PR #16 D-tests are restored and green.** All of:
-   - `tests/m13RichText.test.ts` is restored byte-equivalent to commit
-     `6f33f3a` (8 tests: bold+plain, multi-color, hyperlink+plain
-     stays Pattern A, mixed bold+italic+color, underline run isn't
-     mistaken for hyperlink, single-run collapse, plain-text round-trip
-     stays plain, full round-trip).
-   - `tests/m12FixtureRoundTrip.test.ts`'s two `KNOWN SHORTCOMING —
-     rich-text` tests are flipped to positive pin-downs (per
-     `6f33f3a`'s diff: cells with rich text on import carry
-     `cell.p.body.textRuns` with the right shape; export reproduces
-     `richText: [{font, text}, ...]`).
-   - The hyperlink+plain-in-one-cell test continues to assert
-     **Pattern A** wins for that cell — the rich-text path must
-     explicitly skip when a hyperlink customRange is present.
-   - Total Jest passing count moves from the current baseline (187
-     after M13/C) to at least 195 (M13/C +8 from the new
-     `m13RichText.test.ts`). No `KNOWN SHORTCOMING — rich-text` test
-     is left referencing M13.
-4. **Round-trip — multi-run formatting survives export → re-import.**
-   A Jest test (in the restored `m13RichText.test.ts` or
-   `m12FixtureRoundTrip.test.ts`) imports `RichTextInOneCell.xlsx`,
-   calls `snapshotToXlsxBuffer`, loads the buffer with a fresh
-   exceljs `Workbook`, and asserts:
-   - A1's value is `{ richText: [{font: {bold: true}, text: 'Hello'},
-     {text: ' world'}] }` (or structurally equivalent — the bold
-     attribute must survive on the first run, the second run must
-     have no bold).
-   - A2's value is `{ richText: [{font: {color: {argb: ...FF0000}},
-     text: 'Red'}, {text: ' and '}, {font: {color: {argb:
-     ...0000FF}}, text: 'Blue'}, {text: ' text'}] }` (or structurally
-     equivalent — the red and blue colours must survive on the right
-     runs).
-   - A3's value is `{ text: 'Visit example.com for more info',
-     hyperlink: 'https://example.com' }` (Pattern A — NOT a richText
-     value).
+1. **Visual — Aptos and Classic fixtures render distinct table
+   colours.** Two evaluator screenshots under
+   `screenshots/feature-1-m13-theme-aware-banding/`, one per fixture:
+   - `eval-aptos-*.png`: header row of the imported `ProjectTracker`
+     table renders **green** (Aptos accent3 `#196B24`). The
+     evaluator must explicitly call out the green hue and that
+     banding rows are light green.
+   - `eval-classic-*.png`: header row of the imported
+     `ProductCatalog` table renders **grey** (Classic accent3
+     `#A5A5A5`), NOT green. The evaluator must explicitly call out
+     that the header is grey, not green, and that banding rows
+     match (light grey, not light green).
+2. **Pixel sidecar — header colour signal differentiates Aptos vs
+   Classic.** Two `<screenshot>.pixels.json` sidecars over a header-
+   row region helper (analogous to `richTextA1A2Region`):
+   - Aptos sidecar: green ink `(R≤80, G≥80, B≤80)` ≥ 30 hits over
+     the header band; grey ink (`R≈G≈B`, mid-range) below 10 hits.
+   - Classic sidecar: grey ink (`R∈[140,180]`, `G∈[140,180]`,
+     `B∈[140,180]`) ≥ 30 hits; green ink below 10 hits.
+   The harness needs new aggregates `greenInk` (already present
+   from M13/D) and `greyInk` (new) plus a `tableHeaderRowRegion`
+   helper that picks the row 1 band. Per-fixture
+   `REGION_BY_FEATURE` and `TITLE_PREFIX_BY_FEATURE` entries with
+   suffixes (e.g. `feature-1-m13-theme-aware-banding:aptos` and
+   `:classic`) — or a single entry with the harness importing
+   both fixtures into separate notes.
+3. **Jest — theme-aware synthesis is pinned down.** New positive
+   pin-down tests in `tests/m12FixturePinDowns.test.ts` (or a new
+   `tests/m13ThemeAwareBanding.test.ts`):
+   - Importing the Classic fixture: the header cell `s` style's `bg`
+     resolves to `#A5A5A5` (grey), NOT `#196B24` (green).
+   - Importing the Aptos fixture: the header cell `s` style's `bg`
+     resolves to `#196B24` (green) — regression check.
+   - The total Jest passing count moves from 195 (M13/D baseline)
+     to at least 197 (M13/E adds ≥2 new pin-downs). No `KNOWN
+     SHORTCOMING — theme-aware banding` test is left referencing
+     M13/E.
+4. **Round-trip — exported tables still carry `tableStyleInfo`
+   pointing at the same style name.** A regression check that the
+   round-tripped table.xml's `name="TableStyleMedium4"` survives —
+   M13/E only changes the in-memory snapshot's per-cell baked
+   colours, not what gets exported. The existing pin-down in
+   `m12FixturePinDowns.test.ts` ("Aptos fixture: round-trip
+   preserves table name + ProjectTracker columns") must stay green.
 5. **`npm run dist` succeeds and the .jpl is installed in the dev
-   profile.** The generator captures its own screenshot via
-   `scripts/pge/install-plugin.sh` + `eval-screenshot.js` as evidence
-   under `screenshots/feature-1-m13-rich-text-renders/`, then opens
-   that screenshot via the Read tool so the `verify-gate` hook
-   unlocks the `test-results.json` write. The evaluator captures its
-   OWN screenshot independently.
+   profile.** Generator captures its own screenshots under
+   `screenshots/feature-1-m13-theme-aware-banding/` for both
+   fixtures, then opens them via the Read tool so the
+   `verify-gate` hook unlocks the `test-results.json` write.
+   Evaluator captures its own independently.
 
 ## Out of scope
 
-- **Rich text combined with rotation.** OOXML rotation is cell-level
-  only, not per-run, so there is nothing to combine. The fixture
-  doesn't exercise it.
-- **Rich text with size variations.** The fixture uses default size
-  on every run; per-run font-size handling can fall out of the same
-  pipeline but the visual gate doesn't grade for it.
-- **Rich text inside merged cells.** The RichTextInOneCell fixture has
-  no merges. If it incidentally works, fine; not a blocker.
-- **README "Known shortcomings — Rich-text within a single cell"
-  edit.** PR #16's commit drops it; restoring that drop is acceptable
-  but the evaluator does not penalize if the docs edit is punted to a
-  follow-up — the visual + Jest + round-trip evidence is the gate.
-- **Conditional formatting rendered through rich-text.** Excel
-  conditional formats can paint colours over runs; that's M16, not
-  M13/D.
-- **Stale single-run `cell.p` cleanup pass.** Do not retroactively
-  rewrite prior snapshots. The import side simply must not emit
-  `cell.p` for a single uniformly-styled run — covered by the
-  single-run-collapse Jest case.
+- **Theme-tinted borders** (the other "Known shortcomings" entry).
+  Border `{theme: N, tint: T}` references are resolved against
+  whichever clrScheme is loaded at import time. That's already
+  correct in `resolveExceljsColor` (M12). M13/E only addresses
+  table-style synthesis, not direct border references.
+- **Conditional formatting** preserving theme colours. M16.
+- **Custom `<tableStyle>` entries** authored in the workbook (not
+  built-in). Those have real `<dxf>` records the importer can read
+  directly; M13/E only fixes the built-in lookup-catalog path.
+- **First-column / last-column emphasis** (`showFirstColumn`,
+  `showLastColumn`). Not modelled by `EXCEL_TABLE_STYLE_BY_NAME`
+  today; out of scope here.
+- **Column stripes** (`showColumnStripes`). Same — rare, not
+  modelled.
+- **Recomputing tints from the source clrScheme using ECMA-376
+  HSL-L tint maths from scratch.** M13/E may take the simpler
+  path: when a non-Aptos clrScheme is present, swap the catalog
+  entry's accent reference for the source's accent and apply
+  the catalog's pre-computed tint. The catalog's tint maths are
+  already correct (PR #14 verified them); only the accent input
+  changes. Implementation may use whichever approach is cleaner —
+  the spec is the user-observable colour, not the algorithm.
+- **README "Known shortcomings — Theme-aware banding" edit.** Punt
+  to a follow-up like the rotated-text and rich-text entries did.
+  PR #21 set the precedent.
 
-## Suggested fixture
+## Suggested fixtures
 
-`tests/ExcelBaseTestData/formatting-testdata/RichTextInOneCell.xlsx`,
-sheet `RichText`:
-- A1: `Hello` (bold) + ` world` (plain) — the bold pin-down.
-- A2: `Red` (red) + ` and ` (default) + `Blue` (blue) + ` text`
-  (default) — the multi-colour pin-down.
-- A3: `Visit example.com for more info` with `hyperlink:
-  https://example.com` — the Pattern A non-regression sentinel.
+- `tests/ExcelBaseTestData/formatting-testdata/FormattingSmorgasboard.xlsx`
+  (Aptos, accent3 `#196B24`, `TableStyleMedium4`, `ProjectTracker`).
+  Pre-existing fixture; the regression sentinel.
+- `tests/ExcelBaseTestData/formatting-testdata/FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
+  (Classic, accent3 `#A5A5A5`, `TableStyleMedium4`, `ProductCatalog`).
+  Pre-existing fixture; the failure-mode sentinel.
 
-The harness invokes the headless import path
-(`scripts/pge/import-fixture.sh RichTextInOneCell.xlsx`) and the
-canvas-targeted screenshot via `eval-screenshot.js`. A region helper
-covering A1+A2 (and optionally A2-only for cleaner colour signal) is
-needed in `eval-screenshot.js`'s `REGION_BY_FEATURE` table.
+The harness imports both via
+`scripts/pge/import-fixture.sh <fixture-name>` (already wired) into
+two separate notes. Region helper `tableHeaderRowRegion` covers row 1
+of the visible canvas. The eval-screenshot script needs to be
+extended so it can capture both notes in one run — either two
+invocations with different `:aptos` / `:classic` suffixes on the
+feature ID, or a single invocation that opens both notes in
+sequence.
 
 ## Related risks
 
-- **The reverted PR #16's `src/xlsx.ts` changes are the right starting
-  point.** Commit `6f33f3a` added 4 helpers (`buildTextStyleFromExceljsFont`,
-  `buildRichTextCellP`, `buildExceljsFontFromTextStyle`,
-  `extractRichTextRunsFromCellP`) and wired them into
-  `extractCellValue` and `snapshotToXlsxBuffer`. The Jest tests
-  passing tells you the data plumbing is sound — what's unverified is
-  whether Univer's resolver actually paints per-run formatting from
-  `cell.p.body.textRuns`. Don't rewrite the helpers; investigate the
-  renderer first if visuals fail.
+- **The synthesizer is deeply wired into M12.** `synthesizeTableStyleAssignments`
+  in `src/xlsx.ts:943` consumes `EXCEL_TABLE_STYLE_BY_NAME[table.styleName]`
+  and bakes the result into per-cell records. Changing the input
+  source from "static catalog" to "static catalog rebased against
+  source clrScheme" must not change the field shape, the
+  `addedFields` tagging, or the sidecar resource format. The M12
+  pin-downs (synth-styles sidecar, applyFont=1 invariant) are the
+  guards.
 
-- **`cell.p` shape must be the documentSkeleton-finite shape.** The
-  hyperlink path uses `buildHyperlinkCellP` with `pageSize`,
-  paragraphs, sectionBreaks. The reverted commit's
-  `buildRichTextCellP` reuses that shape — a malformed `cell.p`
-  (missing pageSize, missing sectionBreaks) will Jest-pass on a shape
-  match but crash Univer's layout pipeline on render or hover. If the
-  visual gate shows nothing rendering or text disappearing, this is
-  the prime suspect.
+- **The hardcoded catalog encodes accent INDEXES indirectly through
+  pre-computed RGBs.** `TableStyleMedium2` is accent1, Medium3 is
+  accent2, Medium4 is accent3, … (every 7 entries shifts to the
+  next accent). To rebase against a non-Aptos scheme, you need a
+  table mapping each style name → which accent (1..6) it uses, plus
+  a way to apply the catalog's tint relative to that accent. One
+  approach: precompute the tint amount per style per band slot
+  (header, evenRow, oddRow, totals, border) and store that in a
+  parallel catalog, then rebase by recomputing
+  `applyTint(sourceClrScheme[accent], tintAmount)` at import time.
+  Another: keep the existing catalog, and on import detect non-
+  Aptos themes and remap each accent in the result by HSL channel
+  swap. Either works; the simpler one wins.
 
-- **Pattern A precedence must hold for single-format hyperlinks.**
-  The export side has two `cell.p` consumers — the hyperlink emitter
-  and the rich-text emitter. They can't both fire. Per `6f33f3a`,
-  rich-text export explicitly skips when a hyperlink customRange is
-  present. If A3 round-trips as a 1-element richText (one run, one
-  font, no hyperlink), that ordering is wrong and the test will fail.
-  Confirm by inspecting the A3 round-trip assertion before flipping.
+- **The Jest pin-down for "synth-styles sidecar" expects header
+  tags to include `bg` and `bl` and 3 borders.** That contract is
+  shape, not colour — but verify it stays green after the rebase.
 
-- **Per-run colours go through the theme+tint resolver.** exceljs
-  surfaces `font.color` as `{argb}` or `{theme, tint}`. The reverted
-  commit's `buildTextStyleFromExceljsFont` resolves both via the same
-  resolver `extractCellValue` already uses for cell-level fonts. If
-  A2's red/blue render as default-colour, check that the resolver is
-  invoked on the run's font, not the parent cell's.
+- **The Aptos fixture has hand-edited cell-level colours on top of
+  table-style synthesis.** Cell A2 carries a hand-applied `#F4B183`
+  border. Synthesis must not overwrite hand-edits — the existing
+  `existingCellStyles` map and `addedFields` are how M12 already
+  handles this. A theme-aware rebase must preserve that
+  precedence.
 
-- **Univer `IDocumentBody.textRuns` is the snapshot shape.** The cell
-  carries `cell.p.body.dataStream` (the concatenated text +
-  paragraph terminator) and `cell.p.body.textRuns` (an array of
-  `{st, ed, ts}` with `ts` being `ITextStyle`). Univer 0.23 reads
-  `ts.bl` for bold (1=on), `ts.it` for italic, `ts.cl.rgb` for
-  colour, `ts.un.s` for underline (1=on). If runs render flat, the
-  bug is likely in how the `ts` object is constructed (wrong key
-  names, value shapes off — `bl: true` instead of `bl: 1`).
+- **The Classic fixture's `ProductCatalog` table also uses
+  `TableStyleMedium4`** — same style name, different accent.
+  That's the whole point of the test: ONE catalog entry must
+  produce two distinct rendered colours depending on the source
+  workbook's clrScheme. If you "fix" by adding a second hardcoded
+  catalog entry, you've missed the design — Excel ships ~thousands
+  of accent permutations, the catalog can't enumerate them.
 
-- **Don't symptom-patch the test on a Jest failure post-rebuild.** If
-  a Jest assertion regresses, run `git diff package-lock.json` first.
-  exceljs's `richText`/`font` shapes drifted between 3.x and 4.x. We
-  are intentionally on 4.4.0; do not edit the test to make a silent
-  downgrade pass — fix the dependency drift instead. Reference:
-  `feedback_dependency_hygiene.md` in operator memory.
+- **The PGE harness has only screenshotted one note per cycle so
+  far.** M13/E is the first feature requiring TWO independent
+  screenshots in one session. The eval-screenshot script needs an
+  extension: either accept a `--fixture` arg, or look up multiple
+  fixtures in `REGION_BY_FEATURE` keyed by `feature-id:variant`,
+  or take both screenshots in one run. The cleanest approach is
+  probably the variant suffix — keeps backward compatibility with
+  prior cycles' single-screenshot path.
 
-- **The feature touches `src/xlsx.ts`, the same file as M9/M10/M12/M13/C.**
-  Run the full Jest suite, not just the rich-text tests, before
-  flipping the row. Borders, hyperlinks, table styles, chart export,
-  alignment, and rotation all share the import/export pipeline. The
-  m12 and m13/C round-trip tests must stay green.
+- **Don't symptom-patch by editing the catalog itself.** Hardcoding
+  Classic-accent3 alongside Aptos-accent3 is the wrong shape (see
+  preceding bullet). The fix must be data-driven from the source
+  clrScheme.
+
+- **The feature touches `src/xlsx.ts` (the same file as M9–M13/D)
+  and `src/charts/excelTableStyles.ts`.** Run the full Jest suite,
+  not just the new pin-downs, before flipping the row. Borders,
+  hyperlinks, table styles, chart export, alignment, rotation, and
+  rich text all share the import/export pipeline. The m12, m13/C,
+  and m13/D round-trip tests must stay green.
 
 - **Region-by-feature pixel sampling.** The eval-screenshot script
-  needs a region helper for the A1:A2 (or A2-only) vertical band,
-  plus entries in `REGION_BY_FEATURE` and `TITLE_PREFIX_BY_FEATURE`
-  keyed off the new feature ID. M13/C's `rotatedRowRegion` is the
-  template.
+  needs `tableHeaderRowRegion` (or whatever name fits) plus a
+  `greyInk` band aggregate. M13/D's `richTextA1A2Region` and
+  `redInk`/`blueInk` aggregates are the template.

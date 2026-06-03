@@ -37,6 +37,34 @@ every feature.
   code worked first try in Univer 0.23 — earlier visual failure was
   almost certainly a stale-build issue, not a rendering gap. Evaluator
   graded PASS (PR #19, dc80505).
+- **feature-1-m13-theme-aware-banding** (2026-06-03) — Routed
+  `synthesizeTableStyleAssignments` through a new `EXCEL_TABLE_STYLE_RECIPE_BY_NAME`
+  parallel table (`src/charts/excelTableStyleRecipes.ts`) that names each
+  TableStyle slot's accent index + tint. The synthesizer reads the source
+  workbook's `<a:clrScheme>` (already captured by `readThemeClrScheme`)
+  and resolves the recipe via the ECMA-376 HSL-L tint formula. Aptos
+  fixture (`FormattingSmorgasboard.xlsx`) still paints green
+  (`#196B24` header + `#84E291` band); Classic fixture
+  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
+  now paints grey (`#A5A5A5` header + `#DBDBDB` band) instead of green.
+  Same `EXCEL_TABLE_STYLE_BY_NAME[Medium4]` lookup; two distinct rendered
+  outputs driven by source clrScheme. Achromatic styles
+  (Light1/8/15, Medium1/8/15/22, Dark1/8) keep their literal greys. Tint
+  maths verified exact against the existing Aptos catalog
+  (`tint('#196B24', 0.6) = '#84E291'`, `tint('#156082', 0.6) = '#83CBEB'`,
+  `tint('#196B24', -0.25) = '#13501B'`). First multi-screenshot cycle:
+  added `:variant` suffix support to `eval-screenshot.js`
+  (`feature-1-m13-theme-aware-banding:aptos` + `:classic`),
+  `tableHeaderRowRegion` helper sampling (x=80..480, y=22..35) cols B+
+  to dodge A1 active-cell selection blue, `greyInk` aggregate
+  (R,G,B∈[140,180] AND `abs(R-G)≤10` AND `abs(G-B)≤10`), and broadened
+  the existing `greenInk` aggregate so it catches dark Aptos green
+  `#196B24` (G=107) too. Pixel sidecar over header band:
+  Aptos `dominant=rgb(25,107,36) greenInk=4113 greyInk=0`,
+  Classic `dominant=rgb(165,165,165) greenInk=0 greyInk=3914`. Three
+  new pin-downs in `tests/m12FixturePinDowns.test.ts`
+  (M13/E describe block) bring Jest from 195→198. Generator-evidence
+  screenshots: `screenshots/feature-1-m13-theme-aware-banding/generator-evidence-{aptos,classic}.png`.
 - **feature-1-m13-rich-text-renders** (2026-06-03) — Cherry-picked PR
   #16 commit `6f33f3a` rich-text import/export in `src/xlsx.ts`
   (4 new helpers: `buildTextStyleFromExceljsFont`,
@@ -56,6 +84,8 @@ every feature.
   + 8 new rich-text tests). Reverted code worked first try in Univer
   0.23 — same hypothesis as M13/C confirmed: the original revert
   was almost certainly a build/cache issue, not a renderer gap.
+  Evaluator graded PASS (PR #20). README cleanup followed in PR #21
+  (5aaf690).
 
 ## In progress
 
@@ -63,17 +93,32 @@ every feature.
 
 ## Next
 
-- (Originally:) **feature-1-m13-rich-text-renders** — Restore reverted PR #16
-  workstream D from commit `6f33f3a` (rich-text within a single cell:
-  bold+plain in A1, multi-colour in A2, Pattern A hyperlink in A3 of
-  `RichTextInOneCell.xlsx`). Per-run formatting must render in real
-  pixels (visual gate + pixel-sidecar red/blue ink hits over A1+A2);
-  Pattern A hyperlink emitter must continue to win for single-format
-  hyperlinks (A3 round-trips as `{text, hyperlink}`, NOT 1-element
-  richText); 8 restored Jest tests in `tests/m13RichText.test.ts` plus
-  the two flipped `m12FixtureRoundTrip.test.ts` pin-downs must pass
-  (target ≥195 from M13/C's 187 baseline); README docs edit is
-  out-of-scope (operator-explicit). See `BUILD_PLAN.md` for full spec.
+- **feature-1-m13-theme-aware-banding** — When a workbook ships its
+  own non-Aptos `<a:clrScheme>`, the in-Joplin render of every named-
+  style table (`TableStyleLight*`, `TableStyleMedium*`,
+  `TableStyleDark*`) must derive per-cell `bg` / `cl` / `borderColor`
+  from the source clrScheme rather than the hardcoded Aptos catalog
+  in `src/charts/excelTableStyles.ts`. Two project-owned fixtures
+  pin the two halves: `FormattingSmorgasboard.xlsx` (Aptos, accent3
+  `#196B24` green — regression sentinel) and
+  `FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
+  (Classic, accent3 `#A5A5A5` grey — failure-mode sentinel). Both
+  use `TableStyleMedium4`; the same catalog entry must paint green
+  for one and grey for the other. **First multi-screenshot cycle:**
+  the harness needs a `:variant` suffix on `FEATURE_ID`
+  (`feature-1-m13-theme-aware-banding:aptos` /
+  `feature-1-m13-theme-aware-banding:classic`) plus new entries in
+  `REGION_BY_FEATURE` / `TITLE_PREFIX_BY_FEATURE`, a new
+  `tableHeaderRowRegion` helper, and a new `greyInk` aggregate in
+  `samplePixelsAt`. Don't rename or remove the prior cycles' single-
+  key entries. Jest target: ≥197 (M13/D's 195 baseline + ≥2 new
+  pin-downs for header colour). M12 invariants
+  (`SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN` shape,
+  `SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN` shape, applyFont=1
+  invariant on synth-only header cells, table-name round-trip) must
+  stay green. README "Known shortcomings — Theme-aware banding"
+  edit is out-of-scope (defer to follow-up like PR #21 did for
+  M13/C and M13/D). See `BUILD_PLAN.md` for the full spec.
 
 ## Notes
 
@@ -217,7 +262,11 @@ every feature.
   inequality, regardless of exact RGB. M13/D's final reading was
   `redInk=67`, `blueInk=76` — well above the ≥30 threshold. Future
   per-run colour features should use these aggregates rather than
-  the `top` histogram for gating.
+  the `top` histogram for gating. **For M13/E**, add a `greyInk`
+  aggregate using the same template — recommended thresholds
+  `R∈[140,180]`, `G∈[140,180]`, `B∈[140,180]` with `abs(R−G) ≤ 10`
+  AND `abs(G−B) ≤ 10` (the equality between channels is what
+  distinguishes grey from a tinted hue at similar luminance).
 - **The Univer cell-selection blue border at `rgb(44,83,241)` will
   saturate any region that includes A1 + cell-border y-band.** When
   a cell is the active selection (typical state on a freshly opened
@@ -230,7 +279,14 @@ every feature.
   put the A2-only region at y=41–58 to land inside A2's text band
   cleanly. If a future feature needs an A1 colour gate (e.g. a red
   font on A1), either move selection off A1 first or carve the
-  border-y rows out of the region.
+  border-y rows out of the region. **For M13/E** the table header
+  row is row 0 of the table data area = row 1 of the visible
+  worksheet — the active-cell selection is on A1 by default and
+  lands inside the header band. Either click off A1 before
+  sampling (programmatic Univer click via the webview frame's
+  command bus) OR sample a header column that is NOT col A
+  (operator suggests a mid-table column like the Spent / Discount
+  column where the green-vs-grey signal is unambiguous).
 - **Rich-text rendering worked first try in Univer 0.23 once the
   build/cache state was clean.** Same lesson as M13/C: cherry-pick
   `6f33f3a` verbatim, full `npm run dist` + `install-plugin.sh`
@@ -239,3 +295,90 @@ every feature.
   correctly without any helper rewrite. The original PR #16 revert
   was almost certainly a stale-build artefact, not a renderer gap.
   The hypothesis from M13/C generalises.
+- **M13/E is the first multi-screenshot cycle.** Until M13/E every
+  cycle had exactly one note → one screenshot → one row in
+  `test-results.json`. M13/E needs TWO independent screenshots
+  (Aptos fixture + Classic fixture) because the failure mode is
+  "same catalog entry must produce DIFFERENT colours under
+  different source clrSchemes." The plan picks the
+  **variant-suffix approach** for the harness extension: feature
+  ID becomes `feature-1-m13-theme-aware-banding:aptos` and
+  `feature-1-m13-theme-aware-banding:classic`, and
+  `eval-screenshot.js` looks up the suffixed key in
+  `REGION_BY_FEATURE` / `TITLE_PREFIX_BY_FEATURE` (falling back to
+  the plain key for prior-cycle compatibility). The generator MUST
+  add the suffixed entries WITHOUT renaming or removing the
+  M13/C and M13/D entries — those are evidence-bearing for the
+  prior-cycle rows already in `## Done`. Document the suffix
+  convention here once the M13/E session lands so the next planner
+  knows it exists.
+- **`tableHeaderRowRegion` y-band hint.** The header row of the
+  imported `ProjectTracker` / `ProductCatalog` table sits
+  immediately below Univer's column header (~y=0–18 at default
+  zoom). At default row height (19px) the header band is roughly
+  y=19–37. Use a slab y=18–40 (h≈22) to absorb default row-height
+  variation. The new region helper goes in
+  `scripts/pge/eval-screenshot.js` next to `rotatedRowRegion` and
+  `richTextA1A2Region`.
+- **Header colour gate column choice.** The top-left active-cell
+  selection (`rgb(44,83,241)` border) on A1 will pollute a header-
+  row sample that includes col A. Two valid mitigations: (1)
+  programmatically click off A1 to dismiss the selection before
+  sampling, or (2) restrict `tableHeaderRowRegion` to start
+  several columns in (e.g. starting at `x=2*colWidth`). The
+  generator picks one and documents it. **M13/E chose option 2**:
+  `tableHeaderRowRegion` starts at `x=80` (col B onward, col width
+  ~73px), excluding A1's active-cell selection border entirely.
+  The selection-blue still shows up at low counts (~136 hits of
+  `rgb(150,169,248)` in the histogram — bleed from the cell-border
+  anti-aliasing along the right edge of A1 still visible at x≈74)
+  but doesn't trigger redInk/blueInk/greenInk/greyInk gates.
+- **Variant-suffix harness extension.** `eval-screenshot.js` now
+  splits `FEATURE_ID` on `:` into `BASE_FEATURE_ID` + `VARIANT`.
+  Lookups try the suffixed key first, then the plain base key —
+  prior single-screenshot features keep working unchanged. Output
+  filenames bake the variant: `eval-aptos-...png` /
+  `eval-classic-...png`. Both screenshots land in the same
+  `screenshots/<base-feature-id>/` directory. The `verify-gate`
+  hook reads the directory; both PNGs must be Read before the
+  test-results.json flip is allowed. **For future multi-variant
+  cycles**: add a `:<variant>` row in BOTH `TITLE_PREFIX_BY_FEATURE`
+  AND `REGION_BY_FEATURE` keyed off the suffixed id, run
+  `eval-screenshot.sh feature-id:variant` once per variant. Note
+  list and import order do NOT matter — the title-prefix lookup
+  picks the latest match by `updated_time`.
+- **Theme-aware synth approach: parallel recipe table.**
+  `src/charts/excelTableStyleRecipes.ts` is a parallel mirror of
+  `excelTableStyles.ts` that names each slot's accent index +
+  HSL-L tint amount. At synthesis time
+  `resolveTableStylePalette(styleName, catalog, themeRgb)` looks
+  up the recipe and resolves each slot via `tintRgb(accent, tint)`
+  using the source workbook's clrScheme accent values. The
+  Aptos baseline catalog is preserved unchanged (legacy fallback
+  when `themeRgb` is null) and verified exact against the new
+  HSL-L formula by direct comparison: `tint('#196B24', 0.6)` =
+  `'#84E291'` (catalog Medium4 even-row), within zero RGB units.
+  Achromatic styles use `accent: null, rgb: '#...'`. **Don't add
+  hardcoded Classic-Medium4 entries** — Excel ships ~thousands of
+  accent permutations and the catalog can't enumerate them; the
+  recipe table is the source of truth.
+- **In-process ExcelJS test workbooks ship the Office 2007 default
+  theme.** When tests build a workbook via
+  `new ExcelJS.Workbook(); ws.addTable({...style: 'TableStyleMedium2'...})`
+  and then round-trip it through xlsxBufferToSnapshot, the
+  resulting snapshot's per-cell `bg` is `#4F81BD` (exceljs
+  accent1) NOT `#156082` (Aptos accent1). M13/E updated three
+  pin-downs in `tests/formattingFidelity.test.ts` and one in
+  `tests/m12FixtureRoundTrip.test.ts` to assert the actual
+  exceljs-default colour. The Aptos and Classic project-owned
+  fixtures pin the Aptos and Classic palettes specifically (see
+  the M13/E describe block in `m12FixturePinDowns.test.ts`).
+- **`greenInk` aggregate threshold relaxed for M13/E.** The M13/D
+  threshold (`R≤80 AND G≥150 AND B≤80`) only matches pure greens
+  like `rgb(0,255,0)` — Aptos accent3 `#196B24` (R=25,G=107,B=36)
+  has G < 150 and fails. Relaxed to `G > R+30 AND G > B+30 AND
+  G ≥ 80` so any green-channel-dominant pixel ≥ 80 luminance
+  qualifies. Catches Aptos accent3 (107 vs 25/36), Aptos pastel
+  banded `#84E291` (132,226,145), AND pure `rgb(0,255,0)`.
+  redInk/blueInk thresholds stay tight (M13/D's gate values
+  unchanged).

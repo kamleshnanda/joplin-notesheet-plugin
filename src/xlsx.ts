@@ -25,6 +25,12 @@ import JSZip from 'jszip';
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
+import {
+    EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
+    resolveColorSlot,
+    type ExcelTableStyleRecipe,
+    type ColorSlotRecipe,
+} from './charts/excelTableStyleRecipes';
 
 const HORIZONTAL = { left: 1, center: 2, right: 3 } as const;
 const VERTICAL = { top: 1, middle: 2, bottom: 3 } as const;
@@ -940,9 +946,59 @@ interface CellStyleAssignment {
     addedFields: string[];
 }
 
-function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Map<string, Record<string, unknown>>): CellStyleAssignment[] {
+// Resolve a built-in TableStyle's per-slot colours against a source workbook
+// `<a:clrScheme>`. The hardcoded `EXCEL_TABLE_STYLE_BY_NAME` catalog is
+// computed for the Aptos accent palette (Office 2016+); when the source
+// workbook ships its own clrScheme (e.g. the Classic 2013 palette whose
+// accent3 is `#A5A5A5` grey instead of Aptos's `#196B24` green), the same
+// `TableStyleMedium4` must paint grey, not green.
+//
+// We use a parallel recipe table (`EXCEL_TABLE_STYLE_RECIPE_BY_NAME`) that
+// names each slot's accent index + tint; at synthesis time we look the
+// source clrScheme's accent values up and compute the final RGB via the
+// ECMA-376 HSL-L tint formula. Achromatic slots (greys/whites/blacks) keep
+// their literal RGB regardless of clrScheme — those are the same in every
+// Excel theme.
+//
+// `themeRgb` is the 12-entry array returned by `readThemeClrScheme`
+// (lt1, dk1, lt2, dk2, accent1..accent6, hlink, folHlink). When it's null
+// we fall back to the static catalog (Aptos baseline) — the legacy path.
+function resolveTableStylePalette(
+    styleName: string,
+    catalog: ExcelTableStyle | undefined,
+    themeRgb: readonly string[] | null,
+): ExcelTableStyle | undefined {
+    if (!catalog) return undefined;
+    if (!themeRgb) return catalog;
+    const recipe: ExcelTableStyleRecipe | undefined = EXCEL_TABLE_STYLE_RECIPE_BY_NAME[styleName];
+    if (!recipe) return catalog;
+    // clrScheme's accent1..accent6 are at indices 4..9 in `themeRgb`
+    // (lt1, dk1, lt2, dk2, accent1, accent2, accent3, accent4, accent5, accent6, hlink, folHlink).
+    const accents: string[] = themeRgb.slice(4, 10);
+    const resolve = (slot: ColorSlotRecipe | undefined, fallback: string | undefined): string | undefined => {
+        if (!slot) return fallback;
+        return resolveColorSlot(slot, accents);
+    };
+    return {
+        styleName: catalog.styleName,
+        headerBg: resolve(recipe.headerBg, catalog.headerBg)!,
+        headerFg: resolve(recipe.headerFg, catalog.headerFg)!,
+        bandedRowEvenBg: resolve(recipe.bandedRowEvenBg, catalog.bandedRowEvenBg),
+        bandedRowOddBg: resolve(recipe.bandedRowOddBg, catalog.bandedRowOddBg),
+        totalsBg: resolve(recipe.totalsBg, catalog.totalsBg),
+        totalsFg: resolve(recipe.totalsFg, catalog.totalsFg),
+        borderColor: resolve(recipe.borderColor, catalog.borderColor),
+    };
+}
+
+function synthesizeTableStyleAssignments(
+    table: RawTable,
+    existingCellStyles: Map<string, Record<string, unknown>>,
+    themeRgb: readonly string[] | null = null,
+): CellStyleAssignment[] {
     if (!table.styleName) return [];
-    const palette: ExcelTableStyle | undefined = EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
+    const catalog: ExcelTableStyle | undefined = EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
+    const palette = resolveTableStylePalette(table.styleName, catalog, themeRgb);
     if (!palette) return [];
 
     const range = parseA1Range(table.ref);
@@ -1299,7 +1355,11 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                     if (style) existingCellStyles.set(`${r}:${c}`, style);
                 }
             }
-            const assignments = synthesizeTableStyleAssignments(t, existingCellStyles);
+            const assignments = synthesizeTableStyleAssignments(
+                t,
+                existingCellStyles,
+                themeClrScheme?.rgb ?? null,
+            );
             for (const a of assignments) {
                 const styleId = internStyle(a.style);
                 if (!styleId) continue;
