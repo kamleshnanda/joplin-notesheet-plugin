@@ -39,7 +39,16 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # 1. Ensure Joplin is up (Web Clipper API + CDP both responding).
 "$REPO_ROOT/scripts/pge/launch-joplin.sh" >&2
 
-# 2. Hand off to the Node driver. It prints the saved PNG path on
+# 2. Prep the window: maximize via Window > Fill, hide sidebar +
+# note list if visible, close any DevTools page. Idempotent. We do
+# NOT fail the screenshot if prep fails (e.g. missing Accessibility
+# permission) — the screenshot is what the evaluator needs; a smaller
+# window is a degradation but not a hard block.
+if ! "$REPO_ROOT/scripts/pge/prep-joplin-window.sh"; then
+    echo "eval-screenshot: window prep failed; continuing anyway." >&2
+fi
+
+# 3. Hand off to the Node driver. It prints the saved PNG path on
 # stdout; we pass that through unchanged so the evaluator agent can
 # capture it from `$(bash eval-screenshot.sh ...)`.
 exec node "$REPO_ROOT/scripts/pge/eval-screenshot.js" "$FEATURE_ID"

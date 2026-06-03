@@ -128,3 +128,24 @@ every feature.
   When adding a new feature whose evidence isn't on row 0, add a
   region helper (like `rotatedRowRegion`) and an entry in both
   tables.
+- **Window prep is mandatory before evaluator screenshots.** Three
+  pre-conditions had to be enforced after operator hit them:
+    1. Joplin window must fill its display (not 800×568 or whatever
+       the operator left it at) — Univer sizes its canvas to the
+       editor pane, so a small window means fewer columns rendered
+       and the visual gate may miss content.
+    2. Sidebar (`.rli-sideBar`) and note list (`.note-list`) must be
+       hidden — they consume ~500-700px of horizontal real estate
+       the editor could otherwise use.
+    3. Any DevTools window must be closed — it shrinks the renderer
+       AND can confuse `eval-screenshot.js`'s CDP page picker.
+  `scripts/pge/prep-joplin-window.sh` handles all three. AppleScript
+  invokes `Window > Fill` and sends `Cmd+Alt+S` / `Cmd+Alt+L` for
+  pane toggles (Playwright's `keyboard.press()` does NOT reach
+  Joplin's Electron-accelerator-routed shortcuts — the renderer
+  receives the keydown but the command never fires; OS-level
+  System Events keystroke does work). State-aware: queries renderer
+  DOM via `element.offsetParent !== null` (canonical for "any
+  ancestor has display:none") and only toggles when needed. Wired
+  into `eval-screenshot.sh` ahead of the screenshot. Requires
+  Accessibility permission for the terminal app in System Settings.
