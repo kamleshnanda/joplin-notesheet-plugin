@@ -29,10 +29,15 @@ every feature.
 
 ## Next
 
-- Real M13 features (rich text, rotated text, conditional formatting)
-  via the now-validated and hardened harness. The generator runs through
-  `run-cycle.sh` for those — the smoke proved the loop works and the
-  sidecar JSON gives evaluators a non-visual signal to lean on.
+- **feature-1-m13-rotated-text-renders** — Restore reverted PR #16
+  (`415b4a4`) rotation import/export in `src/xlsx.ts`, restore
+  `tests/m13RotatedText.test.ts` and the
+  `m12FixtureRoundTrip.test.ts` flips. Prove via PGE harness that
+  `MergedCellsAndAlignment.xlsx` row 6 (A6 +45°, B6 +90°, C6 -45°)
+  renders visibly rotated in Univer. Per `OPERATOR_ASK.md`, this
+  is the first real-feature cycle post-smoke; the harness was built
+  to catch this class of bug (Jest passes, Univer renders broken)
+  and this is the regression test for the harness itself.
 
 ## Notes
 
