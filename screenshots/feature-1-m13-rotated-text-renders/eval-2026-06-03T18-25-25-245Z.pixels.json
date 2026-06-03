@@ -1,0 +1,46 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m13-rotated-text-renders/eval-2026-06-03T18-25-25-245Z.png",
+  "region": "rotated row band (y 120–320, slab covering rows 4–6 of the fixture)",
+  "regionKind": "rotatedRow",
+  "dominant": "rgb(214,216,219)",
+  "count": 474,
+  "sampled": 622,
+  "top": [
+    [
+      "rgb(214,216,219)",
+      474
+    ],
+    [
+      "rgb(217,217,217)",
+      120
+    ],
+    [
+      "rgb(90,91,91)",
+      2
+    ],
+    [
+      "rgb(216,217,217)",
+      2
+    ],
+    [
+      "rgb(165,166,167)",
+      2
+    ],
+    [
+      "rgb(103,104,104)",
+      2
+    ],
+    [
+      "rgb(175,176,176)",
+      2
+    ],
+    [
+      "rgb(195,196,197)",
+      1
+    ]
+  ],
+  "regionWidth": 600,
+  "regionHeight": 200,
+  "inkRows": 100,
+  "inkRowSpread": 1
+}
