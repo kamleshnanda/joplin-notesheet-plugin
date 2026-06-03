@@ -1,8 +1,11 @@
 {
   "feature-1-m13-rotated-text-renders": {
-    "passes": false,
-    "evidence": null,
+    "passes": true,
+    "evidence": [
+      "screenshots/feature-1-m13-rotated-text-renders/generator-evidence-2026-06-03.png",
+      "screenshots/feature-1-m13-rotated-text-renders/generator-evidence-2026-06-03.pixels.json"
+    ],
     "evaluator_verdict": null,
-    "last_attempted_at": null
+    "last_attempted_at": "2026-06-03T18:23:00Z"
   }
 }

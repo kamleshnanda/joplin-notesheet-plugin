@@ -22,6 +22,21 @@ every feature.
   on the smoke note: dominant `rgb(234,237,249)` (header band),
   `rgb(255,0,0)` appears in top-3 with 353 hits, proving the red is
   real pixels not just snapshot data.
+- **feature-1-m13-rotated-text-renders** (2026-06-03) — Cherry-picked
+  the reverted PR #16 (`415b4a4`) rotation import/export in
+  `src/xlsx.ts`, plus `tests/m13RotatedText.test.ts` and the
+  `m12FixtureRoundTrip.test.ts` flips. README docs edit explicitly
+  out-of-scope. Built .jpl, installed in dev profile, imported
+  `MergedCellsAndAlignment.xlsx` headlessly via the new
+  `scripts/pge/import-fixture.{ts,sh}`, captured canvas-targeted
+  screenshot showing A6 up-right diagonal, B6 vertical, C6 down-right
+  diagonal. Pixel sidecar over the rotated row band reports
+  `inkRowSpread=1.000` (text ink occupies every sampled y-row in the
+  slab) — strong non-horizontal signal independent of colour. Jest
+  187/187 (was 181 baseline + 6 new rotation tests). The reverted
+  code worked first try in Univer 0.23 — earlier visual failure was
+  almost certainly a stale-build issue, not a rendering gap. Awaiting
+  evaluator pass.
 
 ## In progress
 
@@ -29,15 +44,7 @@ every feature.
 
 ## Next
 
-- **feature-1-m13-rotated-text-renders** — Restore reverted PR #16
-  (`415b4a4`) rotation import/export in `src/xlsx.ts`, restore
-  `tests/m13RotatedText.test.ts` and the
-  `m12FixtureRoundTrip.test.ts` flips. Prove via PGE harness that
-  `MergedCellsAndAlignment.xlsx` row 6 (A6 +45°, B6 +90°, C6 -45°)
-  renders visibly rotated in Univer. Per `OPERATOR_ASK.md`, this
-  is the first real-feature cycle post-smoke; the harness was built
-  to catch this class of bug (Jest passes, Univer renders broken)
-  and this is the regression test for the harness itself.
+(Empty — pending evaluator verdict on feature-1-m13-rotated-text-renders.)
 
 ## Notes
 
@@ -85,3 +92,39 @@ every feature.
   to `'mediumDashed'` (with matching assertion update on line 349)
   during this session because webpack's TS check blocks .jpl build.
   This was unrelated to smoke; the smoke didn't introduce it.
+- **`scripts/pge/import-fixture.{ts,sh}`** — headless equivalent of
+  the plugin's "Import .xlsx as Notesheet" command. The .ts calls
+  `xlsxBufferToSnapshot()` from `src/xlsx.ts` directly so the harness
+  exercises the SAME conversion the plugin runs at runtime; the .sh
+  wrapper compiles via `node_modules/.bin/tsc` to a temp dir and runs
+  the JS through Node with `NODE_PATH` pointing at the repo's
+  `node_modules`. `PGE_REPO_ROOT` env var is required because
+  `__dirname` after compile lives inside the temp dir.
+- **Joplin window pane crops the Univer canvas.** `page.screenshot()`
+  with `fullPage:false` captures the whole Joplin window — but at
+  Joplin's default pane sizes the editor pane is narrower than the
+  Univer canvas, so the canvas is cropped or partially offscreen.
+  Fixed in `eval-screenshot.js` by screenshotting the canvas element
+  directly via `webview.locator(canvasSel).screenshot()` when a
+  Notesheet note is opened. The whole-page screenshot is the
+  fallback for smoke / verification mode.
+- **`inkRowSpread` metric.** Added to the pixel sidecar:
+  `inkRows / ceil(regionHeight/2)` — the fraction of sampled y-rows
+  in the region that carry text-coloured ink. Horizontal text
+  concentrates ink on a narrow band (low spread); rotated/stacked
+  text spreads across the band (high spread, near 1.0). Use this
+  alongside the colour histogram for rotation-style features.
+- **`feature-1-m13-rotated-text-renders` worked first try in Univer
+  0.23.** PR #16's `style.tr = { a: <angle> }` (and `{ a: 0, v: 1 }`
+  for stacked) maps directly to Univer's `ITextRotation` and the
+  resolver honours it without extra plugin registration. The earlier
+  visual failure that prompted the revert was almost certainly a
+  stale-build / cache-not-wiped issue, not a renderer-vs-shape
+  mismatch. The harness's `install-plugin.sh` cache wipe + Joplin-
+  quit gate is what makes the difference.
+- **Region-by-feature pixel sampling.** `eval-screenshot.js` now
+  consults `REGION_BY_FEATURE` and `TITLE_PREFIX_BY_FEATURE` tables
+  to pick the right canvas region and note title prefix per feature.
+  When adding a new feature whose evidence isn't on row 0, add a
+  region helper (like `rotatedRowRegion`) and an entry in both
+  tables.
