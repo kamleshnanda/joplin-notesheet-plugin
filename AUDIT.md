@@ -184,3 +184,34 @@ Pending: invoke fresh-context evaluator subprocess
 (`claude --agent evaluator -p ...`) to grade.
 
 ---
+
+## 2026-06-02T19:50Z — evaluator (fresh-context subprocess) — PASS
+
+Spawned `claude --agent evaluator --dangerously-skip-permissions -p ...`
+in a fresh process per the PGE contract. Verdict: **PASS**.
+
+Evidence captured by the evaluator: `screenshots/feature-1-smoke-red-cell/eval-2026-06-03T03-22-50-234Z.png`
+(138 KB, Playwright over CDP). Evaluator confirmed all 4 acceptance
+criteria from BUILD_PLAN.md:
+
+1. A1 contains literal "harness-smoke-OK" (visible in grid + formula
+   bar).
+2. A1 renders in a strong fully-saturated red (~#FF0000), not
+   pink/maroon/black.
+3. Screenshot captured by evaluator harness, not the generator's
+   generator-evidence-2026-06-02.png.
+4. B1/C1/D1 + rows 2-26 of A in the visible viewport are empty.
+
+Evaluator also cross-checked the diff: src/snapshot.ts change at
+97c3fa6 is minimal and plausible — `cellData[0][0] = { v: ..., s:
+'pge-smoke-red' }` + `styles['pge-smoke-red'] = { cl: { rgb:
+'#FF0000' } }`, exactly the shape BUILD_PLAN risks block flagged as
+necessary.
+
+Full verdict text saved to /tmp/pge-evaluator-verdict.txt.
+
+Next: update test-results.json evaluator_verdict to PASS, commit,
+push branch, open PR. THEN start real M13 features through the
+validated harness.
+
+---
