@@ -331,7 +331,7 @@ describe('M9 — borders round-trip', () => {
             top: { style: 'thin', color: { argb: 'FF0000FF' } },
             bottom: { style: 'thick', color: { argb: 'FFFF0000' } },
             left: { style: 'medium' },
-            right: { style: 'mediumDashed' },
+            right: { style: 'dashed' },
         };
         const buf1 = Buffer.from((await wb1.xlsx.writeBuffer()) as ArrayBuffer);
         const snap = await xlsxBufferToSnapshot(buf1);
@@ -346,6 +346,6 @@ describe('M9 — borders round-trip', () => {
         expect(cell.border?.bottom?.style).toBe('thick');
         expect(cell.border?.bottom?.color?.argb?.toUpperCase()).toBe('FFFF0000');
         expect(cell.border?.left?.style).toBe('medium');
-        expect(cell.border?.right?.style).toBe('mediumDashed');
+        expect(cell.border?.right?.style).toBe('dashed');
     });
 });
