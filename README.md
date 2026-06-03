@@ -26,11 +26,13 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M9 — Excel structured-references + table import/export fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
 | ✅ | M10 — Chart export to `.xlsx` (native OOXML) | [#13](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/13) |
 | ✅ | M11 — Dependency hygiene: Jest 29 → 30 to drop deprecated transitive `glob@7` | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
-| ✅ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (Pattern A `{text, hyperlink}` + Pattern B named cell style), workbook theme palette round-trip, table grid border synthesis, friendly errors for unsupported `.xlsx` shapes | (this PR) |
-| ⏳ | M13 — Theme-aware banding accuracy + import recovery beyond exceljs limits (rotated text, rich-text formatting, charts in imported workbooks) | planned |
+| ✅ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (Pattern A `{text, hyperlink}` + Pattern B named cell style), workbook theme palette round-trip, table grid border synthesis, friendly errors for unsupported `.xlsx` shapes | [#14](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/14) [#15](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/15) |
+| ✅ | PGE — Planner-Generator-Evaluator harness for runtime visual gating (catches the M13 failure mode where Jest passes but Univer renders broken) | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
+| ⏳ | M13-redo — Rotated text + rich-text formatting + theme-aware banding accuracy, validated via the PGE harness | planned |
 | ⏳ | M14 — Snapshot → HTML for Joplin's PDF/HTML export menu | planned |
 | ⏳ | M15 — Chart import from `.xlsx` | planned |
 | ⏳ | M16 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set) | planned |
+| ⏳ | M17 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13-redo fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads rotated text and conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. | planned |
 
 > **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
 
@@ -56,7 +58,44 @@ npm run dist     # builds the .jpl into publish/
 npm test         # runs Jest unit tests
 ```
 
-Requires Node.js 18+. The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, which can be installed in Joplin via **Tools → Options → Plugins → ⚙ → Install from file**.
+Requires Node.js 20+ (CI runs 20.x and 22.x). The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, which can be installed in Joplin via **Tools → Options → Plugins → ⚙ → Install from file**.
+
+### PGE harness (visual regression gate)
+
+Jest unit tests cover the snapshot-data shape but cannot catch the failure mode where the data is correct and Univer's renderer ignores it (M13 shipped that bug twice). The **planner-generator-evaluator** harness adds a runtime visual gate on top of Jest:
+
+- A **planner** agent translates an operator ask in `OPERATOR_ASK.md` into `BUILD_PLAN.md` (per-feature acceptance criteria phrased as user-observable outcomes, not data shape).
+- A **generator** agent picks the lowest-numbered `passes: false` row from `test-results.json`, builds the feature, captures a screenshot from the running Joplin desktop app, and only then flips its row.
+- A **fresh-context evaluator** subprocess runs after the generator. It captures its OWN screenshot (Playwright over CDP, attached to the running Joplin) and grades PASS or NEEDS_WORK from the bytes — no memory of what the generator did, no plausibility bias.
+
+Each evaluator screenshot is paired with a `<screenshot>.pixels.json` sidecar holding the top non-background colours sampled from the Univer canvas, so colour-sensitive assertions ("A1 rendered red") can be machine-checkable instead of human-eyeball-only.
+
+#### Running a cycle
+
+```bash
+# Joplin dev profile only — never touches your main profile.
+./scripts/pge/launch-joplin.sh        # starts Joplin --env dev with CDP on :8315
+./scripts/pge/install-plugin.sh       # builds + copies the .jpl into the dev profile
+./scripts/pge/run-cycle.sh            # one PGE cycle: generator → evaluator
+```
+
+#### Files
+
+- `.claude/CLAUDE.md` — generator runtime contract
+- `.claude/agents/{planner,generator,evaluator}.md` — agent briefs
+- `.claude/hooks/verify-gate.sh` — denies Write to `test-results.json` until evidence is Read
+- `scripts/pge/eval-screenshot.{sh,js}` — Playwright + CDP attach, frame drop into the editor's `UserWebviewIndex.html` iframe (where Univer actually mounts), wait on `canvas[id^="univer-sheet-main-canvas"]`, screenshot + pixel sidecar
+- `scripts/pge/run-cycle.sh` — orchestrator (one cycle per invocation, no auto-loop)
+- `BUILD_PLAN.md` / `OPERATOR_ASK.md` / `PROGRESS.md` / `AUDIT.md` / `test-results.json` — operator-readable harness state
+- `screenshots/<feature-id>/` — committed visual evidence per feature (both the generator's drop and the evaluator's authoritative captures)
+
+#### Hard rules baked into the harness
+
+- Joplin **dev profile** only (`--env dev` → `~/.config/joplindev-desktop/`). The harness never touches the operator's main Joplin profile.
+- `test-results.json` defaults every row to `{ passes: false }`. A `verify-gate` hook denies any Write to that file until the agent has first Read a screenshot.
+- The evaluator runs in a separate `claude` subprocess and has only `Read` / `Glob` / `Grep` / `Bash` — no `Write`, no `Edit`, so it cannot quietly fix problems instead of reporting them.
+
+Pattern adapted from [anthropics/cwc-long-running-agents](https://github.com/anthropics/cwc-long-running-agents).
 
 ## Compatibility
 
@@ -103,15 +142,46 @@ accidentally changes.
   top-N / icon-set rules are dropped on import and not re-emitted on
   export. Cell values themselves survive. → M16.
 - **Rotated text**: cells with `text_rotation` set in Excel lose
-  their rotation on import (`tr` is not extracted). → M13.
+  their rotation on import (`tr` is not extracted). → M13-redo.
 - **Rich-text within a single cell**: bold runs, color runs, or
   multi-format text inside one cell flatten to plain text on import.
   Only the hyperlink-only case (a single-format cell with `cell.hyperlink`
-  set) survives because we model that as `cell.p`. → M13.
+  set) survives because we model that as `cell.p`. → M13-redo.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
   later theme change in the host won't update the rendering.
+
+### Tolerated transitive deprecations + audit warnings
+
+`npm install` and `npm audit` print warnings for transitive packages
+buried under our direct dependencies. The summary below documents
+which we tolerate and why; we do not paper over them with `npm
+audit fix --force` or `overrides` blocks because both fixes
+introduce silent regression risk worse than the warnings themselves.
+
+- **`uuid@8.3.2` → moderate CVE
+  [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)**
+  (missing buffer bounds check in `uuid.v3`/`v5`/`v6` when `buf`
+  arg is supplied). Pulled in by exceljs. **Not reachable** —
+  exceljs only calls the CVE-free `uuid()` (random v4) for
+  identifier generation; `v3`/`v5`/`v6` are never invoked.
+  `npm audit fix --force` would downgrade exceljs to 3.4.0
+  (a major-version DOWNGRADE), which is unacceptable. Real fix
+  is upstream in exceljs (or migrate off — see M17).
+- **Transitive deprecation noise** (`inflight@1`, `rimraf@2`,
+  `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3):
+  every entry is buried under exceljs (`>archiver`, `>unzipper`,
+  `>fast-csv`) or jest@30 internals. We are already on jest@30
+  (M11 bumped specifically to drop deprecated transitive globs);
+  no further direct-dep change can clear these. Only an exceljs
+  replacement does — see M17.
+- **`glob@11.1.0`** (our direct devDep) — npm prints a blanket
+  "old versions of glob" warning for any glob it sees, but
+  `glob@11.1.0` IS the current major. Ignore.
+
+These warnings are real upstream signals; we just can't act on them
+from `package.json` without making something worse.
 
 ### `.xlsx` import — unsupported shapes (handled with friendly errors)
 
