@@ -10,8 +10,18 @@ every feature.
   styled via `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`,
   cell carries `s: 'pge-smoke-red'` reference. Built .jpl, installed in
   dev profile, captured generator-evidence screenshot showing red text
-  rendered in Univer at A1. End-to-end harness validated. Awaiting
-  fresh-context evaluator verdict.
+  rendered in Univer at A1. Fresh-context evaluator subprocess graded
+  PASS (cd8bf51).
+- **harness-hardening** (2026-06-02) — `eval-screenshot.js` now drops
+  into the `UserWebviewIndex.html` frame inside the editor page (where
+  Univer actually mounts) and waits on the real Univer canvas selector
+  `canvas[id^="univer-sheet-main-canvas"]` instead of a 5s sleep.
+  Emits a `<screenshot>.pixels.json` sidecar with the top non-background
+  colours sampled from the row-0 canvas slab — gives evaluators a
+  machine-checkable signal alongside the visual screenshot. Confirmed
+  on the smoke note: dominant `rgb(234,237,249)` (header band),
+  `rgb(255,0,0)` appears in top-3 with 353 hits, proving the red is
+  real pixels not just snapshot data.
 
 ## In progress
 
@@ -20,8 +30,9 @@ every feature.
 ## Next
 
 - Real M13 features (rich text, rotated text, conditional formatting)
-  via the now-validated harness. The generator runs through `run-cycle.sh`
-  for those — the smoke proved the loop works.
+  via the now-validated and hardened harness. The generator runs through
+  `run-cycle.sh` for those — the smoke proved the loop works and the
+  sidecar JSON gives evaluators a non-visual signal to lean on.
 
 ## Notes
 
@@ -46,14 +57,24 @@ every feature.
 - **CDP page picker.** Joplin's CDP exposes 4-5 pages: a DevTools
   page, plugin sandboxes (one per loaded plugin including ours), and
   the editor. eval-screenshot.js scores by URL/title; editor wins
-  unambiguously (16 vs 11/0/0).
-- **`waitForUniverRender` falls back to a 5s sleep.** None of
-  `.univer-render-canvas`, `canvas.univer-render-canvas`,
-  `#joplin-plugin-content`, `.univer-container` matched in the smoke
-  capture but the screenshot still showed Univer rendered. Pick a
-  stable selector once we have Univer DevTools open and a known-good
-  fixture. This is a documented gap in eval-screenshot.js, not a
-  blocker.
+  unambiguously (16 vs 11/0/0). Plugin sandbox pages are
+  `<body></body>` — they host plugin process logic, NOT the editor
+  view. Don't try to attach to them.
+- **Univer mounts in `UserWebviewIndex.html`** (a frame of the editor
+  page), not the plugin sandbox. Stable selectors (Univer 0.23):
+    - `canvas[id^="univer-sheet-main-canvas"]` — the main spreadsheet
+      canvas. Id is `univer-sheet-main-canvas_<workbookId>`.
+    - `[class*="univer-flex"]` — the toolbar wrapper (appears slightly
+      before the canvas).
+    - `#joplin-plugin-content` — the Joplin webview wrapper (always
+      present once the plugin loads).
+- **Pixel sidecar (`.pixels.json`)** — the harness samples the
+  Univer main canvas's top-80px row-0 slab and writes a histogram of
+  non-background colours alongside the screenshot. Use it for
+  machine-checkable assertions like "top contains rgb(255,0,0) > 50
+  hits" instead of "I saw red." Sampling is stride-2 to keep cost
+  cheap. Background (>235 in all channels) and gridline ink (<30)
+  are filtered out.
 - **Pre-existing `tests/exportTableRoundTrip.test.ts:334` typecheck
   bug** — `'dashed'` is not in exceljs `BorderStyle` enum. Changed
   to `'mediumDashed'` (with matching assertion update on line 349)

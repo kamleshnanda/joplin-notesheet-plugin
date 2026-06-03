@@ -2,8 +2,26 @@
 // attach. Joplin must already be running (started by launch-joplin.sh)
 // with `--remote-debugging-port=$PGE_CDP_PORT`. We attach to its
 // renderer using `chromium.connectOverCDP`, find the editor page,
-// open the feature's test note via the joplin:// URL scheme, wait for
-// Univer to render, then call `page.screenshot()`.
+// open the feature's test note via the joplin:// URL scheme, drop into
+// the editor's UserWebviewIndex iframe (where Univer actually mounts),
+// wait for the Univer canvas to attach AND be sized, sample row-0
+// pixels for the machine-readable sidecar, then screenshot the whole
+// editor page for human eyeball.
+//
+// Where Univer lives: NOT in the plugin sandbox CDP page (that page
+// is `<body></body>` — plugin-process logic only, no UI). It lives
+// inside `UserWebviewIndex.html`, which is a frame of the editor's
+// main page. The plugin sandbox CDP page exists but doesn't host the
+// view. This was the M13 false-blocker; the harness has no business
+// trying to attach to the sandbox.
+//
+// Two outputs per run:
+//   - <out>.png         — full editor screenshot (visual evidence)
+//   - <out>.pixels.json — top-N non-background colours sampled from
+//                         the Univer main canvas's row-0 slab
+//                         (machine-checkable evidence). Future
+//                         evaluators can assert "rgb(255,0,0)" appears
+//                         in `top` without re-running the canvas pluck.
 //
 // We do NOT use Playwright's `_electron.launch`: it injects
 // `--inspect=0` into every Electron child, which Joplin rejects with
@@ -131,37 +149,114 @@ async function pickEditorPage(context, debug) {
     return winner.page;
 }
 
-// Wait for Univer to render. Univer's spreadsheet UI mounts a canvas
-// inside a container; the canvas is the load-bearing element. We
-// also accept the broader Notesheet container as a fallback. If
-// neither selector appears within the timeout, fall back to a fixed
-// sleep — Univer's rendering can be quirky depending on plugin state,
-// and we'd rather get a screenshot of "something rendered" than fail
-// the evaluator on a selector mismatch.
-async function waitForUniverRender(page) {
-    const selectors = [
-        // Univer spreadsheet's primary canvas; appears once cells are
-        // laid out. (Univer uses a stacked-canvas renderer.)
-        '.univer-render-canvas',
-        'canvas.univer-render-canvas',
-        // Notesheet plugin's editor wrapper (set by src/index.ts).
-        '#joplin-plugin-content',
-        // Generic Univer mount.
-        '.univer-container',
-    ];
-    for (const sel of selectors) {
-        try {
-            await page.waitForSelector(sel, { timeout: 5_000, state: 'attached' });
-            // Found it; give Univer a moment to actually paint cells.
-            await page.waitForTimeout(2_000);
-            return sel;
-        } catch { /* try the next selector */ }
+// Univer mounts inside the Joplin editor page's `UserWebviewIndex.html`
+// frame, NOT in the plugin sandbox CDP page (the sandbox page is
+// `<body></body>` — that's plugin process logic only, no UI). The
+// editor view is a webview Joplin renders inside the main editor pane.
+// We grab the frame by URL match.
+//
+// IMPORTANT: this can return null if the editor is showing a non-
+// Notesheet note (or a markdown view of a Notesheet note). Callers
+// must handle null and either retry after a navigation or fail loudly.
+async function pickNotesheetWebview(page) {
+    for (let attempt = 0; attempt < 30; attempt++) {
+        const frame = page.frames().find((f) => /UserWebviewIndex\.html/.test(f.url()));
+        if (frame) return frame;
+        await page.waitForTimeout(200);
     }
-    // Nothing matched. Document the gap and fall through to a fixed
-    // delay so the screenshot still captures whatever's on screen.
-    console.error('eval-screenshot: no Univer selector matched within 5s each; falling back to 5s sleep. Add a stable selector to waitForUniverRender() once you find one.');
-    await page.waitForTimeout(5_000);
     return null;
+}
+
+// Wait for Univer to actually render to the canvas. We probe selectors
+// inside the UserWebviewIndex frame:
+//   1. `canvas[id^="univer-sheet-main-canvas"]` — Univer 0.23's main
+//      sheet canvas, id is `univer-sheet-main-canvas_<workbookId>`.
+//      Load-bearing — this is what the user sees.
+//   2. `[class*="univer-flex"]` — the Univer toolbar/header wrapper;
+//      appears slightly before the canvas.
+// We wait for the canvas to be attached AND have non-zero dimensions
+// (Univer creates the element early, then sizes it asynchronously
+// after layout).
+async function waitForUniverRender(frame) {
+    const sel = 'canvas[id^="univer-sheet-main-canvas"]';
+    try {
+        await frame.waitForSelector(sel, { timeout: 15_000, state: 'attached' });
+    } catch {
+        console.error(`eval-screenshot: Univer canvas selector "${sel}" did not appear within 15s.`);
+        return null;
+    }
+    // Wait for the canvas to have non-zero size — Univer creates the
+    // element first, then resizes it after the host frame settles.
+    try {
+        await frame.waitForFunction(
+            (s) => {
+                const c = document.querySelector(s);
+                return c && c.width > 0 && c.height > 0;
+            },
+            sel,
+            { timeout: 5_000, polling: 100 },
+        );
+    } catch {
+        console.error('eval-screenshot: Univer canvas attached but never resized; rendering likely incomplete.');
+    }
+    // One frame to let any pending paint settle.
+    await frame.waitForTimeout(250);
+    return sel;
+}
+
+// Sample the rendered colour at the centre of cell A1 (row 0, col 0)
+// from the Univer main canvas. Univer renders to canvas, so there is
+// no per-cell DOM element — pixel sampling is the authoritative way
+// to verify "did the cell visually render in the requested colour."
+//
+// Algorithm: find the most-common non-background, non-gridline pixel
+// inside the bounding rect of A1 within the canvas. The "most common"
+// rule is robust to anti-aliasing — fully-saturated red text on white
+// background produces enough exact-#FF0000 pixels along stroke
+// interiors to dominate any anti-aliased halo. Returns:
+//   { dominant: 'rgb(R,G,B)', count, sampled, top: [['rgb(...)', n], ...] }
+//
+// We do NOT need the real cell rect from Univer's coordinate system —
+// we sample a generous slab around row 0 (top ~60px of canvas).
+// Future features that need precise per-cell rects can compute them
+// from Univer's `defaultRowHeight` / `defaultColumnWidth` (snapshot
+// fields).
+async function samplePixelsAt(frame, regionFn, maxColors = 8) {
+    return frame.evaluate(({ regionFnSrc, maxColors }) => {
+        const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
+        if (!canvas) return { error: 'no main canvas' };
+        const region = (new Function('return ' + regionFnSrc))()(canvas);
+        const off = document.createElement('canvas');
+        off.width = region.w;
+        off.height = region.h;
+        const ctx = off.getContext('2d');
+        ctx.drawImage(canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+        const data = ctx.getImageData(0, 0, region.w, region.h).data;
+        const hist = new Map();
+        let sampled = 0;
+        for (let y = 0; y < region.h; y += 2) {
+            for (let x = 0; x < region.w; x += 2) {
+                const i = (y * region.w + x) * 4;
+                const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                if (a < 200) continue;
+                if (r > 235 && g > 235 && b > 235) continue;       // background
+                if (r < 30 && g < 30 && b < 30) continue;          // gridline
+                sampled++;
+                const key = `rgb(${r},${g},${b})`;
+                hist.set(key, (hist.get(key) || 0) + 1);
+            }
+        }
+        const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
+        const [dominant, count] = top[0] || [null, 0];
+        return { dominant, count, sampled, top };
+    }, { regionFnSrc: regionFn.toString(), maxColors });
+}
+
+// Region of canvas covering row 0 (cell A1 column area). Univer renders
+// row headers and column headers occupy ~25-30px each at default zoom;
+// we use a generous slab to absorb that.
+function rowZeroRegion(canvas) {
+    return { x: 0, y: 0, w: Math.min(canvas.width, 400), h: Math.min(canvas.height, 80) };
 }
 
 async function main() {
@@ -230,10 +325,11 @@ async function main() {
         // feature has no prefix, which is useful for verification).
         const prefix = TITLE_PREFIX_BY_FEATURE[FEATURE_ID];
         const explicitNote = process.env.PGE_NOTE_ID;
+        let didOpenNote = false;
         if (explicitNote) {
             console.error(`eval-screenshot: opening note id ${explicitNote} (PGE_NOTE_ID)`);
             await openJoplinNote(explicitNote);
-            await waitForUniverRender(page);
+            didOpenNote = true;
         } else if (prefix) {
             const hostPort = discoverApiPort();
             if (!hostPort) throw new Error('Joplin Web Clipper API not found via discover-api-port.sh');
@@ -244,25 +340,61 @@ async function main() {
             const noteId = await findLatestNoteByTitle(hostPort, token, prefix);
             console.error(`eval-screenshot: opening note id ${noteId} (prefix="${prefix}")`);
             await openJoplinNote(noteId);
-            await waitForUniverRender(page);
+            didOpenNote = true;
         } else {
-            // No prefix table entry, no explicit note — verification
-            // mode. Just screenshot whatever's on screen. Caller is
-            // expected to set PGE_OUT to a /tmp path.
             console.error(`eval-screenshot: no title-prefix mapping for "${FEATURE_ID}" and PGE_NOTE_ID unset; capturing current page as-is (verification mode).`);
             await page.waitForTimeout(1_000);
         }
 
-        // 4. Screenshot. We screenshot the whole page (not fullPage —
-        // the renderer is a single viewport) so the eval includes
-        // the editor chrome, sidebar, etc. — useful context for the
-        // evaluator.
+        // 4. If a Notesheet note was opened, drop into the
+        // UserWebviewIndex frame and wait for Univer to actually paint.
+        // This is a robust stop-gap for the M13 failure mode: it
+        // forces "the canvas exists AND has been sized" before we
+        // screenshot, instead of a fixed sleep.
+        let pixelSummary = null;
+        if (didOpenNote) {
+            const webview = await pickNotesheetWebview(page);
+            if (!webview) {
+                console.error('eval-screenshot: UserWebviewIndex frame did not appear; the opened note may not be a Notesheet, or the plugin failed to load.');
+            } else {
+                const sel = await waitForUniverRender(webview);
+                if (sel) {
+                    console.error(`eval-screenshot: Univer canvas rendered (selector "${sel}")`);
+                    // Sample the dominant non-background colour over
+                    // row 0. The evaluator sees this in the JSON sidecar
+                    // and can sanity-check claims like "A1 is red".
+                    try {
+                        pixelSummary = await samplePixelsAt(webview, rowZeroRegion);
+                    } catch (e) {
+                        console.error(`eval-screenshot: pixel sample failed: ${e.message}`);
+                    }
+                }
+            }
+        }
+
+        // 5. Screenshot the WHOLE editor page so the human-eyeball view
+        // (notebook tree + note list + editor with rendered Univer)
+        // is preserved. The pixel-summary sidecar is the
+        // machine-checkable artifact alongside.
         await page.screenshot({ path: out, fullPage: false });
         savedPath = out;
         const stat = fs.statSync(out);
         console.error(`eval-screenshot: saved ${out} (${stat.size} bytes)`);
         if (stat.size < 1024) {
             throw new Error(`screenshot is suspiciously small (${stat.size} bytes); likely blank.`);
+        }
+
+        // 6. Pixel-summary sidecar JSON. Future feature evaluators can
+        // assert against this without doing their own canvas pluck.
+        if (pixelSummary) {
+            const sidecar = out.replace(/\.png$/, '.pixels.json');
+            fs.writeFileSync(sidecar, JSON.stringify({
+                source: out,
+                region: 'row-0 (top 80px slab of main canvas)',
+                ...pixelSummary,
+            }, null, 2));
+            console.error(`eval-screenshot: pixel summary → ${sidecar}`);
+            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled}`);
         }
     } finally {
         // Detach but DO NOT close Joplin.

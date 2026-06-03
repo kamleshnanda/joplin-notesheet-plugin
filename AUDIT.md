@@ -215,3 +215,60 @@ push branch, open PR. THEN start real M13 features through the
 validated harness.
 
 ---
+
+## 2026-06-02T20:10Z — claude — harness-hardening cycle
+
+Operator flagged two harness gaps after smoke PASS:
+
+1. We were attaching only to the editor page (good for human
+   eyeball) but not to anywhere with Univer's real DOM. For
+   automated verification we need DOM-level access.
+2. `waitForUniverRender` had a 5s sleep fallback because none of
+   `.univer-render-canvas` / `.univer-container` etc. matched. That
+   was a "documented gap" in Notes; risk: a slow paint races the
+   screenshot in real M13 features.
+
+Probed live Univer DOM by attaching CDP to the running dev Joplin
+with the smoke note open. Discovery: the **plugin sandbox CDP page
+is `<body></body>`** — it's plugin-process logic only, no UI.
+Univer mounts inside `UserWebviewIndex.html`, which is a FRAME of
+the editor page, not a separate CDP page. The earlier confusion
+("plugin sandbox should host the editor") was wrong.
+
+Real selectors found (Univer 0.23):
+- `canvas[id^="univer-sheet-main-canvas"]` — main sheet canvas,
+  id is `univer-sheet-main-canvas_<workbookId>`.
+- `[class*="univer-flex"]`, `[class*="Univer"]` — many.
+- `#joplin-plugin-content` — Joplin's webview wrapper.
+
+Rewrote `eval-screenshot.js`:
+- New `pickNotesheetWebview(page)` finds the
+  `UserWebviewIndex.html` frame (with 30 × 200ms retry to absorb
+  the Joplin → plugin webview load delay).
+- New `waitForUniverRender(frame)` waits 15s for the canvas to
+  attach AND 5s for it to have non-zero `width`/`height` (Univer
+  creates the canvas early, sizes it later). No more 5s blind
+  sleep.
+- New `samplePixelsAt(frame, regionFn)` draws the canvas to an
+  offscreen 2D context and histograms pixel colours, filtering
+  out background (>235 all channels) and gridlines (<30). Returns
+  `{ dominant, count, sampled, top }`.
+- Each evaluator run now writes a `<shot>.pixels.json` sidecar
+  alongside the PNG.
+
+Verified against the existing smoke note: selector
+`canvas[id^="univer-sheet-main-canvas"]` matched first try; sidecar
+shows `rgb(255,0,0)` in top-3 (353 hits in a 3402-pixel sample,
+~10% of non-background). That's the red harness-smoke-OK text in
+real pixels. Future evaluators can assert
+`pixels.top.find(([rgb]) => rgb === 'rgb(255,0,0)')` for a
+machine-checkable "the red rendered" claim.
+
+Removed throwaway `_probe-univer-dom.js` and its /tmp copy.
+
+PROGRESS.md: moved the selector item from Notes (gap) to Done; added
+sidecar/JSON reference; documented the
+"plugin-sandbox-is-empty" lesson so the next session doesn't repeat
+the misattribution.
+
+---
