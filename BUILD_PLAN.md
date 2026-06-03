@@ -1,220 +1,322 @@
-# Notesheet PGE — build plan (M13/C: rotated-text round-trip)
+# Notesheet PGE — build plan (M13/D: rich text within a single cell)
 
-> **Cycle context.** This is the first real-feature cycle through the
-> PGE harness, post-smoke. The smoke (`feature-1-smoke-red-cell`) is
-> done and lives in `PROGRESS.md` `## Done`. The harness has been
-> hardened (Univer canvas selector + pixel sidecar). This file
-> overwrites the prior smoke plan; the smoke row is removed from
-> `test-results.json`.
+> **Cycle context.** This is the second real-feature cycle through the
+> PGE harness. The first real cycle (M13/C — rotated text round-trip,
+> PR #19) just shipped; its row sits in `PROGRESS.md` `## Done` and is
+> intentionally absent from this `test-results.json` (the harness keeps
+> only the in-flight cycle's rows). Harness scripts under
+> `scripts/pge/` (launch-joplin.sh, install-plugin.sh,
+> import-fixture.{ts,sh}, eval-screenshot.{js,sh},
+> prep-joplin-window.sh, create-seeded-notesheet.js) are present and
+> proven on M13/C. The pixel-sidecar (`<screenshot>.pixels.json`) and
+> region-by-feature lookup (`REGION_BY_FEATURE` /
+> `TITLE_PREFIX_BY_FEATURE` in `eval-screenshot.js`) are the
+> machine-checkable signal alongside the visual screenshot.
 
 ## Operator ask
 
-(See `OPERATOR_ASK.md`.) Restore Workstream C from the reverted M13
-PR #16 — rotated-text round-trip — and prove it via the harness.
-PR #16 added rotation import/export plus six Jest tests, all of
-which passed. The PR was reverted because Univer **did not actually
-render the text rotated**: snapshot data correct, visible output
-broken. That is exactly the failure mode the PGE harness was built
-for. This cycle ships the feature and proves the loop catches that
-class of bug going forward.
+(See `OPERATOR_ASK.md`.) Restore Workstream D from the reverted M13
+PR #16 — multi-run rich-text formatting inside one cell — and prove it
+through the harness the same way M13/C just did. PR #16's commit
+`6f33f3a` added the import/export plumbing plus 8 Jest tests
+(test count moved 199 → 207 in that PR). All Jest tests passed when
+PR #16 was open; the PR was reverted because workstream C broke
+visually and workstream D was collateral damage. The PGE harness now
+exists to gate exactly this class of "Jest passes, Univer renders
+broken." We restore D and prove the per-run formatting renders in
+real pixels, while keeping Pattern A hyperlinks intact.
 
 ## Features
 
-### feature-1-m13-rotated-text-renders
+### feature-1-m13-rich-text-renders
 
 **Spec**
 
 When the user imports
-`tests/ExcelBaseTestData/formatting-testdata/MergedCellsAndAlignment.xlsx`
+`tests/ExcelBaseTestData/formatting-testdata/RichTextInOneCell.xlsx`
 into a Notesheet note (via the Tools menu **Import .xlsx as
-Notesheet** command, or the editor's Import button), the resulting
-note opens in the Univer editor with row 6 of the "Merged and
-Alignment" sheet displaying three cells whose text is **visibly
-rotated** in the rendered canvas:
+Notesheet** command, or the headless harness equivalent
+`scripts/pge/import-fixture.sh RichTextInOneCell.xlsx`), the resulting
+note opens in the Univer editor with the "RichText" sheet's three
+sentinel cells displaying **per-run formatting visibly preserved in
+the rendered canvas**:
 
-- **A6** "Rotated 45 degrees" — text leans up-and-to-the-right
-  (CCW 45°)
-- **B6** "Rotated 90 degrees" — text runs vertically with the
-  baseline pointing up (CCW 90°)
-- **C6** "Rotated -45 degrees" — text leans down-and-to-the-right
-  (CW 45°)
+- **A1** "Hello world" — `Hello` is rendered visibly **bolder** (heavier
+  glyph stroke / wider weight) than the trailing ` world` in the same
+  cell. Not flat plain text.
+- **A2** "Red and Blue text" — `Red` is **red**, ` and ` is the default
+  text colour, `Blue` is **blue**, ` text` is the default text colour.
+  Three distinct foreground colours in one cell.
+- **A3** "Visit example.com for more info" — single-format hyperlink.
+  Renders as a **hyperlink** (Pattern A — `cell.p` with one uniform
+  run + a `customRange` link target). Does NOT regress to plain text
+  and is NOT downgraded to a two-run rich-text shape.
 
-Exporting the same note back to `.xlsx` via the editor's Export
-button (or `snapshotToXlsxBuffer`) must produce a workbook where
-exceljs reads `cell.alignment.textRotation` as `45`, `90`, and `-45`
-for A6/B6/C6 respectively. The snapshot shape is Univer's
-`ITextRotation`: `style.tr = { a: <angle> }` for plain rotation and
-`style.tr = { a: 0, v: 1 }` for stacked-vertical (the latter is not
-exercised by the fixture; covered in Jest only).
+Exporting the same note back to `.xlsx` via `snapshotToXlsxBuffer` (or
+the editor's Export button) must round-trip the per-run formatting:
+exceljs reads `cell.value = { richText: [{font, text}, ...] }` for A1
+and A2 with the per-run font preserved; A3 round-trips as a Pattern A
+`{ text, hyperlink }` plain-value cell — the rich-text emitter
+explicitly skips when a hyperlink customRange is present.
 
 **Acceptance criteria**
 
 The evaluator must verify ALL of the following:
 
-1. **Visual — rotation is visible in pixels.** The evaluator's
-   Playwright-captured screenshot of the imported note (taken via
-   `scripts/pge/eval-screenshot.js` against the running Joplin dev
-   profile) shows three rotated text strings in the row-6 region of
-   the Univer canvas. Specifically:
-   - A6's text glyphs run along an upward-right diagonal (NOT
-     horizontal). The leftmost character sits lower than the
-     rightmost.
-   - B6's text glyphs are stacked along a vertical axis with the
-     baseline rotated 90° CCW (each character's bottom faces the
-     right edge of the cell).
-   - C6's text glyphs run along a downward-right diagonal (the
-     leftmost character sits higher than the rightmost).
-   - The evaluator must explicitly state in its verdict that all
-     three angles are visually distinguishable from horizontal and
-     from each other. "Three rotated strings" is not enough —
-     the verdict must call out the per-cell direction.
-2. **Pixel sidecar — text ink is not on a single horizontal row.**
-   The `<screenshot>.pixels.json` sidecar emitted alongside the
-   evaluator's screenshot shows the row-6 vertical slab carries
-   text-coloured pixels distributed across multiple Y rows of the
-   slab (rotated text breaks the dominant-horizontal-ink pattern that
-   plain text produces). The evaluator captures the row-6 region and
-   confirms text-ink coverage on more than one canvas row within the
-   slab. (The harness's existing colour-histogram emit is fine; the
-   evaluator picks the row-6 vertical band when grading.)
-3. **Jest — reverted PR #16 tests are restored and green.** All of
+1. **Visual — per-run formatting is visible in pixels.** The
+   evaluator's Playwright-captured screenshot of the imported note
+   (via `scripts/pge/eval-screenshot.js` against the running Joplin
+   dev profile, after `prep-joplin-window.sh` has filled the window
+   and hidden the side panes) shows three sentinel cells whose
+   per-run formatting is visually distinguishable:
+   - **A1**: the leading `Hello` glyphs are **visibly heavier** (bolder
+     stroke, wider weight) than the trailing ` world` glyphs in the
+     same cell. The evaluator's verdict text must explicitly call out
+     the weight contrast — "the cell is bold" or "the cell renders"
+     is not sufficient.
+   - **A2**: the cell carries at least three distinct foreground
+     colours in the visible glyphs — **red** on `Red`, default on
+     ` and `, **blue** on `Blue`, default on ` text`. The evaluator's
+     verdict text must explicitly name the red and blue runs.
+   - **A3**: renders as a **single-format hyperlink** — typically
+     blue underlined text spanning the whole cell. NOT plain black
+     text and NOT a two-tone rich-text shape. (Pattern A regression
+     sentinel.)
+2. **Pixel sidecar — per-run colours land in the histogram.** The
+   `<screenshot>.pixels.json` sidecar emitted alongside the
+   evaluator's screenshot, sampled over a region helper covering the
+   A1+A2 vertical band of the Univer main canvas (and ideally an
+   A2-only sub-region for cleaner colour signal — A3's hyperlink also
+   contributes blue, which would alias the A2 `Blue` run if A1+A2+A3
+   are sampled together), contains:
+   - **Red ink** (R≥200, G≤80, B≤80) with at least 30 hits — proves
+     A2's `Red` run rendered.
+   - **Blue ink** (R≤80, G≤80, B≥200) with at least 30 hits — proves
+     A2's `Blue` run rendered. (If the sample region is A1+A2 only,
+     this signal is unambiguous; if A2 is sampled in isolation, even
+     better.)
+   - The harness adds a region helper analogous to
+     `rotatedRowRegion` from M13/C (e.g. `richTextA1A2Region` and/or
+     `richTextA2Region`) plus entries in `REGION_BY_FEATURE` and
+     `TITLE_PREFIX_BY_FEATURE` keyed off this feature ID.
+3. **Jest — reverted PR #16 D-tests are restored and green.** All of
    the following pass under `npm test`:
-   - `tests/m13RotatedText.test.ts` is restored byte-equivalent to
-     commit `415b4a4` (5 tests: vertical-stacked import,
-     no-rotation absence-of-tr, explicit-zero absence-of-tr, the
-     12-angle round-trip sweep at ±15°/30°/45°/60°/75°/90°, and the
-     vertical-stacked round-trip).
-   - `tests/m12FixtureRoundTrip.test.ts`'s `KNOWN SHORTCOMING —
-     rotated-text cells lose their rotation on import (→ M13)`
-     test (currently at line 420) is flipped to a positive
-     pin-down: A6/B6/C6 of `MergedCellsAndAlignment.xlsx` arrive
-     with `style.tr` set to `{ a: 45 }`, `{ a: 90 }`, `{ a: -45 }`
-     respectively.
+   - `tests/m13RichText.test.ts` is restored byte-equivalent to commit
+     `6f33f3a` (8 tests: bold + plain run, multi-colour run,
+     hyperlink + plain stays Pattern A, mixed bold+italic+colour
+     run, underline run is NOT mistaken for a hyperlink, single-run
+     collapse to plain string, plain-text round-trip stays plain,
+     full rich-text round-trip).
+   - `tests/m12FixtureRoundTrip.test.ts`'s two `KNOWN SHORTCOMING —
+     rich-text` tests are flipped to **positive pin-downs** per
+     `6f33f3a`'s diff: cells with rich text on import carry
+     `cell.p.body.textRuns` with the right shape (per-run `ts`
+     carrying bold/italic/colour as appropriate); export reproduces
+     `cell.value = { richText: [{font, text}, ...] }` with the
+     per-run font preserved.
+   - The hyperlink+plain-in-one-cell assertion continues to assert
+     **Pattern A wins** for that cell — the rich-text emitter must
+     explicitly skip when a hyperlink customRange is present.
    - The total Jest passing count moves from the current baseline
-     (176 at last green) to at least 182, matching PR #16's
-     post-feature count, with no `KNOWN SHORTCOMING — rotated-text`
+     (187 after M13/C; verify via `npm test` at the start of the
+     session) to **at least 195** (baseline + 8 from
+     `m13RichText.test.ts`), with no `KNOWN SHORTCOMING — rich-text`
      test left referencing M13.
-4. **Round-trip — angles survive export → re-import.** A new (or
-   restored) Jest test imports `MergedCellsAndAlignment.xlsx`, calls
-   `snapshotToXlsxBuffer` on the resulting snapshot, loads the buffer
-   with a fresh exceljs `Workbook`, and asserts that the "Merged and
-   Alignment" sheet's A6/B6/C6 carry `alignment.textRotation` of 45,
-   90, and -45 respectively. (PR #16 added this assertion to
-   `m12FixtureRoundTrip.test.ts` alongside the flipped pin-down;
-   restoring it is sufficient.)
+4. **Round-trip — multi-run formatting survives export → re-import.**
+   A Jest test (in the restored `m13RichText.test.ts`, or as a
+   restored block in `m12FixtureRoundTrip.test.ts`) imports
+   `RichTextInOneCell.xlsx`, calls `snapshotToXlsxBuffer` on the
+   resulting snapshot, loads the buffer with a fresh exceljs
+   `Workbook`, and asserts:
+   - **A1** value is `{ richText: [{ font: { bold: true }, text: 'Hello' },
+     { text: ' world' }] }` (or structurally equivalent — `bold: true`
+     must survive on the first run; the second run must NOT carry
+     `bold`).
+   - **A2** value is `{ richText: [{ font: { color: { argb: ...FF0000 } },
+     text: 'Red' }, { text: ' and ' }, { font: { color: { argb:
+     ...0000FF } }, text: 'Blue' }, { text: ' text' }] }` (or
+     structurally equivalent — the red and blue colours must survive
+     on the right runs; the two default-colour runs must NOT carry a
+     colour).
+   - **A3** value is `{ text: 'Visit example.com for more info',
+     hyperlink: 'https://example.com' }` (Pattern A — NOT a richText
+     value). This is the regression sentinel against the rich-text
+     emitter winning for single-format hyperlinks.
 5. **`npm run dist` succeeds and the .jpl is installed in the dev
    profile.** The generator captures its own screenshot via
    `scripts/pge/install-plugin.sh` + `eval-screenshot.js` as evidence
-   of due diligence under `screenshots/feature-1-m13-rotated-text-renders/`,
-   then opens that screenshot via the Read tool so the
-   `verify-gate` hook unlocks the `test-results.json` write. The
-   evaluator captures its OWN screenshot independently — the
-   generator's drop is corroborating, not authoritative.
+   under `screenshots/feature-1-m13-rich-text-renders/`, then opens
+   that screenshot via the Read tool so the `verify-gate` hook
+   unlocks the `test-results.json` write. The evaluator captures its
+   OWN screenshot independently — the generator's drop is
+   corroborating, not authoritative.
 
 **Out of scope**
 
-- **Rotation inside merged cells.** Row 1 of the fixture has merges
-  (A1:B2 and C1:D1); row 6 does not. If rotation incidentally renders
-  inside a merge, fine; if it doesn't, that's a separate follow-up,
-  not a blocker for this feature.
-- **Per-row-block rotation in OOXML xfs** (rotation set on a row
-  default style rather than per-cell). The fixture doesn't exercise
-  it; don't add code paths for it here.
 - **Rich text combined with rotation.** OOXML rotation is cell-level
-  only, not per-run, so there is nothing to combine. Rich-text-only
-  is a separate workstream (M13/D, future cycle).
-- **Stacked-vertical mode in the visual gate.** OOXML's `'vertical'`
-  / textRotation=255 is covered in `m13RotatedText.test.ts` (Jest
-  only). The fixture has no stacked cell, so the evaluator does not
-  grade it visually.
-- **README's "Known shortcomings — rotated text" entry.** Leave it.
-  The operator explicitly punted the README edit to a follow-up
-  cycle — this BUILD_PLAN does not include a docs-edit acceptance
-  criterion.
-- **Stale `tr: { a: 0 }` cleanup pass.** Do not retroactively scrub
-  prior snapshots. The export side simply must not write rotation
-  attributes when `tr` is absent or zero — covered by the
-  no-rotation Jest cases.
+  only, not per-run; nothing to combine. The fixture doesn't exercise
+  it.
+- **Rich text with size variations.** The `RichTextInOneCell.xlsx`
+  fixture uses default font size on every run. Per-run font-size
+  handling can fall out of the same pipeline incidentally, but the
+  visual gate doesn't grade for it. Don't add a size assertion.
+- **Rich text inside merged cells.** The fixture has no merges. If
+  rich-text incidentally renders correctly inside a merge, fine; if
+  it doesn't, that's a separate follow-up, not a blocker.
+- **README "Known shortcomings — Rich-text within a single cell"
+  edit.** PR #16's `6f33f3a` drops that bullet (currently lines
+  146–149 of `README.md`); restoring that drop is acceptable but the
+  evaluator does NOT penalise if the docs edit is punted to a
+  follow-up. Visual + Jest + round-trip evidence is the gate.
+- **Conditional formatting rendered through rich-text.** Excel
+  conditional formats can paint colours on top of runs — that's M16,
+  not M13/D.
+- **Stale single-run `cell.p` cleanup pass.** Do NOT retroactively
+  rewrite prior snapshots to strip single-run `cell.p` entries. The
+  import side simply must not emit `cell.p` for a single uniformly
+  styled run going forward — covered by the single-run-collapse Jest
+  case.
+- **Per-run underline that is NOT a hyperlink.** The Jest test
+  ensures an underline-only run is recognised as styling rather than
+  a hyperlink; the visual gate does not grade an underline-only
+  cell because the fixture doesn't carry one.
 
 **Suggested fixture**
 
-`tests/ExcelBaseTestData/formatting-testdata/MergedCellsAndAlignment.xlsx`
-sheet "Merged and Alignment", row 6 — A6 +45°, B6 +90°, C6 -45°.
+`tests/ExcelBaseTestData/formatting-testdata/RichTextInOneCell.xlsx`,
+sheet `RichText`:
 
-The harness invokes Import .xlsx as Notesheet on this fixture (via
-`scripts/pge/import-fixture.sh MergedCellsAndAlignment.xlsx` or the
-equivalent Joplin Data API call, depending on what the harness
-already wires up). The eval-screenshot script captures the editor's
-Univer main canvas; the evaluator visually inspects row 6.
+- **A1** — `Hello` (bold) + ` world` (plain). Bold-vs-plain pin-down.
+- **A2** — `Red` (red) + ` and ` (default) + `Blue` (blue) + ` text`
+  (default). Multi-colour pin-down with two default-colour runs to
+  prove the resolver doesn't smear a colour across all runs.
+- **A3** — `Visit example.com for more info` with `hyperlink:
+  https://example.com`. Pattern A non-regression sentinel.
+
+The harness invokes the headless import path
+(`scripts/pge/import-fixture.sh RichTextInOneCell.xlsx`) and the
+canvas-targeted screenshot via `eval-screenshot.js`. The screenshot
+is taken against the Univer main canvas (selector
+`canvas[id^="univer-sheet-main-canvas"]`) inside the editor frame,
+NOT against the plugin sandbox page (the plugin sandbox is
+`<body></body>` per the M13/C harness notes).
 
 **Related risks**
 
 - **The reverted PR #16's `src/xlsx.ts` changes are the right
-  starting point.** The 20-line addition (`style.tr = { a, v? }` on
-  import, reversed on export) was correct under exceljs 4.x and
-  matches Univer 0.23's `ITextRotation` shape. The Jest tests
-  passing tells you the import/export math is sound — what failed
-  was the runtime renderer, not the data plumbing. Don't rewrite
-  the angle math.
-- **Investigate before patching.** If the screenshot shows
-  horizontal text after restoring PR #16 verbatim, the fix is
-  downstream of `xlsx.ts`. Likely suspects, in order:
-  1. **Style placement.** Univer reads styles from the snapshot's
-     top-level `styles[id]` map keyed by the cell's `s` reference.
-     If `tr` ends up inline on the cell (not on `styles[id]`),
-     Univer's resolver ignores it. Confirm against the actual
-     emitted snapshot via DevTools, not against what the test
-     assertion claims.
-  2. **`tr` being stripped by a later pass.** `src/snapshot.ts`,
-     `src/index.ts`'s save path, or any of the wrapper helpers
-     might be doing a shallow style merge that drops unknown keys.
-     `git grep` for the existing recognised style keys (`bg`, `cl`,
-     `bd`, `bl`, `it`, `un`, `n`, `ht`, `vt`) and check whether `tr`
-     is in any allowlist.
-  3. **Univer plugin gating.** Some Univer presets only honour `tr`
-     when a specific plugin is registered. Compare the plugin set
-     in `src/editor` against Univer 0.23's docs for the
-     `IRenderConfig` / cell-renderer module that consumes `tr`.
-     If a missing plugin is the issue, register it; do not fall
-     back to drawing rotation manually.
-- **Univer style lookup is by `s` reference (M13 lesson, smoke
-  confirmed).** The smoke proved that `cl.rgb` only renders when on
-  `styles['pge-smoke-red']` and the cell carries `s: 'pge-smoke-red'`.
-  `tr` follows the same rule. Any "fix" that puts `tr` directly on a
-  cellData entry will Jest-pass and visually-fail — exactly the
-  M13 failure mode.
-- **Don't symptom-patch the test on a Jest failure post-rebuild.**
-  If a Jest assertion regresses, run `git diff package-lock.json`
-  first. exceljs's `alignment.textRotation` surface drifted between
-  3.x and 4.x (string `'vertical'` vs number 255 in older versions).
-  We are intentionally on 4.4.0; do not edit the test to make a
-  silent downgrade pass — fix the dependency drift instead.
-  Reference: `feedback_dependency_hygiene.md` in operator memory.
-- **Pre-existing typecheck bug fixed during smoke** —
-  `tests/exportTableRoundTrip.test.ts:334` was changed from
-  `'dashed'` to `'mediumDashed'` to satisfy exceljs 4's BorderStyle
-  enum (smoke session). Do not revert that; it is unrelated to
-  rotation but blocks `npm run dist` if it regresses.
-- **The feature touches the same file (`src/xlsx.ts`) as M9/M10/M12.**
-  Run the full Jest suite, not just the rotation tests, before flipping
-  the row. Borders, hyperlinks, table styles, chart export, and
-  alignment all share the import/export pipeline.
+  starting point.** Commit `6f33f3a` adds 4 helpers
+  (`buildTextStyleFromExceljsFont`, `buildRichTextCellP`,
+  `buildExceljsFontFromTextStyle`, `extractRichTextRunsFromCellP`)
+  and wires them into `extractCellValue` and `snapshotToXlsxBuffer`.
+  The Jest tests passing tells you the data plumbing is sound — what
+  is unverified is whether **Univer's resolver actually paints
+  per-run formatting from `cell.p.body.textRuns`**. Don't rewrite the
+  helpers prematurely; investigate the renderer first if the visual
+  gate fails. The lesson from M13/C is that the reverted code
+  worked first try once the build and cache state were clean.
+
+- **`cell.p` shape must be the documentSkeleton-finite shape.** The
+  hyperlink path uses `buildHyperlinkCellP` with `pageSize`,
+  paragraphs, and sectionBreaks. `6f33f3a`'s `buildRichTextCellP`
+  reuses that shape — a malformed `cell.p` (missing `pageSize`,
+  missing `sectionBreaks`) will Jest-pass on a textRuns shape match
+  but **crash Univer's layout pipeline on render or hover**. If the
+  visual gate shows nothing rendering, blank cells, or text
+  disappearing on hover, this is the prime suspect.
+
+- **Univer `IDocumentBody.textRuns` `ts` shape — exact key names
+  matter.** Univer 0.23 reads runs as `{st, ed, ts}` with `ts` being
+  `ITextStyle`. Bold is `ts.bl` (1 = on, NOT `true`); italic is
+  `ts.it`; underline is `ts.un.s` (1 = on); colour is `ts.cl.rgb`
+  (string, including `#`). If runs render flat in the visual gate
+  but Jest passes, the bug is most likely in how `ts` is constructed
+  by `buildTextStyleFromExceljsFont` — wrong key names or value
+  shapes (`bl: true` instead of `bl: 1`, missing leading `#` on
+  `cl.rgb`, etc).
+
+- **Pattern A precedence must hold for single-format hyperlinks.**
+  The export side now has TWO `cell.p` consumers — the hyperlink
+  emitter and the rich-text emitter. They cannot both fire. Per
+  `6f33f3a`, `extractRichTextRunsFromCellP` explicitly skips when a
+  hyperlink customRange is present on `cell.p`. If A3 round-trips as
+  a 1-element `richText` (one run, one font, no `hyperlink`), the
+  ordering is wrong and the round-trip Jest assertion will fail.
+  Confirm by inspecting the A3 round-trip assertion before flipping
+  the row.
+
+- **Per-run colours go through the theme+tint resolver.** exceljs
+  surfaces `font.color` as either `{argb}` or `{theme, tint}`. The
+  reverted commit's `buildTextStyleFromExceljsFont` resolves both via
+  the same resolver `extractCellValue` already uses for cell-level
+  fonts. If A2's `Red` and `Blue` render as default-colour, check
+  that the resolver is invoked on **the run's font**, not the parent
+  cell's font.
+
+- **Univer style lookup is by `s` reference for cell-level styles —
+  but rich-text runs are inline on `cell.p.body.textRuns`, NOT in
+  `styles[id]`.** This is a different code path from rotation
+  (M13/C) and the smoke (cell-level colour). Don't try to "fix"
+  rich-text by extracting per-run styles into the `styles` map; runs
+  carry their `ts` inline by design. The smoke / M13/C lesson
+  ("style only renders when on `styles[id]` and the cell carries
+  `s: <id>`") applies only to cell-level style — not to text-run
+  style inside `cell.p`.
+
+- **Region-by-feature pixel sampling.** Add a region helper covering
+  A1:A2 (and optionally A2-only) to `eval-screenshot.js`, plus
+  entries in `REGION_BY_FEATURE` and `TITLE_PREFIX_BY_FEATURE` keyed
+  off `feature-1-m13-rich-text-renders`. M13/C's `rotatedRowRegion`
+  is the template. The A2-only region produces the cleanest colour
+  signal because A3's hyperlink also contributes blue.
+
+- **Don't symptom-patch the test on a Jest failure post-rebuild.** If
+  a Jest assertion regresses after restoring the file, run
+  `git diff package-lock.json` first. exceljs's `richText` and `font`
+  shapes drifted between 3.x and 4.x. We are intentionally on 4.4.0;
+  do NOT edit the test to make a silent downgrade pass — fix the
+  dependency drift instead. Reference:
+  `feedback_dependency_hygiene.md` in operator memory.
+
+- **The feature touches `src/xlsx.ts`, the same file as
+  M9/M10/M12/M13/C.** Run the **full** Jest suite before flipping
+  the row, not just the rich-text tests. Borders, hyperlinks
+  (Pattern A and Pattern B), table-style synthesis, chart export,
+  alignment, and rotation all share the import/export pipeline. The
+  m12 fixture round-trip and m13/C rotation tests must stay green.
+
+- **Window prep is mandatory before evaluator screenshots.**
+  `scripts/pge/prep-joplin-window.sh` (added in M13/C) fills the
+  Joplin window, hides the sidebar and note list, and closes
+  DevTools. A small / panes-up window crops the Univer canvas
+  horizontally, which can make A2 partially offscreen and produce
+  false-negative pixel-sidecar readings. The harness wires this in
+  ahead of `eval-screenshot.js` automatically; do not bypass it.
+
+- **Pre-existing typecheck fix on `tests/exportTableRoundTrip.test.ts`
+  must stay.** Smoke session changed `'dashed'` → `'mediumDashed'`
+  on line 334 (with matching assertion on line 349) to satisfy
+  exceljs 4's `BorderStyle` enum; reverting it would break
+  `npm run dist`. Unrelated to rich-text but blocks the .jpl build.
 
 ## How the planner agent should fill out future BUILD_PLAN.md files
 
-Use this file as the template. Each feature gets:
+Use this file (and the prior M13/C BUILD_PLAN.md preserved in git
+history at `dc80505`) as the template. Each feature gets:
+
 - `### feature-N-<kebab-id>` heading (stable; never renamed once
   written)
 - **Spec**: one paragraph naming the user-observable change
 - **Acceptance criteria**: numbered list of observable evidence
-  (visual, pixel-sidecar, Jest, runtime). No data-shape-only
-  assertions; no "code does X" — only outcomes the evaluator can
-  inspect.
+  (visual, pixel-sidecar, Jest, runtime). NO data-shape-only
+  assertions; NO "code does X" — only outcomes the evaluator can
+  inspect from a fresh context.
 - **Out of scope**: explicit non-goals so the evaluator does not
-  penalise for them
+  penalise for them.
 - **Suggested fixture(s)**: which file(s) under
-  `tests/ExcelBaseTestData/formatting-testdata/` exercise this
-- **Related risks**: regression hot-spots and prior-bug pointers
+  `tests/ExcelBaseTestData/formatting-testdata/` exercise this.
+- **Related risks**: regression hot-spots and prior-bug pointers,
+  including pointers into the reverted PR's commit hashes when the
+  reverted code is the starting point.
 
 The lowest-numbered feature with `passes: false` in
 `test-results.json` is what the generator works on next.

@@ -66,6 +66,7 @@ const CDP_URL = `http://localhost:${CDP_PORT}`;
 const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-smoke-red-cell': 'PGE smoke note ',
     'feature-1-m13-rotated-text-renders': 'PGE M13C eval ',
+    'feature-1-m13-rich-text-renders': 'PGE M13D eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -74,6 +75,7 @@ const TITLE_PREFIX_BY_FEATURE = {
 const REGION_BY_FEATURE = {
     'feature-1-smoke-red-cell': 'rowZero',
     'feature-1-m13-rotated-text-renders': 'rotatedRow',
+    'feature-1-m13-rich-text-renders': 'richTextA1A2',
 };
 
 function discoverApiPort() {
@@ -250,8 +252,22 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
         // colour.
         const inkY = new Set();
         let sampled = 0;
-        for (let y = 0; y < region.h; y += 2) {
-            for (let x = 0; x < region.w; x += 2) {
+        // Aggregated colour bands (match the spec thresholds exactly,
+        // independent of histogram bucketing). Anti-aliased glyph
+        // edges spread saturated colour over many near-but-not-exact
+        // RGB buckets, so the per-bucket histogram can under-report
+        // the visual presence of a colour. These aggregates count
+        // every pixel that satisfies the inequality, regardless of
+        // exact RGB.
+        // Red ink:   R >= 200 AND G <=  80 AND B <=  80
+        // Blue ink:  R <=  80 AND G <=  80 AND B >= 200
+        // Green ink: R <=  80 AND G >= 150 AND B <=  80
+        let redInk = 0, blueInk = 0, greenInk = 0;
+        // Stride 1 (every pixel) — region is small and we want the
+        // colour signal to cross the spec thresholds even on
+        // narrow-glyph runs.
+        for (let y = 0; y < region.h; y += 1) {
+            for (let x = 0; x < region.w; x += 1) {
                 const i = (y * region.w + x) * 4;
                 const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
                 if (a < 200) continue;
@@ -259,6 +275,9 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
                 if (r < 30 && g < 30 && b < 30) continue;          // gridline
                 sampled++;
                 inkY.add(y);
+                if (r >= 200 && g <= 80 && b <= 80) redInk++;
+                if (r <= 80 && g <= 80 && b >= 200) blueInk++;
+                if (r <= 80 && g >= 150 && b <= 80) greenInk++;
                 const key = `rgb(${r},${g},${b})`;
                 hist.set(key, (hist.get(key) || 0) + 1);
             }
@@ -273,7 +292,16 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
             regionWidth: region.w,
             regionHeight: region.h,
             inkRows: inkY.size,
-            inkRowSpread: inkY.size / Math.max(1, Math.ceil(region.h / 2)),
+            inkRowSpread: inkY.size / Math.max(1, region.h),
+            // Aggregated colour-band counts using spec thresholds.
+            // Use these when the per-bucket `top` histogram is fragmented
+            // by anti-aliasing (e.g. saturated colour text inside a
+            // small region). For the M13/D rich-text gate the spec
+            // requires redInk >= 30 and blueInk >= 30 within the A2
+            // band.
+            redInk,
+            blueInk,
+            greenInk,
         };
     }, { regionFnSrc: regionFn.toString(), maxColors });
 }
@@ -297,6 +325,29 @@ function rotatedRowRegion(canvas) {
         y: Math.min(canvas.height - 1, 120),
         w: Math.min(canvas.width, 600),
         h: Math.min(Math.max(canvas.height - 120, 0), 200),
+    };
+}
+
+// Region covering A2 only on the "RichText" sheet of the M13/D
+// fixture — A2 carries the multi-colour pin-down (`Red` red + ` and `
+// default + `Blue` blue + ` text` default) and is the cleanest
+// signal source for the per-run colour gate. We deliberately exclude
+// A3 (single-format hyperlink — ink is also blue, would alias the
+// A2 `Blue` run) and A1 (whose active-cell selection border
+// `rgb(44,83,241)` saturates the histogram with blue pixels even
+// when the cell is plain).
+//
+// Empirical y-band on the running fixture: column header ~y=0–18,
+// A1 ~y=22–37, A2 ~y=41–57, A3 ~y=58+. A2's text band (after
+// excluding the cell border at y=38–40) is roughly y=41–57. We use
+// y=41–58 with a 1px buffer to absorb anti-aliasing on the lower
+// edge.
+function richTextA1A2Region(canvas) {
+    return {
+        x: 0,
+        y: Math.min(canvas.height - 1, 41),
+        w: Math.min(canvas.width, 400),
+        h: Math.min(Math.max(canvas.height - 41, 0), 17),
     };
 }
 
@@ -396,7 +447,11 @@ async function main() {
         let captureWebview = null;
         let captureCanvas = null;
         const regionKind = REGION_BY_FEATURE[FEATURE_ID] || 'rowZero';
-        const regionFn = regionKind === 'rotatedRow' ? rotatedRowRegion : rowZeroRegion;
+        const regionFn = regionKind === 'rotatedRow'
+            ? rotatedRowRegion
+            : regionKind === 'richTextA1A2'
+                ? richTextA1A2Region
+                : rowZeroRegion;
         if (didOpenNote) {
             captureWebview = await pickNotesheetWebview(page);
             if (!captureWebview) {
@@ -438,7 +493,9 @@ async function main() {
             const sidecar = out.replace(/\.png$/, '.pixels.json');
             const regionLabel = regionKind === 'rotatedRow'
                 ? 'rotated row band (y 120–320, slab covering rows 4–6 of the fixture)'
-                : 'row-0 (top 80px slab of main canvas)';
+                : regionKind === 'richTextA1A2'
+                    ? 'rich-text A2 band (y 41–58, multi-colour pin-down: Red+default+Blue+default)'
+                    : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(sidecar, JSON.stringify({
                 source: out,
                 region: regionLabel,
@@ -446,7 +503,7 @@ async function main() {
                 ...pixelSummary,
             }, null, 2));
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
-            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)}`);
+            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk}`);
         }
     } finally {
         // Detach but DO NOT close Joplin.

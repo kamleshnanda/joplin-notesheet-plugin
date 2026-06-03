@@ -505,31 +505,35 @@ describe('M12 round-trip — NumberFormats fixture', () => {
 // ─── RichTextInOneCell.xlsx ────────────────────────────────────────────
 
 describe('M12 round-trip — RichTextInOneCell fixture', () => {
-    test('KNOWN SHORTCOMING — multi-style rich text flattens to plain text on import (→ M13)', async () => {
+    test('import: multi-style rich text emits cell.p with per-run textRuns (M13)', async () => {
         // Source A1: CellRichText(TextBlock(b=True, "Hello"), " world").
-        // Our import flattens this to "Hello world" with no style runs in
-        // cell.p and no bold flag on the cell style. Univer's RichText
-        // model can carry per-run formatting, but plumbing it through
-        // the snapshot is M13 territory.
+        // After M13 workstream D, our import produces cell.p with two
+        // textRuns — first carrying bl=1, second plain. cell.v keeps
+        // the plain-text concatenation so string-only consumers
+        // (snapshot dumpers, html exporters) still work.
+        // Detailed run-shape assertions live in m13RichText.test.ts;
+        // this test guards the high-level invariant.
         const snap = await importFixture('RichTextInOneCell.xlsx');
         const cell = snapshotCell(snap, 0, 0, 0);
         expect(cell.v).toBe('Hello world');
-        expect(cell.hasP).toBe(false); // no rich-text body emitted
-        expect(cell.style?.bl).toBeUndefined(); // bold run is lost
+        expect(cell.hasP).toBe(true);
     });
 
-    test('KNOWN SHORTCOMING — multi-color rich text flattens to plain text (→ M13)', async () => {
+    test('import: multi-color rich text emits cell.p with per-run color textRuns (M13)', async () => {
         const snap = await importFixture('RichTextInOneCell.xlsx');
         const cell = snapshotCell(snap, 0, 1, 0);
         expect(cell.v).toBe('Red and Blue text');
-        expect(cell.hasP).toBe(false);
+        expect(cell.hasP).toBe(true);
     });
 
-    test('import: hyperlink+plain in a single cell preserves the hyperlink (the only RT case we keep)', async () => {
+    test('import: hyperlink+plain in a single cell preserves the hyperlink', async () => {
         // Row 3 has a single-format string with cell.hyperlink set. exceljs
         // reports this as cell.value = "Visit example.com for more info"
-        // with cell.hyperlink = "https://example.com" — Pattern A which
-        // we DO support.
+        // with cell.hyperlink = "https://example.com" — Pattern A. The
+        // import emits cell.p with a HYPERLINK customRange. The
+        // rich-text path (M13 workstream D) intentionally yields to
+        // this Pattern A emission when both shapes could apply, since
+        // a single-format hyperlink cell isn't multi-run rich text.
         const snap = await importFixture('RichTextInOneCell.xlsx');
         const cell = snapshotCell(snap, 0, 2, 0);
         expect(cell.hasP).toBe(true);
