@@ -65,6 +65,15 @@ const CDP_URL = `http://localhost:${CDP_PORT}`;
 // with eval-screenshot.sh / the planner.
 const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-smoke-red-cell': 'PGE smoke note ',
+    'feature-1-m13-rotated-text-renders': 'PGE M13C eval ',
+};
+
+// Per-feature pixel-sampling region. Defaults to row-0 (the smoke
+// pattern). Features whose visual evidence lives elsewhere on the
+// canvas point at a different region helper.
+const REGION_BY_FEATURE = {
+    'feature-1-smoke-red-cell': 'rowZero',
+    'feature-1-m13-rotated-text-renders': 'rotatedRow',
 };
 
 function discoverApiPort() {
@@ -233,6 +242,13 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
         ctx.drawImage(canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
         const data = ctx.getImageData(0, 0, region.w, region.h).data;
         const hist = new Map();
+        // rowsWithInk: how many distinct y-pixels carry text-coloured
+        // ink. For horizontal text in a row, ink concentrates on a
+        // narrow horizontal band (roughly the glyph height ~ 14-18px).
+        // Rotated text spreads ink across many more y-pixels — that
+        // spread is the rotation-positive signal independent of
+        // colour.
+        const inkY = new Set();
         let sampled = 0;
         for (let y = 0; y < region.h; y += 2) {
             for (let x = 0; x < region.w; x += 2) {
@@ -242,13 +258,23 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
                 if (r > 235 && g > 235 && b > 235) continue;       // background
                 if (r < 30 && g < 30 && b < 30) continue;          // gridline
                 sampled++;
+                inkY.add(y);
                 const key = `rgb(${r},${g},${b})`;
                 hist.set(key, (hist.get(key) || 0) + 1);
             }
         }
         const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
         const [dominant, count] = top[0] || [null, 0];
-        return { dominant, count, sampled, top };
+        return {
+            dominant,
+            count,
+            sampled,
+            top,
+            regionWidth: region.w,
+            regionHeight: region.h,
+            inkRows: inkY.size,
+            inkRowSpread: inkY.size / Math.max(1, Math.ceil(region.h / 2)),
+        };
     }, { regionFnSrc: regionFn.toString(), maxColors });
 }
 
@@ -257,6 +283,21 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
 // we use a generous slab to absorb that.
 function rowZeroRegion(canvas) {
     return { x: 0, y: 0, w: Math.min(canvas.width, 400), h: Math.min(canvas.height, 80) };
+}
+
+// Region covering rows 5–6 of the canvas (zero-indexed: rows 4–6 in
+// Univer's 0-based indexing, which lands on the rotated-text band of
+// the MergedCellsAndAlignment fixture). Default row height is 19px and
+// the column header takes ~25px; rotated text expands the row height
+// further. We grab a generous slab from y=120 to y=320 covering
+// roughly rows 4–6.
+function rotatedRowRegion(canvas) {
+    return {
+        x: 0,
+        y: Math.min(canvas.height - 1, 120),
+        w: Math.min(canvas.width, 600),
+        h: Math.min(Math.max(canvas.height - 120, 0), 200),
+    };
 }
 
 async function main() {
@@ -352,19 +393,21 @@ async function main() {
         // forces "the canvas exists AND has been sized" before we
         // screenshot, instead of a fixed sleep.
         let pixelSummary = null;
+        let captureWebview = null;
+        let captureCanvas = null;
+        const regionKind = REGION_BY_FEATURE[FEATURE_ID] || 'rowZero';
+        const regionFn = regionKind === 'rotatedRow' ? rotatedRowRegion : rowZeroRegion;
         if (didOpenNote) {
-            const webview = await pickNotesheetWebview(page);
-            if (!webview) {
+            captureWebview = await pickNotesheetWebview(page);
+            if (!captureWebview) {
                 console.error('eval-screenshot: UserWebviewIndex frame did not appear; the opened note may not be a Notesheet, or the plugin failed to load.');
             } else {
-                const sel = await waitForUniverRender(webview);
+                const sel = await waitForUniverRender(captureWebview);
                 if (sel) {
                     console.error(`eval-screenshot: Univer canvas rendered (selector "${sel}")`);
-                    // Sample the dominant non-background colour over
-                    // row 0. The evaluator sees this in the JSON sidecar
-                    // and can sanity-check claims like "A1 is red".
+                    captureCanvas = sel;
                     try {
-                        pixelSummary = await samplePixelsAt(webview, rowZeroRegion);
+                        pixelSummary = await samplePixelsAt(captureWebview, regionFn);
                     } catch (e) {
                         console.error(`eval-screenshot: pixel sample failed: ${e.message}`);
                     }
@@ -372,11 +415,16 @@ async function main() {
             }
         }
 
-        // 5. Screenshot the WHOLE editor page so the human-eyeball view
-        // (notebook tree + note list + editor with rendered Univer)
-        // is preserved. The pixel-summary sidecar is the
-        // machine-checkable artifact alongside.
-        await page.screenshot({ path: out, fullPage: false });
+        // 5. Screenshot. If a Notesheet canvas is in scope, screenshot
+        // the canvas element directly — it's what the user sees and
+        // it sidesteps Joplin's window-pane cropping (the editor pane
+        // is often narrower than the canvas needs). Otherwise fall
+        // back to the whole page (smoke / verification mode).
+        if (captureWebview && captureCanvas) {
+            await captureWebview.locator(captureCanvas).first().screenshot({ path: out });
+        } else {
+            await page.screenshot({ path: out, fullPage: false });
+        }
         savedPath = out;
         const stat = fs.statSync(out);
         console.error(`eval-screenshot: saved ${out} (${stat.size} bytes)`);
@@ -388,13 +436,17 @@ async function main() {
         // assert against this without doing their own canvas pluck.
         if (pixelSummary) {
             const sidecar = out.replace(/\.png$/, '.pixels.json');
+            const regionLabel = regionKind === 'rotatedRow'
+                ? 'rotated row band (y 120–320, slab covering rows 4–6 of the fixture)'
+                : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(sidecar, JSON.stringify({
                 source: out,
-                region: 'row-0 (top 80px slab of main canvas)',
+                region: regionLabel,
+                regionKind,
                 ...pixelSummary,
             }, null, 2));
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
-            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled}`);
+            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)}`);
         }
     } finally {
         // Detach but DO NOT close Joplin.

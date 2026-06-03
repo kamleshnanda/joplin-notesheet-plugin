@@ -245,6 +245,18 @@ function buildStyleFromExcelCell(cell: ExcelJS.Cell, themePalette: ThemePalette 
             style.vt = VERTICAL[align.vertical as keyof typeof VERTICAL];
         }
         if (align.wrapText) style.tb = WRAP_STRATEGY_WRAP;
+        // Text rotation. exceljs surfaces this as either a signed integer
+        // in [-90, 90] (CCW positive) or the literal string 'vertical' for
+        // OOXML's stacked-text mode 255. Univer encodes both via
+        // ITextRotation: { a: number, v?: 1 }, where v=1 means stacked.
+        // We deliberately skip the no-op `textRotation === 0` case so the
+        // snapshot doesn't carry a trivial `tr: { a: 0 }` for every cell.
+        const rot = align.textRotation;
+        if (rot === 'vertical') {
+            style.tr = { a: 0, v: 1 };
+        } else if (typeof rot === 'number' && rot !== 0) {
+            style.tr = { a: rot };
+        }
     }
 
     if (cell.numFmt && cell.numFmt !== 'General') {
@@ -1380,6 +1392,14 @@ function applyStyleToCell(
     else if (style.vt === 3) align.vertical = 'bottom';
     if (style.tb === WRAP_STRATEGY_WRAP) align.wrapText = true;
     else if (style.tb === WRAP_STRATEGY_CLIP) align.wrapText = false;
+    // Text rotation. Reverse of the import-side mapping: Univer's
+    // ITextRotation { a, v } → exceljs's textRotation (number | 'vertical').
+    // Stacked mode (v=1) wins over the angle.
+    const tr = style.tr as { a?: number; v?: number } | undefined;
+    if (tr) {
+        if (tr.v === 1) align.textRotation = 'vertical';
+        else if (typeof tr.a === 'number' && tr.a !== 0) align.textRotation = tr.a;
+    }
     if (Object.keys(align).length > 0) cell.alignment = align;
 
     const numFmt = (style.n as { pattern?: string } | undefined)?.pattern;
