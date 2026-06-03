@@ -32,6 +32,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ⏳ | M14 — Snapshot → HTML for Joplin's PDF/HTML export menu | planned |
 | ⏳ | M15 — Chart import from `.xlsx` | planned |
 | ⏳ | M16 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set) | planned |
+| ⏳ | M17 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13-redo fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads rotated text and conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. | planned |
 
 > **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
 
@@ -150,6 +151,37 @@ accidentally changes.
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
   later theme change in the host won't update the rendering.
+
+### Tolerated transitive deprecations + audit warnings
+
+`npm install` and `npm audit` print warnings for transitive packages
+buried under our direct dependencies. The summary below documents
+which we tolerate and why; we do not paper over them with `npm
+audit fix --force` or `overrides` blocks because both fixes
+introduce silent regression risk worse than the warnings themselves.
+
+- **`uuid@8.3.2` → moderate CVE
+  [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)**
+  (missing buffer bounds check in `uuid.v3`/`v5`/`v6` when `buf`
+  arg is supplied). Pulled in by exceljs. **Not reachable** —
+  exceljs only calls the CVE-free `uuid()` (random v4) for
+  identifier generation; `v3`/`v5`/`v6` are never invoked.
+  `npm audit fix --force` would downgrade exceljs to 3.4.0
+  (a major-version DOWNGRADE), which is unacceptable. Real fix
+  is upstream in exceljs (or migrate off — see M17).
+- **Transitive deprecation noise** (`inflight@1`, `rimraf@2`,
+  `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3):
+  every entry is buried under exceljs (`>archiver`, `>unzipper`,
+  `>fast-csv`) or jest@30 internals. We are already on jest@30
+  (M11 bumped specifically to drop deprecated transitive globs);
+  no further direct-dep change can clear these. Only an exceljs
+  replacement does — see M17.
+- **`glob@11.1.0`** (our direct devDep) — npm prints a blanket
+  "old versions of glob" warning for any glob it sees, but
+  `glob@11.1.0` IS the current major. Ignore.
+
+These warnings are real upstream signals; we just can't act on them
+from `package.json` without making something worse.
 
 ### `.xlsx` import — unsupported shapes (handled with friendly errors)
 
