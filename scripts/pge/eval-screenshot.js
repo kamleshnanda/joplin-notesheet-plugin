@@ -212,6 +212,18 @@ async function main() {
 
         const page = await pickEditorPage(context, debug);
 
+        // Belt-and-braces: wait for the renderer to settle before doing
+        // anything else. A freshly-attached CDP session can land mid-
+        // navigation (Joplin's startup loads a few async chunks); without
+        // this gate, `joplin://` dispatch + screenshot can race the load
+        // and capture a half-rendered editor. Bounded so a stuck network
+        // doesn't hang the eval forever.
+        try {
+            await page.waitForLoadState('networkidle', { timeout: 10_000 });
+        } catch {
+            console.error('eval-screenshot: networkidle wait timed out at 10s; proceeding anyway.');
+        }
+
         // 3. Open the test note (unless we're in PGE_OUT verification
         // mode without a feature-specific lookup — but we still take
         // whatever page is showing if PGE_NOTE_ID is unset and the

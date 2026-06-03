@@ -91,3 +91,40 @@ dispatched via subprocess `open` (not `page.evaluate`) because the
 URL handler lives in Joplin's main process, not the renderer.
 
 ---
+
+## 2026-06-02T15:00Z — claude — integrate subagents A + B
+
+Both subagents returned cleanly:
+
+- A (`512d495`): CDP-attach driver. Verified end-to-end with the
+  existing dev-profile note "PGE smoke note test1": CDP exposes 4
+  pages (devtools + 2 plugin sandboxes + editor); scoring picks the
+  editor unambiguously (16 vs 11/0/0). Captured /tmp/pge-verify2.png
+  (89 KB), shows real Joplin pixels with the empty `{}` body. The
+  Notesheet plugin is NOT yet installed in the dev profile, so
+  `.univer-render-canvas` doesn't exist yet — that's the generator's
+  first job (build .jpl, install-plugin.sh, then create the seed).
+- B (`b576440`): Jest pin-down at `emptySnapshot()` in
+  `src/snapshot.ts:65-85`. 5 tests; 3 currently RED (A1 value, A1
+  style→#FF0000, wrap→extract round-trip) — exactly the shape the
+  generator needs to flip green. Caveat from B: jest cannot prove
+  visual rendering; the visual gate (evaluator screenshot) remains
+  load-bearing. Documented this in test header.
+
+Operator hint received this turn: a `connectOverCDP` sample using
+`page.waitForLoadState('networkidle')`. Folded that into
+`eval-screenshot.js` (line ~213) bounded at 10s, with a stderr
+warning on timeout — protects against attaching mid-navigation
+during Joplin's startup-async-chunk loading.
+
+Open issue surfaced by verification: Notesheet plugin not in the dev
+profile yet. Generator's PGE/CLAUDE.md proof-before-passing sequence
+explicitly requires `npm run dist && bash install-plugin.sh` before
+opening the fixture, so this resolves itself once the generator
+runs. Logging here so the operator (or a future debugger) doesn't
+mistake "no Univer canvas" for a driver bug.
+
+Next: invoke `scripts/pge/run-cycle.sh` to drive the smoke generator
++ evaluator end-to-end.
+
+---
