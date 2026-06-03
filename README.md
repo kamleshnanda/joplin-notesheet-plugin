@@ -28,11 +28,13 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M11 — Dependency hygiene: Jest 29 → 30 to drop deprecated transitive `glob@7` | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
 | ✅ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (Pattern A `{text, hyperlink}` + Pattern B named cell style), workbook theme palette round-trip, table grid border synthesis, friendly errors for unsupported `.xlsx` shapes | [#14](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/14) [#15](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/15) |
 | ✅ | PGE — Planner-Generator-Evaluator harness for runtime visual gating (catches the M13 failure mode where Jest passes but Univer renders broken) | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
-| ⏳ | M13-redo — Rotated text + rich-text formatting + theme-aware banding accuracy, validated via the PGE harness | planned |
+| ✅ | M13/C — Rotated text round-trip, validated via the PGE harness | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
+| ✅ | M13/D — Rich-text within a single cell (multi-run bold / colour / italic), validated via the PGE harness | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
+| ⏳ | M13/E — Theme-aware banding accuracy (remaining M13 workstream) | planned |
 | ⏳ | M14 — Snapshot → HTML for Joplin's PDF/HTML export menu | planned |
 | ⏳ | M15 — Chart import from `.xlsx` | planned |
 | ⏳ | M16 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set) | planned |
-| ⏳ | M17 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13-redo fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads rotated text and conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. | planned |
+| ⏳ | M17 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13 fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. | planned |
 
 > **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
 
@@ -137,16 +139,10 @@ accidentally changes.
   with what the same file renders in Excel. The exported `.xlsx`
   preserves the source's `<a:clrScheme>`, so opening the round-tripped
   file back in Excel renders it correctly; only the in-Joplin paint
-  is hardcoded. → M13.
+  is hardcoded. → M13/E.
 - **Conditional formatting**: color scale / data bar / cell-is /
   top-N / icon-set rules are dropped on import and not re-emitted on
   export. Cell values themselves survive. → M16.
-- **Rotated text**: cells with `text_rotation` set in Excel lose
-  their rotation on import (`tr` is not extracted). → M13-redo.
-- **Rich-text within a single cell**: bold runs, color runs, or
-  multi-format text inside one cell flatten to plain text on import.
-  Only the hyperlink-only case (a single-format cell with `cell.hyperlink`
-  set) survives because we model that as `cell.p`. → M13-redo.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
@@ -191,10 +187,10 @@ host UI can show an actionable message instead of a raw stack trace.
 
 - **Workbooks with chart drawings** → `xlsx-charts-unsupported`. exceljs's
   drawing-reconcile crashes on chart anchor structures that openpyxl
-  and modern Excel emit. M13/M15 will work around this — M13 by hardening
-  our import path to skip drawings before they reach exceljs, and M15 by
-  reading the chart structure directly with a lightweight OOXML reader
-  similar to the M10 export path.
+  and modern Excel emit. M15 will address this by reading the chart
+  structure directly with a lightweight OOXML reader similar to the
+  M10 export path (and pre-stripping drawings before they reach exceljs
+  on the read path).
 - **Multi-sheet workbooks where each sheet has its own named table**
   → `xlsx-multi-table-unsupported`. exceljs's table-reduce crashes when
   more than one sheet has a `<tableParts>` block.
