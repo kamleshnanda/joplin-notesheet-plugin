@@ -1,0 +1,49 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m13-rich-text-renders/eval-2026-06-03T19-46-51-073Z.png",
+  "region": "rich-text A2 band (y 41–58, multi-colour pin-down: Red+default+Blue+default)",
+  "regionKind": "richTextA1A2",
+  "dominant": "rgb(0,0,255)",
+  "count": 76,
+  "sampled": 206,
+  "top": [
+    [
+      "rgb(0,0,255)",
+      76
+    ],
+    [
+      "rgb(255,0,0)",
+      67
+    ],
+    [
+      "rgb(217,217,217)",
+      17
+    ],
+    [
+      "rgb(214,216,219)",
+      16
+    ],
+    [
+      "rgb(221,222,223)",
+      3
+    ],
+    [
+      "rgb(49,49,49)",
+      2
+    ],
+    [
+      "rgb(189,189,190)",
+      2
+    ],
+    [
+      "rgb(209,210,211)",
+      1
+    ]
+  ],
+  "regionWidth": 400,
+  "regionHeight": 17,
+  "inkRows": 17,
+  "inkRowSpread": 1,
+  "redInk": 67,
+  "blueInk": 76,
+  "greenInk": 0
+}
