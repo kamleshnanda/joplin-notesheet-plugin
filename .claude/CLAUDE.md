@@ -99,6 +99,48 @@ also `git add` new source files explicitly and `git commit` at
 meaningful checkpoints with descriptive messages. The `commit-on-stop`
 hook is a backstop, not a primary commit strategy.
 
+## Dependency hygiene
+
+Dependency drift has bitten this project before — `exceljs` silently
+moved 4.4.0 → 3.4.0 during an `npm install playwright` and the
+resulting BorderStyle typecheck error got patched by editing the
+test instead of investigating the version. Don't do that.
+
+**After ANY `npm install`, `npm update`, or other dependency-touching
+command:**
+
+1. Run `git diff package.json package-lock.json` BEFORE the commit.
+2. Surface every version change in `package.json` to the operator —
+   not just the ones the operator asked for. npm's transitive
+   resolution decisions are not implicitly approved.
+3. **Downgrades** (any `from > to` in semver) are blocked by default.
+   They require: (a) an explicit blocking issue documented in the
+   commit message or PR body, AND (b) operator approval before the
+   commit lands. "npm decided" / "to fix CI" are never sufficient.
+   If CI is broken, fix the CI environment first.
+4. **Major-version upgrades**: call out the breaking-change risk
+   surface — Node engines, peer deps, public API changes — in the
+   commit message. Don't bury them in an unrelated change.
+
+**When a typecheck error or test failure happens right after a
+dependency change**, the first hypothesis is "the dependency changed
+in a way I didn't expect." Check the resolved version and its public
+types BEFORE editing application code or tests to make the symptom
+go away. Editing the test is the wrong fix when the type the test
+referenced was correct under the previous version.
+
+**When CI fails on something that builds locally**, the first
+hypothesis is environment drift (Node version, OS, lockfile), not
+"this dependency is broken — swap it." Update the environment to
+match the dependency's actual requirements when those requirements
+are reasonable; only swap the dependency if the requirement is
+itself broken.
+
+This is operator-facing too — flag the trade-off explicitly with
+both options and a recommendation, then wait. Reasoning yourself
+toward one option before presenting it is not the same thing as
+choosing.
+
 ## If you're told to stop
 
 `OPERATOR STEERING:` messages come from a human via the `steer.sh`
