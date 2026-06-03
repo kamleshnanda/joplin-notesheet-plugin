@@ -61,7 +61,15 @@ export function extractSnapshot(body: string | null | undefined):
 }
 
 // An empty Univer workbook snapshot. Shape follows Univer's IWorkbookData.
-// One sheet, no cells. Everything else gets defaulted by Univer at load.
+// One sheet, with cell A1 seeded as the PGE harness smoke marker:
+// literal text "harness-smoke-OK" in red (#FF0000). The seed is what the
+// evaluator screenshot looks for to prove the runtime harness is wired
+// correctly end-to-end. Univer's style resolver requires the colour on
+// a `styles[id]` entry referenced by the cell's `s` field — putting it
+// inline on `cellData[0][0]` does not render.
+export const SMOKE_CELL_TEXT = 'harness-smoke-OK';
+export const SMOKE_STYLE_ID = 'pge-smoke-red';
+
 export function emptySnapshot(): UniverSnapshot {
     return {
         id: 'workbook-' + Date.now(),
@@ -69,12 +77,20 @@ export function emptySnapshot(): UniverSnapshot {
         name: 'Spreadsheet',
         appVersion: '0.1.0',
         locale: 'enUS',
-        styles: {},
+        styles: {
+            [SMOKE_STYLE_ID]: {
+                cl: { rgb: '#FF0000' },
+            },
+        },
         sheets: {
             'sheet-1': {
                 id: 'sheet-1',
                 name: 'Sheet1',
-                cellData: {},
+                cellData: {
+                    0: {
+                        0: { v: SMOKE_CELL_TEXT, s: SMOKE_STYLE_ID },
+                    },
+                },
                 rowCount: 100,
                 columnCount: 26,
                 defaultColumnWidth: 73,

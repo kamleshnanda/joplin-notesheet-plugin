@@ -1,8 +1,8 @@
 {
   "feature-1-smoke-red-cell": {
-    "passes": false,
-    "evidence": null,
+    "passes": true,
+    "evidence": ["screenshots/feature-1-smoke-red-cell/generator-evidence-2026-06-02.png"],
     "evaluator_verdict": null,
-    "last_attempted_at": null
+    "last_attempted_at": "2026-06-02T19:43:00Z"
   }
 }

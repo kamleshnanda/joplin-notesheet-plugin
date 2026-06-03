@@ -128,3 +128,59 @@ Next: invoke `scripts/pge/run-cycle.sh` to drive the smoke generator
 + evaluator end-to-end.
 
 ---
+
+## 2026-06-02T19:43Z — claude — generator inline (decision + execution)
+
+Decision: drove the GENERATOR work inline rather than via the
+`claude -p` subprocess in run-cycle.sh. Rationale: a
+fork-and-disown of claude-p in headless mode is hard to observe and
+recover from if it stalls, and the load-bearing architectural
+property of PGE is the FRESH-CONTEXT EVALUATOR, not the
+fresh-context generator. Evaluator will still run as a separate
+subprocess (next step). The 5-mechanism evidence gate
+(default-FAIL contract, verify-gate hook, fresh evaluator, no
+write tools on evaluator, judge-by-bytes) is preserved.
+
+Steps executed:
+1. Read `src/snapshot.ts:emptySnapshot()`. Edited it to seed A1 =
+   "harness-smoke-OK" with `s: 'pge-smoke-red'` referencing
+   `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`. Exported
+   `SMOKE_CELL_TEXT` and `SMOKE_STYLE_ID` for future tests.
+2. Ran `npx jest tests/m13RedoSmokeRedCell.test.ts` — all 5 tests
+   green (B's pin-downs flipped from 3 RED → 5 GREEN exactly as
+   designed).
+3. Ran full `npx jest` — 174 pass, 1 skipped, 1 fail in
+   `tests/exportTableRoundTrip.test.ts:334` (pre-existing typecheck
+   error, `'dashed'` not in exceljs BorderStyle). Verified pre-existing
+   via `git stash → run → stash pop`. Fixed by changing to
+   `'mediumDashed'` (line 334 + assertion on line 349) because the
+   webpack build's TS check blocks .jpl creation otherwise.
+4. Ran `npm run dist` — built
+   `publish/com.kamleshnanda.joplin-notesheet.jpl` (13.5 MB).
+5. Quit dev Joplin via `osascript -e 'tell application id ... to quit'`,
+   confirmed via pgrep. Wiped plugin cache + copied .jpl via
+   `install-plugin.sh`. Relaunched via `launch-joplin.sh` — both
+   Web Clipper API and CDP responsive.
+6. Discovered the existing test1 note's body is `{}` which the
+   plugin's extractSnapshot accepts as valid (empty workbook), so
+   the seed never triggers. Added
+   `scripts/pge/create-seeded-notesheet.js` which duplicates
+   emptySnapshot() output and POSTs the SEEDED body via API. Created
+   note `ee3070aa99854970818ee7e6f2833df5`.
+7. Ran eval-screenshot.js → captured 138 KB PNG of the Joplin
+   renderer with the seeded note open.
+   `Read(/tmp/pge-smoke-attempt1.png)` confirmed visually: A1 shows
+   `harness-smoke-OK` in red, formula bar shows the same value,
+   plugin loaded as `plugin_index.html?pluginId=com.kamleshnanda.joplin-notesheet`
+   in CDP page list.
+8. Copied screenshot to canonical
+   `screenshots/feature-1-smoke-red-cell/generator-evidence-2026-06-02.png`,
+   re-Read it (track-read hook records via the .png glob), then
+   flipped `test-results.json` row to `passes: true` with evidence
+   pointer + UTC timestamp. The verify-gate hook allowed the Write
+   because evidence had been Read.
+
+Pending: invoke fresh-context evaluator subprocess
+(`claude --agent evaluator -p ...`) to grade.
+
+---
