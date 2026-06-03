@@ -5,9 +5,13 @@
       "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-aptos.png",
       "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.png",
       "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-aptos.pixels.json",
-      "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.pixels.json"
+      "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-03T22-20-05-545Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-03T22-20-05-545Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-03T22-20-15-995Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-03T22-20-15-995Z.pixels.json"
     ],
-    "evaluator_verdict": null,
+    "evaluator_verdict": "PASS",
     "last_attempted_at": "2026-06-03T22:18:00Z"
   }
 }

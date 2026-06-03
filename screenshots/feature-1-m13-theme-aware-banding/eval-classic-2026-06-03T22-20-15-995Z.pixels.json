@@ -1,0 +1,50 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-03T22-20-15-995Z.png",
+  "region": "table header band (x 80–480, y 22–35; cols B+ of A1:_ table header row, excludes A1 active-cell selection border)",
+  "regionKind": "tableHeaderRow",
+  "dominant": "rgb(165,165,165)",
+  "count": 3815,
+  "sampled": 4313,
+  "top": [
+    [
+      "rgb(165,165,165)",
+      3815
+    ],
+    [
+      "rgb(150,169,248)",
+      136
+    ],
+    [
+      "rgb(166,166,166)",
+      27
+    ],
+    [
+      "rgb(233,233,233)",
+      16
+    ],
+    [
+      "rgb(202,212,252)",
+      16
+    ],
+    [
+      "rgb(181,181,181)",
+      14
+    ],
+    [
+      "rgb(162,163,169)",
+      13
+    ],
+    [
+      "rgb(46,85,241)",
+      13
+    ]
+  ],
+  "regionWidth": 400,
+  "regionHeight": 13,
+  "inkRows": 13,
+  "inkRowSpread": 1,
+  "redInk": 0,
+  "blueInk": 0,
+  "greenInk": 0,
+  "greyInk": 3914
+}
