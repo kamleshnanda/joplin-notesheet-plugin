@@ -1,13 +1,13 @@
 {
-  "feature-1-m13-rotated-text-renders": {
+  "feature-1-m13-rich-text-renders": {
     "passes": true,
     "evidence": [
-      "screenshots/feature-1-m13-rotated-text-renders/generator-evidence-2026-06-03.png",
-      "screenshots/feature-1-m13-rotated-text-renders/generator-evidence-2026-06-03.pixels.json",
-      "screenshots/feature-1-m13-rotated-text-renders/eval-2026-06-03T18-25-25-245Z.png",
-      "screenshots/feature-1-m13-rotated-text-renders/eval-2026-06-03T18-25-25-245Z.pixels.json"
+      "screenshots/feature-1-m13-rich-text-renders/generator-evidence.png",
+      "screenshots/feature-1-m13-rich-text-renders/generator-evidence.pixels.json",
+      "screenshots/feature-1-m13-rich-text-renders/eval-2026-06-03T19-46-51-073Z.png",
+      "screenshots/feature-1-m13-rich-text-renders/eval-2026-06-03T19-46-51-073Z.pixels.json"
     ],
     "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-03T18:26:00Z"
+    "last_attempted_at": "2026-06-03T19:55:00Z"
   }
 }
