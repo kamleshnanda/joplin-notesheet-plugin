@@ -32,7 +32,7 @@ const PNG_SIGNATURE_HEX = '89504e470d0a1a0a';
 
 export function decodePng(filePath: string): DecodedPng {
     const buf = readFileSync(filePath);
-    if (buf.slice(0, 8).toString('hex') !== PNG_SIGNATURE_HEX) {
+    if (buf.subarray(0, 8).toString('hex') !== PNG_SIGNATURE_HEX) {
         throw new Error(`Not a PNG: ${filePath}`);
     }
     let i = 8;
@@ -40,8 +40,8 @@ export function decodePng(filePath: string): DecodedPng {
     const idat: Buffer[] = [];
     while (i < buf.length) {
         const len = buf.readUInt32BE(i); i += 4;
-        const type = buf.slice(i, i + 4).toString('ascii'); i += 4;
-        const data = buf.slice(i, i + len); i += len;
+        const type = buf.subarray(i, i + 4).toString('ascii'); i += 4;
+        const data = buf.subarray(i, i + len); i += len;
         i += 4; // CRC, ignored
         if (type === 'IHDR') {
             width = data.readUInt32BE(0);
@@ -67,7 +67,7 @@ export function decodePng(filePath: string): DecodedPng {
     let prev = Buffer.alloc(width * channels);
     for (let y = 0; y < height; y++) {
         const filterByte = raw[y * stride];
-        const scanline = raw.slice(y * stride + 1, y * stride + stride);
+        const scanline = raw.subarray(y * stride + 1, y * stride + stride);
         const cur = Buffer.alloc(width * channels);
         for (let x = 0; x < scanline.length; x++) {
             const a = x >= channels ? cur[x - channels] : 0;
