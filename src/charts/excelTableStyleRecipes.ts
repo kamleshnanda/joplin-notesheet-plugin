@@ -84,12 +84,20 @@ export interface ExcelTableStyleRecipe {
     totalsFg?: ColorSlotRecipe;
     borderColor?: ColorSlotRecipe;
     /**
-     * The double-line border Excel paints between the data area and the
-     * totals row. Catalog `borderColor` slot only models the table
-     * outline; this is a separate decoration. Style is fixed to "double"
-     * across all built-in TableStyles that use it.
+     * The accent-coloured top border on the totals row. Catalog
+     * `borderColor` slot only models the table outline; this is a
+     * separate decoration.
      */
     totalsTopBorder?: ColorSlotRecipe;
+    /**
+     * The accent-coloured bottom border on the totals row. Excel paints
+     * this in addition to (and the same colour as) `totalsTopBorder` —
+     * see `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`,
+     * which carries `#72D068` strips at both the top and bottom of the
+     * totals row body. Replaces the table-outline `borderColor` on the
+     * totals row's bottom edge.
+     */
+    totalsBottomBorder?: ColorSlotRecipe;
 }
 
 const WHITE: ColorSlotRecipe = { accent: null, rgb: '#FFFFFF' };
@@ -135,6 +143,7 @@ function mediumFor(accent: 1 | 2 | 3 | 4 | 5 | 6, n: number): ExcelTableStyleRec
         totalsFg: BLACK,
         borderColor: { accent, tint: 0 },
         totalsTopBorder: { accent, tint: 0.4 },
+        totalsBottomBorder: { accent, tint: 0.4 },
     };
 }
 
@@ -252,6 +261,7 @@ export interface ExcelTableStyleEmpiricalOverride {
     totalsFg?: string;
     borderColor?: string;
     totalsTopBorder?: string;
+    totalsBottomBorder?: string;
 }
 
 export const EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES: Record<
@@ -261,10 +271,15 @@ export const EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES: Record<
     TableStyleMedium4: {
         // Aptos accent3. Measured 2026-06-03 from
         // screenshots/excel-reference/FormattingSmorgasboard-Aptos.png.
+        // Both top and bottom of the totals row carry the same accent-
+        // tinted strip — verified by pixel probe at y=424-425 (bottom of
+        // last data row / top of totals) and y=472-473 (bottom of
+        // totals / table outline). Both are #72D068.
         '#196B24': {
             headerBg: '#34692E',
             bandedRowEvenBg: '#CAEFCB',
             totalsTopBorder: '#72D068',
+            totalsBottomBorder: '#72D068',
         },
         // Classic accent3. Measured 2026-06-03 from
         // screenshots/excel-reference/FormattingSmorgasboard-Classic.png.
@@ -272,6 +287,7 @@ export const EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES: Record<
             headerBg: '#A5A5A5',
             bandedRowEvenBg: '#EDEDED',
             totalsTopBorder: '#C9C9C9',
+            totalsBottomBorder: '#C9C9C9',
         },
     },
 };

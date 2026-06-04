@@ -14,10 +14,14 @@
       "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T02-23-31-733Z.pixels.json",
       "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T02-23-46-303Z.png",
       "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T02-23-46-303Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T06-12-06-152Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T06-12-06-152Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T06-12-09-633Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T06-12-09-633Z.pixels.json",
       "screenshots/excel-reference/FormattingSmorgasboard-Aptos.png",
       "screenshots/excel-reference/FormattingSmorgasboard-Classic.png"
     ],
     "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-04T02:30:00Z"
+    "last_attempted_at": "2026-06-04T06:13:00Z"
   }
 }

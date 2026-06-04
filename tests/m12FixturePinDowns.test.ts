@@ -568,21 +568,22 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
         expect(bg).toMatch(/^#([0-9A-F]{2})\1\1$/i);
     });
 
-    test('Aptos fixture: totals-row top border carries the Excel separator (#72D068 green, MEDIUM)', async () => {
-        // PR #22's recipe shape did not model the totals-row top
-        // separator at all — the `borderColor` slot only covers the
-        // table outline. M13/E adds a `totalsTopBorder` slot.
+    test('Aptos fixture: totals-row carries top AND bottom borders in the Excel separator (#72D068 green, MEDIUM, both sides)', async () => {
+        // PR #22's recipe shape did not model the totals-row separators
+        // at all — the `borderColor` slot only covers the table outline.
+        // M13/E adds `totalsTopBorder` and `totalsBottomBorder` slots.
         //
         // Style choice MEDIUM (s=8) NOT DOUBLE (s=7): Excel's render
-        // shows a single 2px strip in the lighter accent, not a true
-        // double-line. Pixel sampling confirms this in
-        // `tests/excelCanvasFidelity.test.ts`. Univer 0.23's DOUBLE
-        // renders with `getLineWidth=1` and a 0.5px half-offset (two
-        // 1px strips with a 1-px white gap) which reads as anti-aliased
-        // `#89CE74` rather than the pure `#72D068` Excel paints. MEDIUM
-        // (lineWidth=2) paints the pure target colour and matches.
+        // shows a single 2px strip in the lighter accent on each side,
+        // separated by the totals-row body height. Pixel sampling at
+        // `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`
+        // confirms strips at y=424-425 (top) and y=472-473 (bottom),
+        // both `#72D068`, with white body in between.
         //
-        // For Aptos the measured totals-top colour is #72D068 (green).
+        // The totals BOTTOM strip replaces the table outline's thin
+        // frame on the totals row's bottom edge — Excel paints the
+        // accent-coloured strip across the full width, not the outline
+        // colour.
         const snap = await importFixture(APTOS);
         const sheet = snap.sheets[snap.sheetOrder[0]];
         // ProjectTracker has totalsRowCount=1; totals row is row 9.
@@ -590,11 +591,32 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
         expect(totalsCell?.s).toBeDefined();
         const style = snap.styles[totalsCell!.s!];
         const bd = style.bd as
-            | { t?: { s: number; cl: { rgb: string } } }
+            | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
             | undefined;
         expect(bd?.t).toBeDefined();
         expect(bd!.t!.cl.rgb).toBe('#72D068');
-        // s=8 is Univer's BorderStyleTypes.MEDIUM.
+        expect(bd!.t!.s).toBe(8); // BorderStyleTypes.MEDIUM
+        expect(bd?.b).toBeDefined();
+        expect(bd!.b!.cl.rgb).toBe('#72D068');
+        expect(bd!.b!.s).toBe(8);
+    });
+
+    test('Classic fixture: totals-row carries top AND bottom borders in the Excel separator (#C9C9C9 grey, MEDIUM, both sides)', async () => {
+        // Same shape as Aptos, different accent. Empirical override
+        // for Classic accent3 #A5A5A5 sets both sides to #C9C9C9.
+        const snap = await importFixture(CLASSIC);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        const totalsCell = sheet.cellData[9]?.[0];
+        expect(totalsCell?.s).toBeDefined();
+        const style = snap.styles[totalsCell!.s!];
+        const bd = style.bd as
+            | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
+            | undefined;
+        expect(bd?.t).toBeDefined();
+        expect(bd!.t!.cl.rgb).toBe('#C9C9C9');
         expect(bd!.t!.s).toBe(8);
+        expect(bd?.b).toBeDefined();
+        expect(bd!.b!.cl.rgb).toBe('#C9C9C9');
+        expect(bd!.b!.s).toBe(8);
     });
 });

@@ -128,6 +128,53 @@ every feature.
   - **Test totals**: 204 → 206. Gain of 2 = 2 canvas-fidelity tests
     (Aptos + Classic), no other test changes.
 
+  - **Phase 4 — totals-row BOTTOM border (rework #3 follow-up).**
+    Operator's eyeball + side-by-side pixel-probe against the Excel
+    reference revealed the totals row in Excel paints TWO accent
+    strips, framing top AND bottom of the totals body — not just a
+    top strip. Pixel-probe at `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`
+    confirmed strips at y=424-425 (top) and y=472-473 (bottom), both
+    `#72D068`, separated by ~46px white totals-body. Recipe extended:
+    new `totalsBottomBorder` slot in `excelTableStyleRecipes.ts` +
+    `excelTableStyles.ts`, parallel to `totalsTopBorder`. Empirical
+    overrides set both Aptos and Classic to the lighter accent
+    (`#72D068` / `#C9C9C9`). `synthesizeTableStyleAssignments` emits
+    `bd.b = { s: 8, cl: { rgb: <totalsBottomBorder> } }` on every
+    totals cell, REPLACING the table outline's thin frame on that
+    side (Excel paints the accent strip across the full width, not
+    the outline colour).
+    - Diagnostic asset: `tests/ExcelBaseTestData/formatting-testdata/border-isolation.xlsx`
+      — operator-built fixture with explicit DOUBLE/THIN borders in
+      various combinations. Pixel-probed against Excel's render to
+      establish ground truth: Excel's DOUBLE = 2px+2px+2px (~6px
+      tall) — nothing like the wider gap we see between totals-top
+      and totals-bottom strips, which are TWO separate borders, not
+      one DOUBLE.
+    - Pin-downs updated: `tests/m12FixturePinDowns.test.ts` adds two
+      tests (Aptos + Classic) asserting `bd.t` AND `bd.b` carry the
+      MEDIUM accent strip. `tests/excelReferenceFidelity.test.ts`
+      adds two tests (Aptos + Classic totals BOTTOM border) and
+      relabels the existing top-border tests (the prior cycle's
+      "totals row top border" was actually sampling the BOTTOM
+      strip at y=472; both happened to share the same colour so
+      the assertion passed by coincidence).
+    - **KNOWN GAP — Univer renders `bd.b` with the wrong colour.**
+      The synthesized snapshot is correct (`bd.b.cl.rgb === '#72D068'`
+      verified via direct `xlsxBufferToSnapshot` introspection on
+      every totals cell). When the .jpl is loaded in Joplin and
+      pixel-probed, the rendered bottom strip at y=436 shows
+      `rgb(52,106,46) = #34692E` — the header's dark green, NOT the
+      lighter `#72D068` from `bd.b`. Top strip at y=398 renders
+      correctly. The mismatch is in Univer's renderer, not in our
+      synthesis. Filed as renderer-side follow-up; the synthesis
+      change ships as it improves the snapshot fidelity even before
+      the renderer side is fixed.
+    - **Test totals**: 206 → 209. Gain of 3 = 2 canvas-fidelity
+      bottom-border tests (already wired in earlier; just renamed
+      and added bottom counterparts) + 1 net new pin-down per
+      fixture (Aptos: top-only → top+bottom merged; Classic: net new
+      "totals row carries top AND bottom" test).
+
   - PRIOR session shipped (recorded for history):
   - **Phase 1 — smoke seed fix.** `src/snapshot.ts:emptySnapshot()`
     no longer seeds A1 with the harness "harness-smoke-OK" red text.

@@ -1013,6 +1013,7 @@ function resolveTableStylePalette(
         totalsFg: resolve(recipe.totalsFg, catalog.totalsFg, ov.totalsFg),
         borderColor: resolve(recipe.borderColor, catalog.borderColor, ov.borderColor),
         totalsTopBorder: resolve(recipe.totalsTopBorder, undefined, ov.totalsTopBorder),
+        totalsBottomBorder: resolve(recipe.totalsBottomBorder, undefined, ov.totalsBottomBorder),
     };
 }
 
@@ -1136,37 +1137,44 @@ function synthesizeTableStyleAssignments(
 
     // Totals row.
     if (totalRows === 1) {
-        // The totals-row top border is the table-style's lighter accent
-        // shade (e.g. `#72D068` for Aptos accent3 — see
+        // The totals row carries TWO accent-coloured strips — top and
+        // bottom — both in the table-style's lighter accent shade (e.g.
+        // `#72D068` for Aptos accent3 — see
         // `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`). The catalog's
-        // `borderColor` slot models the outer frame; `totalsTopBorder` is
-        // a separate decoration painted between the data area and the
-        // totals body.
+        // `borderColor` slot models the table outer frame; the
+        // `totalsTopBorder` and `totalsBottomBorder` slots are separate
+        // decorations painted on the totals row's top (between data area
+        // and totals body) and bottom (between totals body and table
+        // bottom edge). Pixel-probe verified against
+        // `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`:
+        // y=424-425 (top strip) and y=472-473 (bottom strip), both at
+        // `#72D068`, separated by ~46px of white totals-body fill.
         //
-        // Style choice: MEDIUM (lineWidth=2), NOT DOUBLE. The original
-        // Phase 3 of M13/E used DOUBLE because Excel's render *visually*
-        // suggests a double-line. Pixel sampling (see
-        // `tests/excelCanvasFidelity.test.ts`) showed that Excel actually
-        // paints a single 2px strip in the lighter accent — the
-        // "double-line" perception comes from the strip pairing with the
-        // banded-row decoration above it (see also: every banded-row
-        // boundary in Excel paints this same `#72D068` strip — a cross-
-        // feature follow-up). Univer 0.23's `BorderStyleTypes.DOUBLE`
-        // (style 7) renders with `getLineWidth(DOUBLE)=1` and a 0.5px
-        // half-offset — two 1px strips with a 1-px white gap, which
-        // reads as anti-aliased `#89CE74` rather than the pure target.
-        // MEDIUM (style 8, `getLineWidth=2`) paints the pure target
-        // colour and matches Excel's render.
+        // Style choice: MEDIUM (lineWidth=2), NOT DOUBLE. Univer 0.23's
+        // `BorderStyleTypes.DOUBLE` (style 7) renders as two 1px strips
+        // with a 1px white gap — visually similar to a "double-line"
+        // border but anti-aliased to `#89CE74` rather than pure target.
+        // Pixel-probe of `border-isolation.xlsx` confirmed Excel's
+        // DOUBLE = 2px+2px+2px (~6px tall), which the totals strip is
+        // NOT — Excel paints a single 2px MEDIUM strip per side.
         const totalsTopBorderRgb = palette.totalsTopBorder;
         const totalsTopBorder: BorderEntry | undefined = totalsTopBorderRgb
             ? { s: BORDER_STYLE_TO_UNIVER.medium, cl: { rgb: totalsTopBorderRgb } }
+            : (thinBorder ?? undefined);
+        const totalsBottomBorderRgb = palette.totalsBottomBorder;
+        const totalsBottomBorder: BorderEntry | undefined = totalsBottomBorderRgb
+            ? { s: BORDER_STYLE_TO_UNIVER.medium, cl: { rgb: totalsBottomBorderRgb } }
             : (thinBorder ?? undefined);
 
         for (let c = range.startColumn; c <= range.endColumn; c++) {
             const totalsBorders: Partial<Record<BorderSide, BorderEntry>> = {};
             if (totalsTopBorder) totalsBorders.t = totalsTopBorder;
+            // The totals-row bottom border replaces the table outline's
+            // thin frame on the totals row's bottom edge — Excel paints
+            // the accent-coloured strip across the full table width, not
+            // the outline colour.
+            if (totalsBottomBorder) totalsBorders.b = totalsBottomBorder;
             if (thinBorder) {
-                totalsBorders.b = thinBorder;
                 if (c === range.startColumn) totalsBorders.l = thinBorder;
                 if (c === range.endColumn) totalsBorders.r = thinBorder;
             }

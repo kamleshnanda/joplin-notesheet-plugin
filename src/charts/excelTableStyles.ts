@@ -69,12 +69,21 @@ export interface ExcelTableStyle {
   totalsFg?: string;
   borderColor?: string;
   /**
-   * The double-line border Excel paints between the data area and the
-   * totals row. Distinct from `borderColor` (which models the table
-   * outline). Populated at synthesis time when the recipe carries a
-   * `totalsTopBorder` slot — the static catalog leaves it undefined.
+   * The accent-coloured top border on the totals row. Distinct from
+   * `borderColor` (which models the table outline). Populated at
+   * synthesis time when the recipe carries a `totalsTopBorder` slot —
+   * the static catalog leaves it undefined.
    */
   totalsTopBorder?: string;
+  /**
+   * The accent-coloured bottom border on the totals row. Excel paints
+   * this in addition to (and the same colour as) `totalsTopBorder` —
+   * see `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`,
+   * which carries `#72D068` strips at both the top and bottom of the
+   * totals row body. Populated by the recipe layer; replaces the
+   * table-outline `borderColor` on the totals row's bottom edge.
+   */
+  totalsBottomBorder?: string;
 }
 
 export const EXCEL_TABLE_STYLES: ExcelTableStyle[] = [

@@ -112,6 +112,16 @@ function snapBorderTop(snap: SnapshotShape, row: number, col: number): { rgb: st
     return { rgb: t.cl.rgb, style: t.s };
 }
 
+function snapBorderBottom(snap: SnapshotShape, row: number, col: number): { rgb: string; style: number } | undefined {
+    const sheet = snap.sheets[snap.sheetOrder[0]];
+    const cell = sheet.cellData[row]?.[col];
+    if (!cell?.s) return undefined;
+    const style = snap.styles[cell.s];
+    const b = style?.bd?.b;
+    if (!b) return undefined;
+    return { rgb: b.cl.rgb, style: b.s };
+}
+
 function expectRgbWithin(actualHex: string | undefined, expectedHex: string, tol: number, label: string): void {
     expect(actualHex).toBeDefined();
     const a = hexToRgb(actualHex!);
@@ -152,20 +162,36 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
             expectRgbWithin(bg, bandSample.hex, TOLERANCE, 'Aptos banded row even bg');
         });
 
-        test('totals row top border matches Excel double-line at #72D068 (Δ ≤ 8)', () => {
+        test('totals row TOP border matches Excel render at #72D068 (Δ ≤ 8)', () => {
             const ref = decodePng(APTOS_PNG);
-            // Pick the y of the data-to-totals separator. The border lies
-            // at y=472 (above the "Totals" row when shown as double line);
-            // dominant is #72D068.
-            const borderSample = dominantColor(ref, 200, 1500, 472, 472);
+            // Excel paints two distinct strips on the totals row in
+            // FormattingSmorgasboard-Aptos.png:
+            //   - top strip at y=424-425 (just below row 9's banded fill)
+            //   - bottom strip at y=472-473 (just above the white area
+            //     below the table)
+            // Both at #72D068. Earlier this test sampled y=472 and
+            // labelled it "top" — it's the BOTTOM strip; the assertion
+            // happened to pass because both sides share a colour.
+            const borderSample = dominantColor(ref, 200, 1500, 424, 425);
             expect(borderSample.hex).toBe('#72D068');
 
             // ProjectTracker spans A1:G10 with totalsRowCount=1; the
-            // totals row is row 9 in the snapshot (0-based). The top
-            // border slot must be present and within tolerance.
+            // totals row is row 9 in the snapshot (0-based).
             const top = snapBorderTop(snap, 9, 0);
             expect(top).toBeDefined();
             expectRgbWithin(top!.rgb, borderSample.hex, TOLERANCE, 'Aptos totals top border colour');
+        });
+
+        test('totals row BOTTOM border matches Excel render at #72D068 (Δ ≤ 8)', () => {
+            const ref = decodePng(APTOS_PNG);
+            // Bottom strip at y=472-473 — the second of the two #72D068
+            // strips that frame the totals-row body (~46 px apart).
+            const borderSample = dominantColor(ref, 200, 1500, 472, 473);
+            expect(borderSample.hex).toBe('#72D068');
+
+            const bottom = snapBorderBottom(snap, 9, 0);
+            expect(bottom).toBeDefined();
+            expectRgbWithin(bottom!.rgb, borderSample.hex, TOLERANCE, 'Aptos totals bottom border colour');
         });
     });
 
@@ -191,15 +217,28 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
             expectRgbWithin(bg, bandSample.hex, TOLERANCE, 'Classic banded row even bg');
         });
 
-        test('totals row top border matches Excel double-line at #C9C9C9 (Δ ≤ 8)', () => {
+        test('totals row TOP border matches Excel render at #C9C9C9 (Δ ≤ 8)', () => {
             const ref = decodePng(CLASSIC_PNG);
-            const borderSample = dominantColor(ref, 200, 1200, 168, 168);
+            // Top strip at y=422-423 (just below row 9's banded fill).
+            const borderSample = dominantColor(ref, 200, 1200, 422, 423);
             expect(borderSample.hex).toBe('#C9C9C9');
 
             // ProductCatalog spans A1:F10; totals at row 9.
             const top = snapBorderTop(snap, 9, 0);
             expect(top).toBeDefined();
             expectRgbWithin(top!.rgb, borderSample.hex, TOLERANCE, 'Classic totals top border colour');
+        });
+
+        test('totals row BOTTOM border matches Excel render at #C9C9C9 (Δ ≤ 8)', () => {
+            const ref = decodePng(CLASSIC_PNG);
+            // Bottom strip at y=464-465 — the second of the two #C9C9C9
+            // strips that frame the totals-row body.
+            const borderSample = dominantColor(ref, 200, 1200, 464, 465);
+            expect(borderSample.hex).toBe('#C9C9C9');
+
+            const bottom = snapBorderBottom(snap, 9, 0);
+            expect(bottom).toBeDefined();
+            expectRgbWithin(bottom!.rgb, borderSample.hex, TOLERANCE, 'Classic totals bottom border colour');
         });
     });
 });
