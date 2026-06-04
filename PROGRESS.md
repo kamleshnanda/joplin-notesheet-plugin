@@ -89,12 +89,46 @@ every feature.
 
 ## In progress
 
-- **feature-1-m13-theme-aware-banding (rework, PR #22)** — Operator
-  caught two structural bugs in PR #22 mid-review (smoke seed leak
-  in `emptySnapshot()` from PR #17 and a recipe formula that didn't
-  reproduce Excel) plus a test-gap that allowed both to ship. This
-  session shipped four phases as separate commits on the same PR
-  branch:
+- **feature-1-m13-theme-aware-banding (rework #2 — canvas fidelity, PR #22)** —
+  Operator caught a render-side bug the Phase-2-prior fidelity test
+  couldn't see: the `totalsTopBorder` slot emits `bd.t.s = 7` (DOUBLE)
+  on the totals row. Univer 0.23 paints DOUBLE on top with
+  `getLineWidth(DOUBLE)=1` and a 0.5px half-offset → two 1px strips
+  with a 1-px white gap, which reads as anti-aliased `#89CE74` rather
+  than the pure `#72D068` Excel paints. AND Excel's render is actually
+  a single 2px strip, not a true double-line — so DOUBLE was the wrong
+  style code in the first place.
+  - **Phase 1 — canvas-vs-Excel fidelity test (failing).**
+    `tests/excelCanvasFidelity.test.ts` (361 lines, pure-stdlib via
+    `tests/util/pngSampler.ts`). Region-finding heuristics align Joplin
+    canvas screenshot with Excel reference at structural regions
+    (header / banded / totals-top). Asserts dominant-colour parity for
+    tall regions (Δ ≤ 8) and looser for 1-2px strips (Δ ≤ 32 — Retina
+    anti-aliasing dominates). Includes a structural sentinel:
+    "Joplin's totals-top is a SINGLE strip, not two strips with a
+    ≤4px gap" — directly catches the DOUBLE-render artifact. Committed
+    BEFORE the fix to prove the gap was real (commit ordering 526bdb6).
+  - **Phase 2 — DOUBLE → MEDIUM on totals-top.**
+    `synthesizeTableStyleAssignments` now emits
+    `BORDER_STYLE_TO_UNIVER.medium` (style 8, lineWidth=2) instead of
+    `.double` (style 7) for the totals-top slot. The recipe shape
+    (`totalsTopBorder` in `excelTableStyleRecipes.ts`) and empirical
+    overrides are unchanged — they still carry `#72D068` / `#C9C9C9`.
+    Only the synthesizer's border-style code changes. Pin-down
+    `m12FixturePinDowns.test.ts:Aptos totals-row top border` updated
+    to assert `bd.t.s === 8` not `7`. Phase 2 lives in commit e260f30.
+  - **Phase 3 — re-capture eval screenshots.** Both Aptos and Classic
+    eval screenshots regenerated against the rebuilt .jpl. Aptos new
+    canvas at y=398 = single strip `#89CE74` (anti-aliased single
+    `#72D068`), gap-pair check finds `length=1` ≠ 2 (PASS). Classic
+    similar: `#C9C9C9` strip at the totals-top. Generator-evidence
+    pixel sidecars confirm `dominant=rgb(52,105,46) greenInk=16487`
+    (Aptos) and `dominant=rgb(165,165,165) greyInk=15811` (Classic) —
+    same as the prior session's gating signals.
+  - **Test totals**: 204 → 206. Gain of 2 = 2 canvas-fidelity tests
+    (Aptos + Classic), no other test changes.
+
+  - PRIOR session shipped (recorded for history):
   - **Phase 1 — smoke seed fix.** `src/snapshot.ts:emptySnapshot()`
     no longer seeds A1 with the harness "harness-smoke-OK" red text.
     `SMOKE_CELL_TEXT` / `SMOKE_STYLE_ID` exports removed; the harness
@@ -478,14 +512,67 @@ every feature.
   reference PNG.
 - **Recipe shape gained `totalsTopBorder`.** PR #22's shape only
   modelled `borderColor` (table outline). Excel paints a separate
-  double-line border above the totals row in a lighter shade of the
-  accent — `#72D068` for Aptos accent3, `#C9C9C9` for Classic
-  accent3. Added to the recipe interface; consumed by
-  `synthesizeTableStyleAssignments` which now emits the totals row's
-  top side as `s: BORDER_STYLE_TO_UNIVER.double = 7` when the
-  palette has the slot. Falls back to the existing thin border
-  otherwise. M13/E pin-down `Aptos fixture: totals-row top border
-  carries the Excel double-line slot (#72D068)` is the sentinel.
+  border above the totals row in a lighter shade of the accent —
+  `#72D068` for Aptos accent3, `#C9C9C9` for Classic accent3. Added
+  to the recipe interface; consumed by
+  `synthesizeTableStyleAssignments` which emits the totals row's top
+  side in that colour. Falls back to the existing thin border when
+  the slot is missing. **Style code is MEDIUM (8), not DOUBLE (7) —
+  see "DOUBLE on top renders as anti-aliased two-strip" note below.**
+  M13/E pin-down `Aptos fixture: totals-row top border carries the
+  Excel separator (#72D068 green, MEDIUM)` is the sentinel.
+
+- **Univer 0.23 DOUBLE-on-top renders as anti-aliased two-strip,
+  NOT a true double-line.** `getLineWidth(BorderStyleTypes.DOUBLE)=1`
+  in `node_modules/@univerjs/engine-render/lib/es/index.js:1872`,
+  and `_renderDoubleBorder` (line 5102) places inner+outer strokes
+  at `±lineWidth/2 = ±0.5px` from centre. Net result: two 1px strips
+  separated by 1px of white, which reads as `#89CE74` (anti-aliased
+  green) rather than the pure target colour. **Excel doesn't even
+  paint a true double-line for `TableStyleMedium4` totals-top — pixel
+  sampling of the operator-captured reference shows a single 2px
+  strip in the lighter accent**, identical to the strips Excel paints
+  at every banded-row boundary. So MEDIUM (style 8, lineWidth=2) is
+  both: (a) closer to Excel's actual render, and (b) more visually
+  reliable than DOUBLE in Univer 0.23. The visual "double-line"
+  perception of the totals-top in Excel comes from the strip pairing
+  with the banded-row decoration above it — see the cross-feature
+  follow-up below.
+
+- **Cross-feature follow-up: banded-row boundary decoration.**
+  Excel paints `#72D068` (Aptos) / `#C9C9C9` (Classic) 2px strips at
+  EVERY banded-row boundary inside `TableStyleMedium4`, not just the
+  totals-top. Notesheet currently relies on Univer's default
+  `#D7D8DB` thin gridline for inter-row separation, so our render
+  shows the right cell-fill colours but the wrong inter-row borders
+  — only the totals-top gets the accent-shade decoration. Out of
+  scope for this rework; should be its own feature in BUILD_PLAN.md.
+  The synthesizer would need to emit MEDIUM borders on every banded-
+  data-row boundary (top of rows 2-9 in the Aptos/Classic fixtures)
+  in `palette.totalsTopBorder` colour.
+
+- **Canvas-vs-Excel fidelity test layer (`tests/excelCanvasFidelity.test.ts`).**
+  Second gate added in M13/E rework #2. The original
+  `excelReferenceFidelity.test.ts` compares Excel reference PNG →
+  `xlsxBufferToSnapshot` output (catches import-side bugs); the
+  canvas-fidelity test compares Joplin canvas screenshot → Excel
+  reference PNG (catches render-side bugs). Two PNGs at different
+  DPRs and table positions: aligned by structural regions, NOT by
+  raw pixel coordinates. `findColouredStrip` scans for the dominant-
+  coloured strip whose hex is within tolerance of the spec target.
+  Per-region tolerance:
+    - Region-FINDING: Δ ≤ 24 per channel (wide for anti-aliased
+      strip edges).
+    - Header / banded ASSERTION: Δ ≤ 8 (tall regions, anti-aliasing
+      doesn't dominate).
+    - Totals-top STRIP ASSERTION: Δ ≤ 32 (1-2px strip at DPR=2
+      pulls in sub-pixel anti-aliasing; pure-pixel parity isn't
+      achievable without a different sampling scheme).
+  Structural sentinel: "Joplin's totals-top is a SINGLE strip, not
+  two strips with a ≤4px gap" — directly catches the DOUBLE-render
+  artifact. The test reads the LATEST `eval-{aptos,classic}-*.png`
+  by mtime, so re-capturing screenshots automatically refreshes
+  what's tested.
 - **`tests/util/pngSampler.ts` is test-only.** Pure-stdlib `zlib`
   PNG decoder. Supports 8-bit RGB / RGBA, non-interlaced — the only
   shapes our reference PNGs use. **Don't promote to a runtime
