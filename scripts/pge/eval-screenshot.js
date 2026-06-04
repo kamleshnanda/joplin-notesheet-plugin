@@ -425,11 +425,25 @@ function richTextA1A2Region(canvas) {
 //     the Classic fixture's 6-col table) — well past the active-cell
 //     selection.
 function tableHeaderRowRegion(canvas) {
+    // Univer's canvas has a backing store sized at devicePixelRatio
+    // multiples of its CSS box. On a Retina display the canvas is 2x
+    // wider/taller than at default DPR=1, so a hard-coded y=22 lands
+    // INSIDE the column-letter strip instead of on the table header
+    // row. Scale the region by the actual DPR ratio recovered from
+    // `canvas.width / canvas.clientWidth`. clientWidth is the CSS
+    // size; the ratio is 1 on standard displays and 2 on Retina.
+    const dpr = canvas.clientWidth > 0
+        ? canvas.width / canvas.clientWidth
+        : 1;
+    const x = Math.round(80 * dpr);
+    const y = Math.round(22 * dpr);
+    const w = Math.round(400 * dpr);
+    const h = Math.round(13 * dpr);
     return {
-        x: Math.min(canvas.width - 1, 80),
-        y: Math.min(canvas.height - 1, 22),
-        w: Math.min(Math.max(canvas.width - 80, 0), 400),
-        h: Math.min(Math.max(canvas.height - 22, 0), 13),
+        x: Math.min(canvas.width - 1, x),
+        y: Math.min(canvas.height - 1, y),
+        w: Math.min(Math.max(canvas.width - x, 0), w),
+        h: Math.min(Math.max(canvas.height - y, 0), h),
     };
 }
 

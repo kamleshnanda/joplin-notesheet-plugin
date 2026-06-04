@@ -6,12 +6,14 @@
       "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.png",
       "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-aptos.pixels.json",
       "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.pixels.json",
-      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-03T22-20-05-545Z.png",
-      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-03T22-20-05-545Z.pixels.json",
-      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-03T22-20-15-995Z.png",
-      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-03T22-20-15-995Z.pixels.json"
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T01-13-06-106Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T01-13-06-106Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T01-13-09-830Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T01-13-09-830Z.pixels.json",
+      "screenshots/excel-reference/FormattingSmorgasboard-Aptos.png",
+      "screenshots/excel-reference/FormattingSmorgasboard-Classic.png"
     ],
-    "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-03T22:18:00Z"
+    "evaluator_verdict": null,
+    "last_attempted_at": "2026-06-04T01:14:00Z"
   }
 }
