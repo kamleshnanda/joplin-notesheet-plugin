@@ -61,15 +61,16 @@ export function extractSnapshot(body: string | null | undefined):
 }
 
 // An empty Univer workbook snapshot. Shape follows Univer's IWorkbookData.
-// One sheet, with cell A1 seeded as the PGE harness smoke marker:
-// literal text "harness-smoke-OK" in red (#FF0000). The seed is what the
-// evaluator screenshot looks for to prove the runtime harness is wired
-// correctly end-to-end. Univer's style resolver requires the colour on
-// a `styles[id]` entry referenced by the cell's `s` field — putting it
-// inline on `cellData[0][0]` does not render.
-export const SMOKE_CELL_TEXT = 'harness-smoke-OK';
-export const SMOKE_STYLE_ID = 'pge-smoke-red';
-
+// One sheet with empty `cellData` — every cell renders as a blank.
+//
+// HISTORICAL NOTE: Between PR #17 and this revert, this function seeded
+// cell A1 with the PGE harness smoke marker (red "harness-smoke-OK" text).
+// That seed was a debug aid for the very first PGE cycle and silently
+// shipped to production — every "New Spreadsheet" command in the deployed
+// plugin produced a workbook whose A1 was pre-filled with the harness
+// marker. The seed has been removed; the harness now produces the seeded
+// shape itself in `scripts/pge/create-seeded-notesheet.js` rather than
+// relying on production code carrying the seed.
 export function emptySnapshot(): UniverSnapshot {
     return {
         id: 'workbook-' + Date.now(),
@@ -77,20 +78,12 @@ export function emptySnapshot(): UniverSnapshot {
         name: 'Spreadsheet',
         appVersion: '0.1.0',
         locale: 'enUS',
-        styles: {
-            [SMOKE_STYLE_ID]: {
-                cl: { rgb: '#FF0000' },
-            },
-        },
+        styles: {},
         sheets: {
             'sheet-1': {
                 id: 'sheet-1',
                 name: 'Sheet1',
-                cellData: {
-                    0: {
-                        0: { v: SMOKE_CELL_TEXT, s: SMOKE_STYLE_ID },
-                    },
-                },
+                cellData: {},
                 rowCount: 100,
                 columnCount: 26,
                 defaultColumnWidth: 73,

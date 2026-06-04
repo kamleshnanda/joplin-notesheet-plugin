@@ -51,31 +51,53 @@ const { execSync } = require('child_process');
 
 const FEATURE_ID = process.argv[2];
 if (!FEATURE_ID) {
-    console.error('usage: eval-screenshot.js <feature-id>');
+    console.error('usage: eval-screenshot.js <feature-id>[:variant]');
     process.exit(2);
 }
 
+// Variant suffix support — added for M13/E (first multi-screenshot
+// cycle). Some features need two independent screenshots from one
+// session (e.g. Aptos + Classic theme renderings). The convention is a
+// `:variant` suffix on the feature id; the lookup tables below carry
+// suffixed keys, and screenshots land under `screenshots/<base>/` with
+// the variant baked into the filename.
+const COLON = FEATURE_ID.indexOf(':');
+const BASE_FEATURE_ID = COLON >= 0 ? FEATURE_ID.slice(0, COLON) : FEATURE_ID;
+const VARIANT = COLON >= 0 ? FEATURE_ID.slice(COLON + 1) : null;
+
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const SHOT_DIR = path.join(REPO_ROOT, 'screenshots', FEATURE_ID);
+const SHOT_DIR = path.join(REPO_ROOT, 'screenshots', BASE_FEATURE_ID);
 const CDP_PORT = process.env.PGE_CDP_PORT || '8315';
 const CDP_URL = `http://localhost:${CDP_PORT}`;
 
 // Per-feature note title prefix. Each feature spec in BUILD_PLAN.md
 // dictates what the title prefix should be; keep this table in sync
 // with eval-screenshot.sh / the planner.
+//
+// Variant-suffixed keys (e.g. `feature-1-m13-theme-aware-banding:aptos`)
+// map to per-variant title prefixes. The lookup falls back to the
+// plain (un-suffixed) key when no `:variant` is provided. M13/E is the
+// first cycle to exercise this — earlier cycles' single-key entries
+// are intentionally preserved unchanged so the screenshot paths in
+// PROGRESS.md `## Done` keep working.
 const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-smoke-red-cell': 'PGE smoke note ',
     'feature-1-m13-rotated-text-renders': 'PGE M13C eval ',
     'feature-1-m13-rich-text-renders': 'PGE M13D eval ',
+    'feature-1-m13-theme-aware-banding:aptos': 'PGE M13E aptos eval ',
+    'feature-1-m13-theme-aware-banding:classic': 'PGE M13E classic eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
 // pattern). Features whose visual evidence lives elsewhere on the
-// canvas point at a different region helper.
+// canvas point at a different region helper. Variant-suffixed keys
+// follow the same convention as TITLE_PREFIX_BY_FEATURE.
 const REGION_BY_FEATURE = {
     'feature-1-smoke-red-cell': 'rowZero',
     'feature-1-m13-rotated-text-renders': 'rotatedRow',
     'feature-1-m13-rich-text-renders': 'richTextA1A2',
+    'feature-1-m13-theme-aware-banding:aptos': 'tableHeaderRow',
+    'feature-1-m13-theme-aware-banding:classic': 'tableHeaderRow',
 };
 
 function discoverApiPort() {
@@ -261,8 +283,24 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
         // exact RGB.
         // Red ink:   R >= 200 AND G <=  80 AND B <=  80
         // Blue ink:  R <=  80 AND G <=  80 AND B >= 200
-        // Green ink: R <=  80 AND G >= 150 AND B <=  80
-        let redInk = 0, blueInk = 0, greenInk = 0;
+        // Green ink: G > R+30 AND G > B+30 AND G >= 80
+        //            (broader than M13/D's R<=80 AND G>=150 AND B<=80
+        //            so the dark-but-saturated Aptos accent3 #196B24 =
+        //            rgb(25,107,36) — used as the M13/E table-style
+        //            HEADER fill — qualifies. The original tight
+        //            threshold only matched pure greens like (0,255,0)
+        //            and pastel #84E291 (132,226,145) failed too. We
+        //            generalise to "green channel clearly dominant by
+        //            ≥30 over red AND blue, AND green at least 80" —
+        //            captures every saturated green in Excel's
+        //            built-in TableStyle palette.)
+        // Grey ink:  R, G, B all in [140, 180] AND
+        //            abs(R-G) <= 10 AND abs(G-B) <= 10
+        //            (all three channels mid-range AND mutually close
+        //            — distinguishes grey from a tinted hue at similar
+        //            luminance; M13/E uses this to gate the Classic
+        //            fixture's grey header rendering.)
+        let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
         // Stride 1 (every pixel) — region is small and we want the
         // colour signal to cross the spec thresholds even on
         // narrow-glyph runs.
@@ -277,7 +315,14 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
                 inkY.add(y);
                 if (r >= 200 && g <= 80 && b <= 80) redInk++;
                 if (r <= 80 && g <= 80 && b >= 200) blueInk++;
-                if (r <= 80 && g >= 150 && b <= 80) greenInk++;
+                if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
+                if (
+                    r >= 140 && r <= 180
+                    && g >= 140 && g <= 180
+                    && b >= 140 && b <= 180
+                    && Math.abs(r - g) <= 10
+                    && Math.abs(g - b) <= 10
+                ) greyInk++;
                 const key = `rgb(${r},${g},${b})`;
                 hist.set(key, (hist.get(key) || 0) + 1);
             }
@@ -302,6 +347,7 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
             redInk,
             blueInk,
             greenInk,
+            greyInk,
         };
     }, { regionFnSrc: regionFn.toString(), maxColors });
 }
@@ -351,10 +397,61 @@ function richTextA1A2Region(canvas) {
     };
 }
 
+// Region covering the header band of a built-in TableStyle table whose
+// data range starts at A1. M13/E samples this band on both
+// FormattingSmorgasboard fixtures: Aptos must show greenInk, Classic
+// must show greyInk.
+//
+// y-band rationale:
+//   - Univer's column header bar consumes ~y=0–18 at default zoom.
+//   - The data area's row 1 (the table header row) is ~y=19–37 at
+//     default row height (19px).
+//   - Univer's active-cell selection paints `rgb(44,83,241)` blue
+//     around A1 by default, contributing blue pixels at y≈19–20 and
+//     y≈37–38 (top + bottom of the cell border).
+// We sample y=22–35 (h=13) — sits inside the header-row text band but
+// excludes the active-cell selection border on top/bottom.
+//
+// x-band rationale:
+//   - The active-cell selection border also paints down the LEFT and
+//     RIGHT edges of A1 (x≈0–1 and x≈73–74 at default col width).
+//   - Sampling ALL columns of the header would mostly catch the
+//     accent fill; the selection-border noise on A1 is small relative
+//     to the band fill area, but to be safe we start the x sample at
+//     col B (x≈74) so the active-cell A1 selection does NOT pollute
+//     the colour gate.
+//   - Default column width is 73px; col B starts at x≈74. We sample
+//     x=80..min(width, 80+400)=480, covering cols B..G (or B..F for
+//     the Classic fixture's 6-col table) — well past the active-cell
+//     selection.
+function tableHeaderRowRegion(canvas) {
+    // Univer's canvas has a backing store sized at devicePixelRatio
+    // multiples of its CSS box. On a Retina display the canvas is 2x
+    // wider/taller than at default DPR=1, so a hard-coded y=22 lands
+    // INSIDE the column-letter strip instead of on the table header
+    // row. Scale the region by the actual DPR ratio recovered from
+    // `canvas.width / canvas.clientWidth`. clientWidth is the CSS
+    // size; the ratio is 1 on standard displays and 2 on Retina.
+    const dpr = canvas.clientWidth > 0
+        ? canvas.width / canvas.clientWidth
+        : 1;
+    const x = Math.round(80 * dpr);
+    const y = Math.round(22 * dpr);
+    const w = Math.round(400 * dpr);
+    const h = Math.round(13 * dpr);
+    return {
+        x: Math.min(canvas.width - 1, x),
+        y: Math.min(canvas.height - 1, y),
+        w: Math.min(Math.max(canvas.width - x, 0), w),
+        h: Math.min(Math.max(canvas.height - y, 0), h),
+    };
+}
+
 async function main() {
     fs.mkdirSync(SHOT_DIR, { recursive: true });
     const utc = new Date().toISOString().replace(/[:.]/g, '-');
-    const out = process.env.PGE_OUT || path.join(SHOT_DIR, `eval-${utc}.png`);
+    const namePrefix = VARIANT ? `eval-${VARIANT}` : 'eval';
+    const out = process.env.PGE_OUT || path.join(SHOT_DIR, `${namePrefix}-${utc}.png`);
     // Make sure parent of PGE_OUT exists when caller overrode the path.
     fs.mkdirSync(path.dirname(out), { recursive: true });
 
@@ -415,7 +512,10 @@ async function main() {
         // mode without a feature-specific lookup — but we still take
         // whatever page is showing if PGE_NOTE_ID is unset and the
         // feature has no prefix, which is useful for verification).
-        const prefix = TITLE_PREFIX_BY_FEATURE[FEATURE_ID];
+        // Variant-suffixed key first, then the plain feature id. Plain-key
+        // fallback preserves prior-cycle behaviour for un-suffixed
+        // single-screenshot features.
+        const prefix = TITLE_PREFIX_BY_FEATURE[FEATURE_ID] || TITLE_PREFIX_BY_FEATURE[BASE_FEATURE_ID];
         const explicitNote = process.env.PGE_NOTE_ID;
         let didOpenNote = false;
         if (explicitNote) {
@@ -446,12 +546,16 @@ async function main() {
         let pixelSummary = null;
         let captureWebview = null;
         let captureCanvas = null;
-        const regionKind = REGION_BY_FEATURE[FEATURE_ID] || 'rowZero';
+        // Resolve the region kind: variant-suffixed key first, then the
+        // plain feature id, then the row-0 default.
+        const regionKind = REGION_BY_FEATURE[FEATURE_ID] || REGION_BY_FEATURE[BASE_FEATURE_ID] || 'rowZero';
         const regionFn = regionKind === 'rotatedRow'
             ? rotatedRowRegion
             : regionKind === 'richTextA1A2'
                 ? richTextA1A2Region
-                : rowZeroRegion;
+                : regionKind === 'tableHeaderRow'
+                    ? tableHeaderRowRegion
+                    : rowZeroRegion;
         if (didOpenNote) {
             captureWebview = await pickNotesheetWebview(page);
             if (!captureWebview) {
@@ -461,10 +565,29 @@ async function main() {
                 if (sel) {
                     console.error(`eval-screenshot: Univer canvas rendered (selector "${sel}")`);
                     captureCanvas = sel;
-                    try {
-                        pixelSummary = await samplePixelsAt(captureWebview, regionFn);
-                    } catch (e) {
-                        console.error(`eval-screenshot: pixel sample failed: ${e.message}`);
+                    // Re-pick the frame just before sampling. When opening
+                    // a different note via joplin://, the editor may swap
+                    // out the UserWebviewIndex iframe; the original frame
+                    // reference can become stale even though
+                    // waitForSelector found a canvas. Fetching the frame
+                    // again at sample time pins us to the live one.
+                    let sampleFrame = captureWebview;
+                    for (let attempt = 0; attempt < 6; attempt++) {
+                        try {
+                            pixelSummary = await samplePixelsAt(sampleFrame, regionFn);
+                            if (pixelSummary && !pixelSummary.error) break;
+                        } catch (e) {
+                            console.error(`eval-screenshot: pixel sample attempt ${attempt} threw: ${e.message}`);
+                        }
+                        await page.waitForTimeout(300);
+                        const refreshed = await pickNotesheetWebview(page);
+                        if (refreshed) {
+                            sampleFrame = refreshed;
+                            captureWebview = refreshed;
+                        }
+                    }
+                    if (pixelSummary && pixelSummary.error) {
+                        console.error(`eval-screenshot: pixel sample returned error after retries: ${pixelSummary.error}`);
                     }
                 }
             }
@@ -495,7 +618,9 @@ async function main() {
                 ? 'rotated row band (y 120–320, slab covering rows 4–6 of the fixture)'
                 : regionKind === 'richTextA1A2'
                     ? 'rich-text A2 band (y 41–58, multi-colour pin-down: Red+default+Blue+default)'
-                    : 'row-0 (top 80px slab of main canvas)';
+                    : regionKind === 'tableHeaderRow'
+                        ? 'table header band (x 80–480, y 22–35; cols B+ of A1:_ table header row, excludes A1 active-cell selection border)'
+                        : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(sidecar, JSON.stringify({
                 source: out,
                 region: regionLabel,
@@ -503,7 +628,7 @@ async function main() {
                 ...pixelSummary,
             }, null, 2));
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
-            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk}`);
+            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`);
         }
     } finally {
         // Detach but DO NOT close Joplin.

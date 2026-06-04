@@ -169,20 +169,28 @@ describe('M12 — banded-style synthesis', () => {
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
 
-        // Header row (row 0) should carry TableStyleMedium2's headerBg = #156082.
+        // Header row (row 0) should carry TableStyleMedium2's headerBg
+        // resolved against the workbook's clrScheme. ExcelJS.Workbook()
+        // ships the Office-2007 default theme (accent1 = #4F81BD), so the
+        // theme-aware synthesizer paints the header in #4F81BD here. The
+        // Aptos catalog value (#156082) only applies to workbooks whose
+        // clrScheme is the Aptos palette — see m12FixturePinDowns.test.ts
+        // for the Aptos-fixture pin-down (#156082) and the Classic-fixture
+        // pin-down (#A5A5A5).
         const headerStyleId = sheet.cellData[0]?.[0]?.s;
         expect(headerStyleId).toBeDefined();
         const headerStyle = snap.styles[headerStyleId!];
-        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#156082');
+        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#4F81BD');
         expect((headerStyle.cl as { rgb: string }).rgb).toBe('#FFFFFF');
         expect(headerStyle.bl).toBe(1);
 
         // Even data row (row 1, the first data row, index 0 relative to data
-        // start) should carry the bandedRowEvenBg.
+        // start) should carry the bandedRowEvenBg = tint(accent1, +0.60) on
+        // exceljs's Office-2007 accent1 = #B9CDE5 (light blue).
         const evenStyleId = sheet.cellData[1]?.[0]?.s;
         expect(evenStyleId).toBeDefined();
         const evenStyle = snap.styles[evenStyleId!];
-        expect((evenStyle.bg as { rgb: string }).rgb).toBe('#83CBEB');
+        expect((evenStyle.bg as { rgb: string }).rgb).toBe('#B9CDE5');
 
         // Odd data row (row 2) should be white (bandedRowOddBg=#FFFFFF) — and
         // since we skip white, no bg should be set on this style; the cell
@@ -220,7 +228,10 @@ describe('M12 — banded-style synthesis', () => {
             return id ? snap.styles[id] : undefined;
         };
 
-        const BORDER_RGB = '#156082';
+        // The synthesized border colour resolves accent1 against the source
+        // workbook's clrScheme. ExcelJS.Workbook() ships the Office-2007
+        // default theme, so accent1 here is #4F81BD (not the Aptos #156082).
+        const BORDER_RGB = '#4F81BD';
         const headerStyle = styleAt(0, 0)!;
         const headerBd = headerStyle.bd as Record<string, { s: number; cl: { rgb: string } }>;
         // Header has top + bottom borders, plus left on the first column.
@@ -349,11 +360,14 @@ describe('M12 — banded-style synthesis', () => {
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
 
-        // Header should still be styled.
+        // Header should still be styled. ExcelJS.Workbook() ships the
+        // Office-2007 default theme (accent1 = #4F81BD), so the
+        // theme-aware synthesizer paints accent1 here, not the Aptos
+        // #156082.
         const headerStyleId = sheet.cellData[0]?.[0]?.s;
         expect(headerStyleId).toBeDefined();
         const headerStyle = snap.styles[headerStyleId!];
-        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#156082');
+        expect((headerStyle.bg as { rgb: string }).rgb).toBe('#4F81BD');
 
         // Data row 1 should NOT have synthesized banding bg.
         const row1 = sheet.cellData[1]?.[0];
@@ -363,7 +377,7 @@ describe('M12 — banded-style synthesis', () => {
             // (The cell may have other styles from explicit cell-level fmt.)
             if (s.bg) {
                 const bg = (s.bg as { rgb: string }).rgb;
-                expect(bg).not.toBe('#83CBEB');
+                expect(bg).not.toBe('#B9CDE5');
             }
         }
     });

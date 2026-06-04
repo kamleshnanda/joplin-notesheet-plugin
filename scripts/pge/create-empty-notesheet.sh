@@ -14,19 +14,18 @@
 # Output: prints the new note's id on stdout.
 #
 # IMPORTANT: this script writes the BODY that the editor sees on
-# load. If the generator's seed lives in code (the New Spreadsheet
-# command handler), this script's body should be the minimal fence
-# the plugin recognizes as "no snapshot yet, please scaffold one."
-# Currently that's exactly what an empty fenced block is:
+# load. The minimal fence the plugin recognizes is:
 #
 #     ```notesheet v=1
 #     {}
 #     ```
 #
-# When the plugin opens that note for the first time, its Custom
-# Editor activates, sees an empty snapshot, and (per the smoke
-# spec's expectation after the generator's fix) seeds A1 with
-# `harness-smoke-OK` in red.
+# The plugin opens that note in its Custom Editor and Univer
+# bootstraps with no cells. (Pre-PR-#22 the production
+# `emptySnapshot()` carried an A1 smoke seed — that seed has since
+# been removed; the harness smoke fixture is now built independently
+# in `create-seeded-notesheet.js`, not by relying on production
+# code shipping the seed.)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

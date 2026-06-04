@@ -243,8 +243,12 @@ describe('M12 round-trip — EmptyAndDegenerate fixture', () => {
         const snap = await importFixture('EmptyAndDegenerate.xlsx');
         const sheet = snap.sheets[snap.sheetOrder[2]];
         expect(Object.keys(sheet.cellData)).toHaveLength(2);
-        // Row 0 cells carry the table header synthesis (bg #156082).
-        expect((snapshotCell(snap, 2, 0, 0).style!.bg as { rgb: string }).rgb).toBe('#156082');
+        // Row 0 cells carry the table header synthesis. The fixture ships
+        // the Office-2007 default theme (accent1 = #4F81BD) — the
+        // theme-aware synthesizer (M13/E) resolves accent1 against the
+        // workbook's own clrScheme, so the header bg is #4F81BD here, not
+        // the Aptos-baseline #156082 the catalog encodes.
+        expect((snapshotCell(snap, 2, 0, 0).style!.bg as { rgb: string }).rgb).toBe('#4F81BD');
     });
 
     test('round-trip: header-only table survives back into table1.xml', async () => {

@@ -13,3 +13,7 @@ AGENT_STOP
 # PGE harness — generator/operator-managed scratch (DO commit BUILD_PLAN.md,
 # PROGRESS.md, OPERATOR_ASK.md, test-results.json, NEXT_FINDINGS.md, and
 # everything under screenshots/)
+
+# Excel lock files when a fixture is open in Excel for inspection
+~$*.xlsx
+~$*.xls

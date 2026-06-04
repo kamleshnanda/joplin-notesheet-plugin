@@ -1,13 +1,27 @@
 {
-  "feature-1-m13-rich-text-renders": {
+  "feature-1-m13-theme-aware-banding": {
     "passes": true,
     "evidence": [
-      "screenshots/feature-1-m13-rich-text-renders/generator-evidence.png",
-      "screenshots/feature-1-m13-rich-text-renders/generator-evidence.pixels.json",
-      "screenshots/feature-1-m13-rich-text-renders/eval-2026-06-03T19-46-51-073Z.png",
-      "screenshots/feature-1-m13-rich-text-renders/eval-2026-06-03T19-46-51-073Z.pixels.json"
+      "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-aptos.png",
+      "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.png",
+      "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-aptos.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/generator-evidence-classic.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T01-23-29-220Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T01-23-29-220Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T01-23-40-122Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T01-23-40-122Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T02-23-31-733Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T02-23-31-733Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T02-23-46-303Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T02-23-46-303Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T06-12-06-152Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-04T06-12-06-152Z.pixels.json",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T06-12-09-633Z.png",
+      "screenshots/feature-1-m13-theme-aware-banding/eval-classic-2026-06-04T06-12-09-633Z.pixels.json",
+      "screenshots/excel-reference/FormattingSmorgasboard-Aptos.png",
+      "screenshots/excel-reference/FormattingSmorgasboard-Classic.png"
     ],
     "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-03T19:55:00Z"
+    "last_attempted_at": "2026-06-04T06:13:00Z"
   }
 }

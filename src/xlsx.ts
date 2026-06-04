@@ -25,6 +25,13 @@ import JSZip from 'jszip';
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
+import {
+    EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
+    EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES,
+    resolveColorSlot,
+    type ExcelTableStyleRecipe,
+    type ColorSlotRecipe,
+} from './charts/excelTableStyleRecipes';
 
 const HORIZONTAL = { left: 1, center: 2, right: 3 } as const;
 const VERTICAL = { top: 1, middle: 2, bottom: 3 } as const;
@@ -940,9 +947,84 @@ interface CellStyleAssignment {
     addedFields: string[];
 }
 
-function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Map<string, Record<string, unknown>>): CellStyleAssignment[] {
+// Resolve a built-in TableStyle's per-slot colours against a source workbook
+// `<a:clrScheme>`. The hardcoded `EXCEL_TABLE_STYLE_BY_NAME` catalog is
+// computed for the Aptos accent palette (Office 2016+); when the source
+// workbook ships its own clrScheme (e.g. the Classic 2013 palette whose
+// accent3 is `#A5A5A5` grey instead of Aptos's `#196B24` green), the same
+// `TableStyleMedium4` must paint grey, not green.
+//
+// We use a parallel recipe table (`EXCEL_TABLE_STYLE_RECIPE_BY_NAME`) that
+// names each slot's accent index + tint; at synthesis time we look the
+// source clrScheme's accent values up and compute the final RGB via the
+// ECMA-376 HSL-L tint formula. Achromatic slots (greys/whites/blacks) keep
+// their literal RGB regardless of clrScheme — those are the same in every
+// Excel theme.
+//
+// `themeRgb` is the 12-entry array returned by `readThemeClrScheme`
+// (lt1, dk1, lt2, dk2, accent1..accent6, hlink, folHlink). When it's null
+// we fall back to the static catalog (Aptos baseline) — the legacy path.
+function resolveTableStylePalette(
+    styleName: string,
+    catalog: ExcelTableStyle | undefined,
+    themeRgb: readonly string[] | null,
+): ExcelTableStyle | undefined {
+    if (!catalog) return undefined;
+    if (!themeRgb) return catalog;
+    const recipe: ExcelTableStyleRecipe | undefined = EXCEL_TABLE_STYLE_RECIPE_BY_NAME[styleName];
+    if (!recipe) return catalog;
+    // clrScheme's accent1..accent6 are at indices 4..9 in `themeRgb`
+    // (lt1, dk1, lt2, dk2, accent1, accent2, accent3, accent4, accent5, accent6, hlink, folHlink).
+    const accents: string[] = themeRgb.slice(4, 10);
+
+    // Empirical override lookup: when the source accent for this style's
+    // headerBg slot matches a measured RGB in the override table, prefer
+    // the measured slot values over the formula. The override map is keyed
+    // by `(styleName, accentHex_uppercase)`. Lookup uses the accent that
+    // headerBg references (typically the only one a TableStyle uses).
+    const overrideTable = EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES[styleName];
+    const accentIdx = recipe.headerBg.accent;
+    let override: ReturnType<typeof Object.values<unknown>>[number] | undefined;
+    if (overrideTable && accentIdx) {
+        const accentHex = (accents[accentIdx - 1] || '').toUpperCase();
+        override = overrideTable[accentHex];
+    }
+
+    const resolve = (
+        slot: ColorSlotRecipe | undefined,
+        fallback: string | undefined,
+        overrideValue: string | undefined,
+    ): string | undefined => {
+        if (overrideValue) return overrideValue.toUpperCase();
+        if (!slot) return fallback;
+        return resolveColorSlot(slot, accents);
+    };
+
+    type OverrideShape = Record<string, string | undefined>;
+    const ov = (override || {}) as OverrideShape;
+
+    return {
+        styleName: catalog.styleName,
+        headerBg: resolve(recipe.headerBg, catalog.headerBg, ov.headerBg)!,
+        headerFg: resolve(recipe.headerFg, catalog.headerFg, ov.headerFg)!,
+        bandedRowEvenBg: resolve(recipe.bandedRowEvenBg, catalog.bandedRowEvenBg, ov.bandedRowEvenBg),
+        bandedRowOddBg: resolve(recipe.bandedRowOddBg, catalog.bandedRowOddBg, ov.bandedRowOddBg),
+        totalsBg: resolve(recipe.totalsBg, catalog.totalsBg, ov.totalsBg),
+        totalsFg: resolve(recipe.totalsFg, catalog.totalsFg, ov.totalsFg),
+        borderColor: resolve(recipe.borderColor, catalog.borderColor, ov.borderColor),
+        totalsTopBorder: resolve(recipe.totalsTopBorder, undefined, ov.totalsTopBorder),
+        totalsBottomBorder: resolve(recipe.totalsBottomBorder, undefined, ov.totalsBottomBorder),
+    };
+}
+
+function synthesizeTableStyleAssignments(
+    table: RawTable,
+    existingCellStyles: Map<string, Record<string, unknown>>,
+    themeRgb: readonly string[] | null = null,
+): CellStyleAssignment[] {
     if (!table.styleName) return [];
-    const palette: ExcelTableStyle | undefined = EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
+    const catalog: ExcelTableStyle | undefined = EXCEL_TABLE_STYLE_BY_NAME[table.styleName];
+    const palette = resolveTableStylePalette(table.styleName, catalog, themeRgb);
     if (!palette) return [];
 
     const range = parseA1Range(table.ref);
@@ -1054,15 +1136,54 @@ function synthesizeTableStyleAssignments(table: RawTable, existingCellStyles: Ma
     }
 
     // Totals row.
-    if (totalRows === 1 && palette.totalsBg) {
+    if (totalRows === 1) {
+        // The totals row carries TWO accent-coloured strips — top and
+        // bottom — both in the table-style's lighter accent shade (e.g.
+        // `#72D068` for Aptos accent3 — see
+        // `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`). The catalog's
+        // `borderColor` slot models the table outer frame; the
+        // `totalsTopBorder` and `totalsBottomBorder` slots are separate
+        // decorations painted on the totals row's top (between data area
+        // and totals body) and bottom (between totals body and table
+        // bottom edge). Pixel-probe verified against
+        // `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`:
+        // y=424-425 (top strip) and y=472-473 (bottom strip), both at
+        // `#72D068`, separated by ~46px of white totals-body fill.
+        //
+        // Style choice: MEDIUM (lineWidth=2), NOT DOUBLE. Univer 0.23's
+        // `BorderStyleTypes.DOUBLE` (style 7) renders as two 1px strips
+        // with a 1px white gap — visually similar to a "double-line"
+        // border but anti-aliased to `#89CE74` rather than pure target.
+        // Pixel-probe of `border-isolation.xlsx` confirmed Excel's
+        // DOUBLE = 2px+2px+2px (~6px tall), which the totals strip is
+        // NOT — Excel paints a single 2px MEDIUM strip per side.
+        const totalsTopBorderRgb = palette.totalsTopBorder;
+        const totalsTopBorder: BorderEntry | undefined = totalsTopBorderRgb
+            ? { s: BORDER_STYLE_TO_UNIVER.medium, cl: { rgb: totalsTopBorderRgb } }
+            : (thinBorder ?? undefined);
+        const totalsBottomBorderRgb = palette.totalsBottomBorder;
+        const totalsBottomBorder: BorderEntry | undefined = totalsBottomBorderRgb
+            ? { s: BORDER_STYLE_TO_UNIVER.medium, cl: { rgb: totalsBottomBorderRgb } }
+            : (thinBorder ?? undefined);
+
         for (let c = range.startColumn; c <= range.endColumn; c++) {
-            const totalsBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
-                t: thinBorder,
-                b: thinBorder,
-                ...(c === range.startColumn ? { l: thinBorder } : {}),
-                ...(c === range.endColumn ? { r: thinBorder } : {}),
-            } : undefined;
-            overlay(range.endRow, c, palette.totalsBg, palette.totalsFg, /* bold */ true, totalsBorders);
+            const totalsBorders: Partial<Record<BorderSide, BorderEntry>> = {};
+            if (totalsTopBorder) totalsBorders.t = totalsTopBorder;
+            // The totals-row bottom border replaces the table outline's
+            // thin frame on the totals row's bottom edge — Excel paints
+            // the accent-coloured strip across the full table width, not
+            // the outline colour.
+            if (totalsBottomBorder) totalsBorders.b = totalsBottomBorder;
+            if (thinBorder) {
+                if (c === range.startColumn) totalsBorders.l = thinBorder;
+                if (c === range.endColumn) totalsBorders.r = thinBorder;
+            }
+            const useBg = palette.totalsBg && palette.totalsBg.toUpperCase() !== '#FFFFFF' ? palette.totalsBg : undefined;
+            overlay(
+                range.endRow, c,
+                useBg, palette.totalsFg, /* bold */ true,
+                Object.keys(totalsBorders).length > 0 ? totalsBorders : undefined,
+            );
         }
     }
 
@@ -1299,7 +1420,11 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                     if (style) existingCellStyles.set(`${r}:${c}`, style);
                 }
             }
-            const assignments = synthesizeTableStyleAssignments(t, existingCellStyles);
+            const assignments = synthesizeTableStyleAssignments(
+                t,
+                existingCellStyles,
+                themeClrScheme?.rgb ?? null,
+            );
             for (const a of assignments) {
                 const styleId = internStyle(a.style);
                 if (!styleId) continue;
