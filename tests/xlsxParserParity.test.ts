@@ -93,21 +93,6 @@ function hasField(snap: Snapshot | null, predicate: (style: Record<string, unkno
     return false;
 }
 
-function anyCellSatisfies(snap: Snapshot | null, predicate: (cell: CellRecord) => boolean): boolean {
-    if (!snap) return false;
-    for (const sheetId of snap.sheetOrder ?? []) {
-        const sheet = snap.sheets?.[sheetId];
-        if (!sheet) continue;
-        for (const r of Object.keys(sheet.cellData ?? {})) {
-            const row = sheet.cellData[Number(r)];
-            for (const c of Object.keys(row ?? {})) {
-                if (predicate(row[Number(c)])) return true;
-            }
-        }
-    }
-    return false;
-}
-
 function compareSheetSizes(exc: Snapshot, sjs: Snapshot): MatrixEntry {
     const excSheetCount = exc.sheetOrder?.length ?? 0;
     const sjsSheetCount = sjs.sheetOrder?.length ?? 0;
@@ -353,7 +338,7 @@ function compareNumberFormats(exc: Snapshot, sjs: Snapshot): MatrixEntry {
     return { status: 'match', note: 'both have numFmts' };
 }
 
-function compareCharts(exc: Snapshot, sjs: Snapshot, fixturePath: string): MatrixEntry {
+function compareCharts(_exc: Snapshot, _sjs: Snapshot, fixturePath: string): MatrixEntry {
     // Charts ride along in the .xlsx zip as xl/charts/* and xl/drawings/*.
     // Neither parser surfaces them as snapshot resources; both pass them
     // through opaquely. The Phase-2 chart-export post-processor's

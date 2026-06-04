@@ -189,18 +189,6 @@ async function readNamedHyperlinkCells(
     return result;
 }
 
-// argb / hex helpers — same shape as src/xlsx.ts.
-function argbToHex(argb: string | undefined): string | undefined {
-    if (!argb || typeof argb !== 'string') return undefined;
-    const trimmed = argb.replace(/^#/, '');
-    if (trimmed.length === 8) {
-        const rgb = trimmed.slice(2);
-        if (/^0+$/.test(rgb)) return undefined;
-        return '#' + rgb.toUpperCase();
-    }
-    if (trimmed.length === 6) return '#' + trimmed.toUpperCase();
-    return undefined;
-}
 
 function rgbHex(rgb: string | undefined): string | undefined {
     if (!rgb || typeof rgb !== 'string') return undefined;
