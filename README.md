@@ -31,12 +31,32 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M13/C — Rotated text round-trip, validated via the PGE harness | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
 | ✅ | M13/D — Rich-text within a single cell (multi-run bold / colour / italic), validated via the PGE harness | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
 | ✅ | M13/E — Theme-aware banding accuracy: TableStyle synthesis driven by the source `<a:clrScheme>`, with a reference-anchored fidelity test bed against operator-captured Excel renders | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
-| ⏳ | M14 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13 fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. Sequencing first because it unblocks M15 (CF) and may collapse other open follow-ups. | planned |
-| ⏳ | M15 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set). **Depends on M14 outcome.** SheetJS Community reads CF correctly upstream out of the box; if M14 ships and we migrate, M15 becomes substantially cheaper. Starting M15 on the current `exceljs` parser before M14 lands may require partial rework — wait for the M14 decision. | planned |
-| ⏳ | M16 — Snapshot → HTML for Joplin's PDF/HTML export menu. Independent of the `.xlsx` parser choice — operates on the in-memory snapshot — so the M14 outcome doesn't change the M16 design surface. Can run in parallel with M14 / M15. | planned |
+| ❌ | M14 — SheetJS Community migration spike: investigated migrating `src/xlsx.ts` from `exceljs` to [`xlsx-js-style`](https://www.npmjs.com/package/xlsx-js-style) (the only SheetJS Community fork with cell-style support). **NO-GO** — the fork drops borders, alignment / rotation, and most font formatting from the OOXML indexed-cellXf path that every Microsoft-Excel-generated workbook uses; migrating would directly regress M12 / M13/C / M13/E features that already ship. Spike branch closed without merging; the decision document, capability matrix, and 14 golden-snapshot baselines are preserved at [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md). See "M14 — SheetJS evaluation outcome" below for the short version. | [#24 (closed)](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
+| ⏳ | M15 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set). Implemented on `exceljs`. Earlier sequencing assumed SheetJS would read CF correctly upstream and make this cheaper; the M14 spike disproved that assumption (xlsx-js-style's `!cf` is also undefined on indexed-cellXf import). No upstream advantage to wait for. | planned |
+| ⏳ | M16 — Snapshot → HTML for Joplin's PDF/HTML export menu. Independent of the `.xlsx` parser choice — operates on the in-memory snapshot. | planned |
 | ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions, currently `xlsx-charts-unsupported`). | planned |
 
 > **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
+
+## M14 — SheetJS evaluation outcome
+
+`exceljs@^4.4.0` is the foundation of `src/xlsx.ts`. exceljs has gone quiet (last release December 2024) and ships stale transitives (`uuid@8` with a moderate CVE that we tolerate as not-reachable from our call sites; `glob@7` deprecated). M14 was a research spike to evaluate migrating to SheetJS Community.
+
+**Result: NO-GO.** Notesheet stays on `exceljs`. The full evidence is in [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md); the short version:
+
+- **Plain SheetJS Community (`xlsx`) does NOT support cell styles.** It's a non-starter for our use because every shipped feature from M9 onwards depends on per-cell styling.
+- **The only community fork with styling support, [`xlsx-js-style@1.2.0`](https://www.npmjs.com/package/xlsx-js-style), drops most styling on Excel-imported workbooks.** The spike ran both parsers across all 14 fixtures under [`tests/ExcelBaseTestData/formatting-testdata/`](./tests/ExcelBaseTestData/formatting-testdata/) and recorded a per-dimension parity matrix:
+  - **Borders** — 0 of 5 fixtures preserve borders on the SheetJS path. Direct M12 regression.
+  - **Rotated text** — 0 of 1 fixtures preserve rotation. Direct M13/C regression.
+  - **Style records** — 50–95% of indexed-cellXf style records lost on every Microsoft-Excel-generated workbook.
+  - **Rich text per-run** — runs flattened; only recoverable via a hand-written raw-XML walker (which is what `xlsx-js-style` is supposed to do for us).
+  - **Self-roundtrip works** — a workbook xlsx-js-style writes can be read back with borders intact. But that's interop-with-itself, not interop-with-Excel; the latter is what every operator-imported fixture exercises.
+- **`xlsx-js-style` is a 2022 fork on a 2022 base.** It hasn't shipped a release since. Migrating would replace one quiet library (`exceljs`, last release Dec 2024) with one that has been silent for longer.
+- **Phase 2 cost was estimated at 9.5–14.5 days**, most of which would be Notesheet building in-house replacements for what the styling fork is named after (a `xl/styles.xml` walker, table export, rich-text export, etc.). At that point we're maintaining a Notesheet-internal Excel parser, not benefiting from a third-party library — the dependency-hygiene argument inverts.
+
+**Revisit conditions:** the migration becomes worth re-evaluating if either (a) SheetJS Community proper (`xlsx`) adds first-class cell-style read support upstream, or (b) `exceljs` is publicly archived, forcing the migration regardless of cost. Until either is true, NO-GO stands.
+
+The spike's preserved artefacts at [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md) include a 24-fixture × 14-dimension capability matrix, an honest assessment of the fork's maintenance state, the exact migration cost breakdown, and a Phase-2 feature-smoke checklist for the 11 features the operator listed as MUST-NOT-REGRESS — useful inputs for any future revisit.
 
 ## How a Notesheet note is stored
 
@@ -174,14 +194,18 @@ introduce silent regression risk worse than the warnings themselves.
   identifier generation; `v3`/`v5`/`v6` are never invoked.
   `npm audit fix --force` would downgrade exceljs to 3.4.0
   (a major-version DOWNGRADE), which is unacceptable. Real fix
-  is upstream in exceljs (or migrate off — see M14).
+  is upstream in exceljs (migrating off was evaluated in M14 and
+  ruled NO-GO — see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)).
 - **Transitive deprecation noise** (`inflight@1`, `rimraf@2`,
   `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3):
   every entry is buried under exceljs (`>archiver`, `>unzipper`,
   `>fast-csv`) or jest@30 internals. We are already on jest@30
   (M11 bumped specifically to drop deprecated transitive globs);
   no further direct-dep change can clear these. Only an exceljs
-  replacement does — see M14.
+  replacement does — that path was evaluated in M14 and ruled NO-GO
+  (see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md));
+  the noise is accepted indefinitely until the revisit conditions
+  in that document are met.
 - **`glob@11.1.0`** (our direct devDep) — npm prints a blanket
   "old versions of glob" warning for any glob it sees, but
   `glob@11.1.0` IS the current major. Ignore.
