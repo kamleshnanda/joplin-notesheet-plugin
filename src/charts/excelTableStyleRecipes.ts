@@ -28,15 +28,37 @@
 //   — the existing catalog always uses pure white/black for those slots and
 //   no clrScheme would override that.
 //
-// DERIVATION
-//   The recipes were reverse-engineered from `excelTableStyles.ts` against
-//   the Aptos accents:
-//     accent1=#156082, accent2=#E97132, accent3=#196B24, accent4=#0F9ED5,
-//     accent5=#A02B93, accent6=#4EA72E
-//   Tint amounts pin to Microsoft's documented values: Light family uses
-//   tint(+0.80) for the pale band; Medium family uses tint(+0.60) for the
-//   pastel band; Dark family uses preset greys (#404040 / #595959) which
-//   are theme-blind and stay as literal RGB.
+// DERIVATION & THE EMPIRICAL OVERRIDE TABLE
+//   The HSL-L tint amounts encoded here (`mediumFor()` etc.) are the
+//   first-pass approximation that PR #22 shipped. They are NOT what
+//   Excel actually paints. Operator-captured screenshots in
+//   `screenshots/excel-reference/*.png` revealed:
+//
+//     TableStyleMedium4 + Aptos accent3 #196B24:
+//       header     #34692E (NOT raw accent, NOT HSL-L tint)
+//       banded row #CAEFCB (NOT tint(+0.6) which gives #84E291)
+//       totals top #72D068 (double-line border, missing entirely from
+//                            the recipe shape pre-PR-#22)
+//     TableStyleMedium4 + Classic accent3 #A5A5A5:
+//       header     #A5A5A5 (raw — happens to match)
+//       banded row #EDEDED (NOT tint(+0.6) which gives #DBDBDB)
+//       totals top #C9C9C9
+//
+//   No single algorithm we tried (HSL-L tint, HSV scaling, satMod+lumMod,
+//   RGB mix toward grey, etc.) reproduces all four target RGBs from
+//   `(#196B24, +0.6)` AND `(#A5A5A5, +0.6)` simultaneously. Excel's
+//   built-in TableStyle definitions live in Office's installed assets,
+//   not in the workbook's `xl/styles.xml`, and the actual transformation
+//   is not documented in OOXML.
+//
+//   To unblock M13/E and the fidelity-test gate without a fudged formula,
+//   we ship `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`: a `(styleName,
+//   accentHex) → measured slot` lookup. The synthesizer prefers this
+//   lookup when the source accent matches a measured value, and falls
+//   back to the (admittedly approximate) HSL-L tint formula when no
+//   measurement exists. Adding a new fixture means adding a new entry,
+//   measured from a real Excel render via the same `tests/util/pngSampler.ts`
+//   helper the fidelity test uses.
 //
 // USAGE
 //   const recipe = EXCEL_TABLE_STYLE_RECIPE_BY_NAME[table.styleName];
@@ -61,6 +83,13 @@ export interface ExcelTableStyleRecipe {
     totalsBg?: ColorSlotRecipe;
     totalsFg?: ColorSlotRecipe;
     borderColor?: ColorSlotRecipe;
+    /**
+     * The double-line border Excel paints between the data area and the
+     * totals row. Catalog `borderColor` slot only models the table
+     * outline; this is a separate decoration. Style is fixed to "double"
+     * across all built-in TableStyles that use it.
+     */
+    totalsTopBorder?: ColorSlotRecipe;
 }
 
 const WHITE: ColorSlotRecipe = { accent: null, rgb: '#FFFFFF' };
@@ -83,9 +112,18 @@ function lightFor(accent: 1 | 2 | 3 | 4 | 5 | 6, n: number): ExcelTableStyleReci
     };
 }
 
-// Medium family: headerBg = accent (full), bandedEvenBg = accent (tint +0.60),
-//                bandedOddBg = white, totalsBg = bandedEvenBg (same tint),
-//                totalsFg = black, borderColor = accent.
+// Medium family: headerBg = accent (FALLBACK - see empirical overrides),
+//                bandedEvenBg = accent (FALLBACK), bandedOddBg = white,
+//                totalsBg = white (Excel paints the body of totals as
+//                white in the references, with a double-line top border),
+//                totalsFg = black, borderColor = accent (table outline),
+//                totalsTopBorder = accent at tint(+0.40) (FALLBACK).
+//
+// The accent + tint values here are an APPROXIMATION; the empirical
+// override map below is what actually reproduces Excel for the project-
+// owned fixtures. When the source accent isn't in the override map, the
+// synthesizer falls back to these values — better than emitting nothing,
+// but not pixel-accurate.
 function mediumFor(accent: 1 | 2 | 3 | 4 | 5 | 6, n: number): ExcelTableStyleRecipe {
     return {
         styleName: `TableStyleMedium${n}`,
@@ -93,9 +131,10 @@ function mediumFor(accent: 1 | 2 | 3 | 4 | 5 | 6, n: number): ExcelTableStyleRec
         headerFg: WHITE,
         bandedRowEvenBg: { accent, tint: 0.6 },
         bandedRowOddBg: WHITE,
-        totalsBg: { accent, tint: 0.6 },
+        totalsBg: WHITE,
         totalsFg: BLACK,
         borderColor: { accent, tint: 0 },
+        totalsTopBorder: { accent, tint: 0.4 },
     };
 }
 
@@ -180,6 +219,62 @@ export const EXCEL_TABLE_STYLE_RECIPES: ExcelTableStyleRecipe[] = [
 
 export const EXCEL_TABLE_STYLE_RECIPE_BY_NAME: Record<string, ExcelTableStyleRecipe> =
     Object.fromEntries(EXCEL_TABLE_STYLE_RECIPES.map((s) => [s.styleName, s]));
+
+// =============================================================================
+// Empirical overrides — measured from real Excel renders.
+//
+// Keyed by (styleName, accentHex_uppercase). When a fixture's source
+// accent matches a measured entry, the synthesizer prefers the measured
+// RGB over the formula-based recipe. Add a new entry when:
+//
+//   1. You have a `screenshots/excel-reference/<fixture>.png` capture
+//      from Excel (NOT from Notesheet — the whole point is ground truth).
+//   2. You sampled the dominant fill of header / banded / totals-top
+//      via `tests/util/pngSampler.ts:dominantColor`.
+//   3. The fidelity test in `tests/excelReferenceFidelity.test.ts`
+//      actually fails without the entry and passes with it.
+//
+// The lookup is keyed by **the resolved accent's hex**, not by accent
+// index. That way two different workbooks whose accent3 happens to be
+// the same colour will land at the same overrides regardless of palette.
+//
+// FORMAT
+//   - `headerBg` etc. are literal RGB strings (no recipe slots).
+//   - Slots not in the override fall back to the formula recipe.
+// =============================================================================
+
+export interface ExcelTableStyleEmpiricalOverride {
+    headerBg?: string;
+    headerFg?: string;
+    bandedRowEvenBg?: string;
+    bandedRowOddBg?: string;
+    totalsBg?: string;
+    totalsFg?: string;
+    borderColor?: string;
+    totalsTopBorder?: string;
+}
+
+export const EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES: Record<
+    string,
+    Record<string, ExcelTableStyleEmpiricalOverride>
+> = {
+    TableStyleMedium4: {
+        // Aptos accent3. Measured 2026-06-03 from
+        // screenshots/excel-reference/FormattingSmorgasboard-Aptos.png.
+        '#196B24': {
+            headerBg: '#34692E',
+            bandedRowEvenBg: '#CAEFCB',
+            totalsTopBorder: '#72D068',
+        },
+        // Classic accent3. Measured 2026-06-03 from
+        // screenshots/excel-reference/FormattingSmorgasboard-Classic.png.
+        '#A5A5A5': {
+            headerBg: '#A5A5A5',
+            bandedRowEvenBg: '#EDEDED',
+            totalsTopBorder: '#C9C9C9',
+        },
+    },
+};
 
 // =============================================================================
 // HSL-L tint helpers (ECMA-376 §18.8.19 "color" element @tint).

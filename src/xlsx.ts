@@ -27,6 +27,7 @@ import { injectChartsIntoZip } from './charts/xlsxChart';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
+    EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES,
     resolveColorSlot,
     type ExcelTableStyleRecipe,
     type ColorSlotRecipe,
@@ -975,19 +976,43 @@ function resolveTableStylePalette(
     // clrScheme's accent1..accent6 are at indices 4..9 in `themeRgb`
     // (lt1, dk1, lt2, dk2, accent1, accent2, accent3, accent4, accent5, accent6, hlink, folHlink).
     const accents: string[] = themeRgb.slice(4, 10);
-    const resolve = (slot: ColorSlotRecipe | undefined, fallback: string | undefined): string | undefined => {
+
+    // Empirical override lookup: when the source accent for this style's
+    // headerBg slot matches a measured RGB in the override table, prefer
+    // the measured slot values over the formula. The override map is keyed
+    // by `(styleName, accentHex_uppercase)`. Lookup uses the accent that
+    // headerBg references (typically the only one a TableStyle uses).
+    const overrideTable = EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES[styleName];
+    const accentIdx = recipe.headerBg.accent;
+    let override: ReturnType<typeof Object.values<unknown>>[number] | undefined;
+    if (overrideTable && accentIdx) {
+        const accentHex = (accents[accentIdx - 1] || '').toUpperCase();
+        override = overrideTable[accentHex];
+    }
+
+    const resolve = (
+        slot: ColorSlotRecipe | undefined,
+        fallback: string | undefined,
+        overrideValue: string | undefined,
+    ): string | undefined => {
+        if (overrideValue) return overrideValue.toUpperCase();
         if (!slot) return fallback;
         return resolveColorSlot(slot, accents);
     };
+
+    type OverrideShape = Record<string, string | undefined>;
+    const ov = (override || {}) as OverrideShape;
+
     return {
         styleName: catalog.styleName,
-        headerBg: resolve(recipe.headerBg, catalog.headerBg)!,
-        headerFg: resolve(recipe.headerFg, catalog.headerFg)!,
-        bandedRowEvenBg: resolve(recipe.bandedRowEvenBg, catalog.bandedRowEvenBg),
-        bandedRowOddBg: resolve(recipe.bandedRowOddBg, catalog.bandedRowOddBg),
-        totalsBg: resolve(recipe.totalsBg, catalog.totalsBg),
-        totalsFg: resolve(recipe.totalsFg, catalog.totalsFg),
-        borderColor: resolve(recipe.borderColor, catalog.borderColor),
+        headerBg: resolve(recipe.headerBg, catalog.headerBg, ov.headerBg)!,
+        headerFg: resolve(recipe.headerFg, catalog.headerFg, ov.headerFg)!,
+        bandedRowEvenBg: resolve(recipe.bandedRowEvenBg, catalog.bandedRowEvenBg, ov.bandedRowEvenBg),
+        bandedRowOddBg: resolve(recipe.bandedRowOddBg, catalog.bandedRowOddBg, ov.bandedRowOddBg),
+        totalsBg: resolve(recipe.totalsBg, catalog.totalsBg, ov.totalsBg),
+        totalsFg: resolve(recipe.totalsFg, catalog.totalsFg, ov.totalsFg),
+        borderColor: resolve(recipe.borderColor, catalog.borderColor, ov.borderColor),
+        totalsTopBorder: resolve(recipe.totalsTopBorder, undefined, ov.totalsTopBorder),
     };
 }
 
@@ -1110,15 +1135,30 @@ function synthesizeTableStyleAssignments(
     }
 
     // Totals row.
-    if (totalRows === 1 && palette.totalsBg) {
+    if (totalRows === 1) {
+        // The totals-row top border is a double-line in the table-style's
+        // accent (lighter than the table outline), painted ABOVE the
+        // totals row body. The catalog's `borderColor` slot models the
+        // outer frame; `totalsTopBorder` is a separate decoration.
+        const totalsTopBorderRgb = palette.totalsTopBorder;
+        const totalsTopBorder: BorderEntry | undefined = totalsTopBorderRgb
+            ? { s: BORDER_STYLE_TO_UNIVER.double, cl: { rgb: totalsTopBorderRgb } }
+            : (thinBorder ?? undefined);
+
         for (let c = range.startColumn; c <= range.endColumn; c++) {
-            const totalsBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
-                t: thinBorder,
-                b: thinBorder,
-                ...(c === range.startColumn ? { l: thinBorder } : {}),
-                ...(c === range.endColumn ? { r: thinBorder } : {}),
-            } : undefined;
-            overlay(range.endRow, c, palette.totalsBg, palette.totalsFg, /* bold */ true, totalsBorders);
+            const totalsBorders: Partial<Record<BorderSide, BorderEntry>> = {};
+            if (totalsTopBorder) totalsBorders.t = totalsTopBorder;
+            if (thinBorder) {
+                totalsBorders.b = thinBorder;
+                if (c === range.startColumn) totalsBorders.l = thinBorder;
+                if (c === range.endColumn) totalsBorders.r = thinBorder;
+            }
+            const useBg = palette.totalsBg && palette.totalsBg.toUpperCase() !== '#FFFFFF' ? palette.totalsBg : undefined;
+            overlay(
+                range.endRow, c,
+                useBg, palette.totalsFg, /* bold */ true,
+                Object.keys(totalsBorders).length > 0 ? totalsBorders : undefined,
+            );
         }
     }
 

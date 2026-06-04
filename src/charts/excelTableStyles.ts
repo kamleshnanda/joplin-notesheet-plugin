@@ -68,6 +68,13 @@ export interface ExcelTableStyle {
   totalsBg?: string;
   totalsFg?: string;
   borderColor?: string;
+  /**
+   * The double-line border Excel paints between the data area and the
+   * totals row. Distinct from `borderColor` (which models the table
+   * outline). Populated at synthesis time when the recipe carries a
+   * `totalsTopBorder` slot — the static catalog leaves it undefined.
+   */
+  totalsTopBorder?: string;
 }
 
 export const EXCEL_TABLE_STYLES: ExcelTableStyle[] = [

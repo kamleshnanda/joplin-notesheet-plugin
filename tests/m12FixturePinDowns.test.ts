@@ -489,73 +489,102 @@ describe('M12 round-trip golden — table structure', () => {
 // When a workbook shipped its own non-Aptos `<a:clrScheme>` (e.g. the
 // 2013-era "Classic" palette whose accent3 is `#A5A5A5` grey), the
 // same `TableStyleMedium4` baked **green** Aptos accent3 colours into
-// per-cell styles instead of the Classic grey. Joplin painted the
-// header green; Excel would have painted it grey.
+// per-cell styles instead of the Classic grey.
 //
-// The fix routes the catalog lookup through a parallel recipe table
-// (`EXCEL_TABLE_STYLE_RECIPE_BY_NAME`) that names each slot's accent
-// index + tint, and resolves the recipe against the source workbook's
-// `<a:clrScheme>` at synthesis time. The Aptos fixture must keep
-// painting green; the Classic fixture must paint grey. SAME catalog
-// entry, TWO distinct rendered colours — driven purely by the source
-// clrScheme.
+// FIRST FIX (PR #22): Routed the catalog lookup through a parallel
+// recipe table that names each slot's accent index + HSL-L tint, and
+// resolved the recipe against the source workbook's `<a:clrScheme>`.
+// That fixed the obvious "always Aptos green" regression but the recipe
+// values themselves were eyeballed against the catalog, NOT against
+// real Excel renders — so we shipped header `#196B24` (raw accent3)
+// when Excel actually paints `#34692E`, and banded `#84E291` when
+// Excel paints `#CAEFCB`.
+//
+// SECOND FIX (this PR): Added an empirical-override map keyed by
+// `(styleName, accentHex)` whose RGBs were sampled from
+// `screenshots/excel-reference/*.png`. The recipe formula remains the
+// fallback path for unmeasured accents.
+//
+// CANONICAL TEST: `tests/excelReferenceFidelity.test.ts` is the source
+// of truth for "does the synthesizer match Excel?" These pin-downs
+// echo a subset of the same constraints with simpler shape assertions
+// for fast failure when round-trip pipelines drift.
 
 describe('M13/E pin-down — theme-aware banding synthesis', () => {
-    test('Aptos fixture: ProjectTracker header bg resolves to Aptos accent3 (#196B24 green) — regression sentinel', async () => {
+    test('Aptos fixture: ProjectTracker header bg matches Excel render at #34692E (regression sentinel)', async () => {
         const snap = await importFixture(APTOS);
         const sheet = snap.sheets[snap.sheetOrder[0]];
-        // ProjectTracker spans A1:G10 with TableStyleMedium4. Header
-        // cells live on row 0; the synthesized header bg should be
-        // accent3 = #196B24 in the Aptos workbook.
+        // ProjectTracker spans A1:G10 with TableStyleMedium4. Header is
+        // row 0. Per the empirical override for (Medium4, #196B24
+        // Aptos accent3), the rendered header bg is #34692E — measured
+        // from the Excel reference PNG, NOT a hand-derivation. See
+        // tests/excelReferenceFidelity.test.ts for the ground-truth gate.
         const headerCell = sheet.cellData[0]?.[0];
         expect(headerCell?.s).toBeDefined();
         const headerStyle = snap.styles[headerCell!.s!];
         const bg = (headerStyle.bg as { rgb: string }).rgb;
-        expect(bg).toBe('#196B24');
+        expect(bg).toBe('#34692E');
+        // Negative: the raw Aptos accent3 must NOT be what we paint
+        // for the header — that was the PR #22 symptom.
+        expect(bg).not.toBe('#196B24');
     });
 
-    test('Classic fixture: ProductCatalog header bg resolves to Classic accent3 (#A5A5A5 grey) — failure-mode sentinel', async () => {
+    test('Classic fixture: ProductCatalog header bg matches Excel render at #A5A5A5 (failure-mode sentinel)', async () => {
         const snap = await importFixture(CLASSIC);
         const sheet = snap.sheets[snap.sheetOrder[0]];
         // ProductCatalog spans A1:F10 with the SAME TableStyleMedium4
         // as the Aptos fixture. The Classic workbook's accent3 is
         // #A5A5A5 (grey). Theme-aware synthesis must paint grey, not
-        // Aptos's #196B24 green.
+        // Aptos's #196B24 / #34692E green. The empirical override for
+        // (Medium4, #A5A5A5) lands the header at raw #A5A5A5 — same
+        // value Excel paints.
         const headerCell = sheet.cellData[0]?.[0];
         expect(headerCell?.s).toBeDefined();
         const headerStyle = snap.styles[headerCell!.s!];
         const bg = (headerStyle.bg as { rgb: string }).rgb;
         expect(bg).toBe('#A5A5A5');
-        // Negative: the Aptos accent3 must NOT bleed in. This is the
-        // exact symptom we shipped pre-M13/E.
+        // Negative: the Aptos accent3 / its TableStyleMedium4 derivative
+        // must NOT bleed in. This is the exact symptom of the original
+        // M13/E bug.
         expect(bg).not.toBe('#196B24');
+        expect(bg).not.toBe('#34692E');
     });
 
-    test('Classic fixture: banded data row bg resolves to a greyscale shade (RR=GG=BB) — not a tinted hue', async () => {
-        // Even data rows on the Classic ProductCatalog table get
-        // bandedRowEvenBg = tint(accent3, +0.6). With accent3 = grey
-        // the result is a lighter grey: a greyscale colour where
-        // R === G === B. With the old Aptos-hardcoded path, the
-        // bandedEvenBg would have been #84E291 (a green) — which fails
-        // the `RR === GG === BB` invariant.
-        //
-        // Per the spec, we pin the **shape** (greyscale), not a specific
-        // RGB — the exact byte values may differ between accent-swap and
-        // re-tint implementation paths, but EITHER produces greyscale.
+    test('Classic fixture: banded data row bg matches Excel render at #EDEDED (greyscale)', async () => {
+        // Even data rows on the Classic ProductCatalog table render at
+        // #EDEDED in Excel — a light grey. With the old Aptos-hardcoded
+        // path, the bandedEvenBg was #84E291 (a green). With PR #22's
+        // tint(+0.6) it became #DBDBDB. The empirical override now
+        // lands the right value.
         const snap = await importFixture(CLASSIC);
         const sheet = snap.sheets[snap.sheetOrder[0]];
-        // dataStartRow = headerRow + 1 = row 1. First data row is row 1
-        // (snapshot index, 0-based). The synthesizer uses the header row
-        // as the "data start" reference — even rows alternate from there.
-        // Pick a data cell that's clearly in a banded row: row 1, col 0.
         const bandedCell = sheet.cellData[1]?.[0];
         expect(bandedCell?.s).toBeDefined();
         const style = snap.styles[bandedCell!.s!];
         const bg = (style.bg as { rgb: string } | undefined)?.rgb;
-        // The banded bg must be a greyscale (RR === GG === BB) and must
-        // not be the Aptos green #84E291.
-        expect(bg).toBeDefined();
+        expect(bg).toBe('#EDEDED');
+        // Sanity: it's still a greyscale; this is the structural shape
+        // the original spec called out as a generic invariant.
         expect(bg).toMatch(/^#([0-9A-F]{2})\1\1$/i);
-        expect(bg).not.toBe('#84E291');
+    });
+
+    test('Aptos fixture: totals-row top border carries the Excel double-line slot (#72D068 green)', async () => {
+        // PR #22's recipe shape did not model the totals-row top double
+        // line at all — the `borderColor` slot only covers the table
+        // outline. M13/E adds a `totalsTopBorder` slot. For Aptos the
+        // measured colour is #72D068 (green family).
+        const snap = await importFixture(APTOS);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        // ProjectTracker has totalsRowCount=1; totals row is row 9.
+        const totalsCell = sheet.cellData[9]?.[0];
+        expect(totalsCell?.s).toBeDefined();
+        const style = snap.styles[totalsCell!.s!];
+        const bd = style.bd as
+            | { t?: { s: number; cl: { rgb: string } } }
+            | undefined;
+        expect(bd?.t).toBeDefined();
+        expect(bd!.t!.cl.rgb).toBe('#72D068');
+        // s=7 is Univer's BorderStyleTypes.DOUBLE.
+        expect(bd!.t!.s).toBe(7);
     });
 });
