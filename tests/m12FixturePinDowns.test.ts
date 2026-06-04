@@ -568,11 +568,21 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
         expect(bg).toMatch(/^#([0-9A-F]{2})\1\1$/i);
     });
 
-    test('Aptos fixture: totals-row top border carries the Excel double-line slot (#72D068 green)', async () => {
-        // PR #22's recipe shape did not model the totals-row top double
-        // line at all — the `borderColor` slot only covers the table
-        // outline. M13/E adds a `totalsTopBorder` slot. For Aptos the
-        // measured colour is #72D068 (green family).
+    test('Aptos fixture: totals-row top border carries the Excel separator (#72D068 green, MEDIUM)', async () => {
+        // PR #22's recipe shape did not model the totals-row top
+        // separator at all — the `borderColor` slot only covers the
+        // table outline. M13/E adds a `totalsTopBorder` slot.
+        //
+        // Style choice MEDIUM (s=8) NOT DOUBLE (s=7): Excel's render
+        // shows a single 2px strip in the lighter accent, not a true
+        // double-line. Pixel sampling confirms this in
+        // `tests/excelCanvasFidelity.test.ts`. Univer 0.23's DOUBLE
+        // renders with `getLineWidth=1` and a 0.5px half-offset (two
+        // 1px strips with a 1-px white gap) which reads as anti-aliased
+        // `#89CE74` rather than the pure `#72D068` Excel paints. MEDIUM
+        // (lineWidth=2) paints the pure target colour and matches.
+        //
+        // For Aptos the measured totals-top colour is #72D068 (green).
         const snap = await importFixture(APTOS);
         const sheet = snap.sheets[snap.sheetOrder[0]];
         // ProjectTracker has totalsRowCount=1; totals row is row 9.
@@ -584,7 +594,7 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
             | undefined;
         expect(bd?.t).toBeDefined();
         expect(bd!.t!.cl.rgb).toBe('#72D068');
-        // s=7 is Univer's BorderStyleTypes.DOUBLE.
-        expect(bd!.t!.s).toBe(7);
+        // s=8 is Univer's BorderStyleTypes.MEDIUM.
+        expect(bd!.t!.s).toBe(8);
     });
 });
