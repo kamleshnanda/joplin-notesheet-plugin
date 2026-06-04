@@ -89,7 +89,58 @@ every feature.
 
 ## In progress
 
-(Empty between sessions.)
+- **feature-1-m13-theme-aware-banding (rework, PR #22)** — Operator
+  caught two structural bugs in PR #22 mid-review (smoke seed leak
+  in `emptySnapshot()` from PR #17 and a recipe formula that didn't
+  reproduce Excel) plus a test-gap that allowed both to ship. This
+  session shipped four phases as separate commits on the same PR
+  branch:
+  - **Phase 1 — smoke seed fix.** `src/snapshot.ts:emptySnapshot()`
+    no longer seeds A1 with the harness "harness-smoke-OK" red text.
+    `SMOKE_CELL_TEXT` / `SMOKE_STYLE_ID` exports removed; the harness
+    smoke fixture continues to work because `scripts/pge/create-seeded-notesheet.js`
+    already inlined the seed shape itself. `tests/m13RedoSmokeRedCell.test.ts`
+    rewritten as a leak pin-down (4 tests) — asserts emptySnapshot
+    has no A1 entry and no `pge-smoke-red` style.
+  - **Phase 2 — reference-anchored fidelity gate.** Added
+    `tests/util/pngSampler.ts` (pure-stdlib `zlib` PNG decoder, NOT
+    a runtime dep) and `tests/excelReferenceFidelity.test.ts` (6 new
+    tests). Each test samples the dominant fill of a region in the
+    operator-captured `screenshots/excel-reference/*.png` and asserts
+    our `xlsxBufferToSnapshot` output matches within Δ ≤ 8 per
+    channel. Five of six failed pre-Phase-3 (proves the test gap was
+    real); all six pass post-Phase-3.
+  - **Phase 3 — recipe re-derivation.** Investigation of the
+    transformation algorithm: HSL-L tint, HSV scaling, satMod+lumMod,
+    RGB mix toward grey — none reproduce all four target RGBs from
+    a single accent. Excel's built-in TableStyle definitions live in
+    Office's installed assets (not in `xl/styles.xml` of the workbook)
+    and the actual transformation isn't documented in OOXML. Took the
+    operator's allowed empirical-lookup escape hatch:
+    `src/charts/excelTableStyleRecipes.ts` now ships
+    `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`, keyed by `(styleName,
+    accentHex)`, with measured RGBs sampled from the references. The
+    HSL-L tint formula remains as fallback for unmeasured accents.
+    Added a `totalsTopBorder` slot to the recipe shape (PR #22's
+    shape didn't model the totals-row top double-line border at all)
+    and wired it into `synthesizeTableStyleAssignments` to emit a
+    `BorderStyleTypes.DOUBLE = 7` border on the totals row's top side.
+    `tests/m12FixturePinDowns.test.ts:M13/E pin-down` updated to
+    assert the new (Excel-correct) values + cite the fidelity test
+    as the canonical source.
+  - **Phase 4 — re-capture eval screenshots.** Both Aptos and Classic
+    eval screenshots regenerated. Aptos pixel sidecar:
+    `dominant=rgb(52,105,46) greenInk=16487 greyInk=0` — visibly
+    matches Excel `#34692E`. Classic: `dominant=rgb(165,165,165)
+    greenInk=0 greyInk=15811` — visibly matches Excel `#A5A5A5`. The
+    operator-eyeballed visual reference for both fixtures is in
+    `screenshots/excel-reference/`. Harness fix: `tableHeaderRowRegion`
+    is now DPR-aware (`canvas.width / canvas.clientWidth` ratio) so
+    the y-offset scales correctly on Retina displays where the canvas
+    is 2x the CSS box.
+  - **Test totals**: 197 → 204. Gain of 7 = 6 fidelity tests + 1
+    totals-top-border pin-down + 4 leak pin-downs - 4 (replaced) -
+    0 dropped pin-downs net.
 
 ## Next
 
@@ -381,4 +432,75 @@ every feature.
   qualifies. Catches Aptos accent3 (107 vs 25/36), Aptos pastel
   banded `#84E291` (132,226,145), AND pure `rgb(0,255,0)`.
   redInk/blueInk thresholds stay tight (M13/D's gate values
-  unchanged).
+  unchanged). The post-Phase-3 measured Aptos header `#34692E`
+  (52,105,46) also qualifies (`g=105 > r+30=82 && g > b+30=76 &&
+  g >= 80`).
+- **PR #17 smoke seed leak — production code carried debug state
+  for ~6 weeks before catch.** `emptySnapshot()` was the simplest
+  seam to put the smoke seed in (one function, pure-testable via
+  Jest, no Joplin Data API mock needed). It was the wrong place
+  long-term: every "New Spreadsheet" command in the deployed plugin
+  shipped with cell A1 pre-filled. Lesson: **harness-only state
+  belongs in `scripts/pge/`, not in `src/`.** The PGE
+  `create-seeded-notesheet.js` had ALWAYS inlined the seed shape
+  itself — the production seed in `emptySnapshot()` was redundant.
+  Fix landed Phase 1 of M13/E rework session.
+- **Why "asserting our own emit" let PR #22 ship wrong colours.**
+  The original M13/E pin-downs in `m12FixturePinDowns.test.ts`
+  asserted `bg.rgb === '#196B24'` for the Aptos header — that's
+  what our code emitted (raw accent3), NOT what Excel actually
+  paints (`#34692E`). The acceptance criterion "dark green" passed
+  trivially because both `#196B24` and `#34692E` ARE dark greens.
+  The pixel-sidecar threshold `greenInk ≥ 30` passed for both too.
+  Anchoring tests to your own behaviour gives you confidence your
+  code is consistent, NOT that it's correct. Phase 2's
+  `excelReferenceFidelity.test.ts` is the corrective: it samples
+  the operator-captured `screenshots/excel-reference/*.png` and
+  asserts the synthesizer's output matches what Excel actually
+  paints, within Δ ≤ 8 per channel. **Future "match Excel" features
+  should establish a reference-anchored gate FIRST (Phase 2 before
+  Phase 3) so the recipe lands against ground truth, not against
+  hand-derivation.**
+- **Excel TableStyle algorithm not crackable from a single accent.**
+  Phase 3 investigation tested HSL-L tint, HSV scale, satMod+lumMod,
+  RGB mix toward grey, lumMod+lumOff in HSL space — none reproduce
+  all four target RGBs (Aptos header #34692E, Aptos band #CAEFCB,
+  Classic band #EDEDED, Aptos totals top #72D068) from a single
+  accent. Excel's built-in TableStyle definitions live in Office's
+  installed assets (NOT in the workbook's `xl/styles.xml`) and the
+  actual transformation isn't documented in OOXML. Operator's
+  allowed empirical-lookup path was the right escape: ship measured
+  RGBs in `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`, keyed by
+  `(styleName, accentHex)`. The HSL-L formula remains as fallback
+  for accents we haven't measured. **Adding a third fixture means
+  adding a third entry to the override map** — measure with
+  `tests/util/pngSampler.ts:dominantColor` against the new Excel
+  reference PNG.
+- **Recipe shape gained `totalsTopBorder`.** PR #22's shape only
+  modelled `borderColor` (table outline). Excel paints a separate
+  double-line border above the totals row in a lighter shade of the
+  accent — `#72D068` for Aptos accent3, `#C9C9C9` for Classic
+  accent3. Added to the recipe interface; consumed by
+  `synthesizeTableStyleAssignments` which now emits the totals row's
+  top side as `s: BORDER_STYLE_TO_UNIVER.double = 7` when the
+  palette has the slot. Falls back to the existing thin border
+  otherwise. M13/E pin-down `Aptos fixture: totals-row top border
+  carries the Excel double-line slot (#72D068)` is the sentinel.
+- **`tests/util/pngSampler.ts` is test-only.** Pure-stdlib `zlib`
+  PNG decoder. Supports 8-bit RGB / RGBA, non-interlaced — the only
+  shapes our reference PNGs use. **Don't promote to a runtime
+  dependency.** If runtime PNG decoding is ever needed, that's a
+  separate design conversation; pulling `pngjs` or `sharp` into the
+  bundle is not free.
+- **`tableHeaderRowRegion` was Retina-broken until Phase 4.** The
+  hardcoded y=22 / h=13 region values assumed a non-Retina Univer
+  canvas (DPR=1). On macOS Retina the canvas backing store is at
+  DPR=2, so `canvas.width = 3008` instead of `1504`, and y=22
+  landed inside the Univer column-letter strip instead of the
+  table header row. Fix: scale x/y/w/h by
+  `canvas.width / canvas.clientWidth`. clientWidth is the CSS box;
+  the ratio is exactly devicePixelRatio. **Future region helpers
+  should use this same scaling pattern** — there's no clean way to
+  hardcode pixel offsets that work on both Retina and standard
+  displays. The simplest invariant: write the offsets in CSS px and
+  multiply by `(canvas.width / canvas.clientWidth)` at sample time.
