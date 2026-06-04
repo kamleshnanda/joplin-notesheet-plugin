@@ -139,7 +139,6 @@ function findColouredStrip(
     reverse = false,
 ): { yMin: number; yMax: number; hex: string } | null {
     const target = hexToRgb(targetHex);
-    const step = reverse ? -1 : 1;
     let runStart = -1;
     let runEnd = -1;
     let runHex = '';

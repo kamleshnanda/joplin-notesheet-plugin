@@ -17,7 +17,7 @@
       "screenshots/excel-reference/FormattingSmorgasboard-Aptos.png",
       "screenshots/excel-reference/FormattingSmorgasboard-Classic.png"
     ],
-    "evaluator_verdict": null,
-    "last_attempted_at": "2026-06-04T02:25:00Z"
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-04T02:30:00Z"
   }
 }
