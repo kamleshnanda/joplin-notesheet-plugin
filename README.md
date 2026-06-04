@@ -30,11 +30,11 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | PGE — Planner-Generator-Evaluator harness for runtime visual gating (catches the M13 failure mode where Jest passes but Univer renders broken) | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
 | ✅ | M13/C — Rotated text round-trip, validated via the PGE harness | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
 | ✅ | M13/D — Rich-text within a single cell (multi-run bold / colour / italic), validated via the PGE harness | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
-| ⏳ | M13/E — Theme-aware banding accuracy (remaining M13 workstream) | planned |
-| ⏳ | M14 — Snapshot → HTML for Joplin's PDF/HTML export menu | planned |
-| ⏳ | M15 — Chart import from `.xlsx` | planned |
-| ⏳ | M16 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set) | planned |
-| ⏳ | M17 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13 fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. | planned |
+| ✅ | M13/E — Theme-aware banding accuracy: TableStyle synthesis driven by the source `<a:clrScheme>`, with a reference-anchored fidelity test bed against operator-captured Excel renders | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
+| ⏳ | M14 — SheetJS Community migration spike: port `src/xlsx.ts` against [SheetJS Community](https://sheetjs.com) (Apache-2.0, active upstream), validate against the M12 + M13 fixture suite, decide whether to migrate. exceljs has gone quiet (last release Dec 2024) and ships stale transitives (uuid@8, glob@7). SheetJS reads conditional formatting upstream-correctly out of the box, and its sparse-dict cell model lines up structurally with Univer's snapshot. Sequencing first because it unblocks M15 (CF) and may collapse other open follow-ups. | planned |
+| ⏳ | M15 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set). **Depends on M14 outcome.** SheetJS Community reads CF correctly upstream out of the box; if M14 ships and we migrate, M15 becomes substantially cheaper. Starting M15 on the current `exceljs` parser before M14 lands may require partial rework — wait for the M14 decision. | planned |
+| ⏳ | M16 — Snapshot → HTML for Joplin's PDF/HTML export menu. Independent of the `.xlsx` parser choice — operates on the in-memory snapshot — so the M14 outcome doesn't change the M16 design surface. Can run in parallel with M14 / M15. | planned |
+| ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions, currently `xlsx-charts-unsupported`). | planned |
 
 > **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
 
@@ -116,7 +116,7 @@ Pattern adapted from [anthropics/cwc-long-running-agents](https://github.com/ant
   exports the raw fenced JSON for Notesheet notes instead of a rendered
   table. To save a Notesheet as an Excel file, use the in-editor
   **Export .xlsx** button. PDF/HTML export of rendered spreadsheet content
-  is planned (M14).
+  is planned (M16).
 - **Cmd/Ctrl+K** opens Joplin's markdown link dialog instead of Univer's
   link insertion UI for the active cell. Use the Univer toolbar's Insert →
   Link option from inside the spreadsheet. (Imported `.xlsx` hyperlinks are
@@ -138,11 +138,21 @@ accidentally changes.
   vs Office Classic's `#9BBB59` — the in-Joplin display can disagree
   with what the same file renders in Excel. The exported `.xlsx`
   preserves the source's `<a:clrScheme>`, so opening the round-tripped
-  file back in Excel renders it correctly; only the in-Joplin paint
-  is hardcoded. → M13/E.
+  file back in Excel renders it correctly. M13/E (PR #22) made the
+  in-Joplin paint clrScheme-aware via an empirical-override map keyed
+  by `(styleName, accentHex)` for the two project-owned fixtures
+  (Aptos `TableStyleMedium4` accent3 and Classic `TableStyleMedium4`
+  accent3). Workbooks whose `(styleName, accentHex)` pair isn't in
+  the override map fall through to an HSL-L tint formula that
+  approximates the right hue but can drift by ~Δ18 RGB units. **Open
+  Univer renderer gap (filed for follow-up):** the snapshot now
+  carries the totals row's bottom-border accent strip (`bd.b`)
+  correctly per pixel-probe, but Univer 0.23 paints it with the
+  header colour rather than the lighter accent strip Excel uses.
+  Top-side strip renders correctly.
 - **Conditional formatting**: color scale / data bar / cell-is /
   top-N / icon-set rules are dropped on import and not re-emitted on
-  export. Cell values themselves survive. → M16.
+  export. Cell values themselves survive. → M15.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
@@ -164,14 +174,14 @@ introduce silent regression risk worse than the warnings themselves.
   identifier generation; `v3`/`v5`/`v6` are never invoked.
   `npm audit fix --force` would downgrade exceljs to 3.4.0
   (a major-version DOWNGRADE), which is unacceptable. Real fix
-  is upstream in exceljs (or migrate off — see M17).
+  is upstream in exceljs (or migrate off — see M14).
 - **Transitive deprecation noise** (`inflight@1`, `rimraf@2`,
   `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3):
   every entry is buried under exceljs (`>archiver`, `>unzipper`,
   `>fast-csv`) or jest@30 internals. We are already on jest@30
   (M11 bumped specifically to drop deprecated transitive globs);
   no further direct-dep change can clear these. Only an exceljs
-  replacement does — see M17.
+  replacement does — see M14.
 - **`glob@11.1.0`** (our direct devDep) — npm prints a blanket
   "old versions of glob" warning for any glob it sees, but
   `glob@11.1.0` IS the current major. Ignore.
@@ -187,7 +197,7 @@ host UI can show an actionable message instead of a raw stack trace.
 
 - **Workbooks with chart drawings** → `xlsx-charts-unsupported`. exceljs's
   drawing-reconcile crashes on chart anchor structures that openpyxl
-  and modern Excel emit. M15 will address this by reading the chart
+  and modern Excel emit. M17 will address this by reading the chart
   structure directly with a lightweight OOXML reader similar to the
   M10 export path (and pre-stripping drawings before they reach exceljs
   on the read path).
