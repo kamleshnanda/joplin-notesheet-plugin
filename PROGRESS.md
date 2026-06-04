@@ -5,6 +5,30 @@ every feature.
 
 ## Done
 
+- **feature-1-m14-sheetjs-spike-decision** (2026-06-04) — Spike PR
+  landing four artefacts: parallel parser module
+  `src/xlsxSheetJS.ts` (909 lines, dead code at runtime — webpack
+  tree-shakes it; verified via `grep -c 'xlsxSheetJS\|xlsx-js-style'`
+  on dist outputs returning 0), parser-parity test
+  `tests/xlsxParserParity.test.ts` (24 fixtures × 14 dimensions matrix
+  written to `tests/golden-snapshots/parity-matrix.json`), golden
+  snapshots `tests/golden-snapshots/*.json` (14 baseline goldens, with
+  volatile id scrubbing for `workbook-`, `tbl-…-`, `tblcol-N-`, `lnk-`),
+  and decision doc `docs/m14-sheetjs-spike.md` with capability matrix +
+  migration cost estimate + **NO-GO** recommendation. `xlsx-js-style@^1.2.0`
+  added as devDep only; production `dependencies` byte-identical to main;
+  webpack-emitted .jpl size identical (`13412864` bytes). Three NO-GO
+  drivers documented: (1) borders entirely dropped from indexed-cellXf
+  cells (every `wb.Styles.Borders` entry is `{}` for Microsoft-Excel-
+  generated fixtures), (2) alignment / rotation / wrap dropped (M13/C
+  regression on `MergedCellsAndAlignment.xlsx`), (3) rich-text per-run
+  flattened (M13/D regression — workaroundable with raw-XML walker, but
+  the spike already wrote it; that's the spike doing what xlsx-js-style
+  should). Conditional GO documented if operator absorbs ~9.5–14.5 days
+  of in-house parser work to replace the gaps. Tests: 247/248 (209
+  baseline + 38 new = 24 parity rows + 14 golden rows; 1 skipped
+  unchanged). `npm audit` adds zero new advisories beyond pre-existing
+  exceljs/uuid moderate vulns.
 - **feature-1-smoke-red-cell** (2026-06-02) — Generator inline-implemented
   the smoke seed in `src/snapshot.ts:emptySnapshot()`. A1 = "harness-smoke-OK"
   styled via `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`,
@@ -37,34 +61,6 @@ every feature.
   code worked first try in Univer 0.23 — earlier visual failure was
   almost certainly a stale-build issue, not a rendering gap. Evaluator
   graded PASS (PR #19, dc80505).
-- **feature-1-m13-theme-aware-banding** (2026-06-03) — Routed
-  `synthesizeTableStyleAssignments` through a new `EXCEL_TABLE_STYLE_RECIPE_BY_NAME`
-  parallel table (`src/charts/excelTableStyleRecipes.ts`) that names each
-  TableStyle slot's accent index + tint. The synthesizer reads the source
-  workbook's `<a:clrScheme>` (already captured by `readThemeClrScheme`)
-  and resolves the recipe via the ECMA-376 HSL-L tint formula. Aptos
-  fixture (`FormattingSmorgasboard.xlsx`) still paints green
-  (`#196B24` header + `#84E291` band); Classic fixture
-  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
-  now paints grey (`#A5A5A5` header + `#DBDBDB` band) instead of green.
-  Same `EXCEL_TABLE_STYLE_BY_NAME[Medium4]` lookup; two distinct rendered
-  outputs driven by source clrScheme. Achromatic styles
-  (Light1/8/15, Medium1/8/15/22, Dark1/8) keep their literal greys. Tint
-  maths verified exact against the existing Aptos catalog
-  (`tint('#196B24', 0.6) = '#84E291'`, `tint('#156082', 0.6) = '#83CBEB'`,
-  `tint('#196B24', -0.25) = '#13501B'`). First multi-screenshot cycle:
-  added `:variant` suffix support to `eval-screenshot.js`
-  (`feature-1-m13-theme-aware-banding:aptos` + `:classic`),
-  `tableHeaderRowRegion` helper sampling (x=80..480, y=22..35) cols B+
-  to dodge A1 active-cell selection blue, `greyInk` aggregate
-  (R,G,B∈[140,180] AND `abs(R-G)≤10` AND `abs(G-B)≤10`), and broadened
-  the existing `greenInk` aggregate so it catches dark Aptos green
-  `#196B24` (G=107) too. Pixel sidecar over header band:
-  Aptos `dominant=rgb(25,107,36) greenInk=4113 greyInk=0`,
-  Classic `dominant=rgb(165,165,165) greenInk=0 greyInk=3914`. Three
-  new pin-downs in `tests/m12FixturePinDowns.test.ts`
-  (M13/E describe block) bring Jest from 195→198. Generator-evidence
-  screenshots: `screenshots/feature-1-m13-theme-aware-banding/generator-evidence-{aptos,classic}.png`.
 - **feature-1-m13-rich-text-renders** (2026-06-03) — Cherry-picked PR
   #16 commit `6f33f3a` rich-text import/export in `src/xlsx.ts`
   (4 new helpers: `buildTextStyleFromExceljsFont`,
@@ -86,171 +82,53 @@ every feature.
   was almost certainly a build/cache issue, not a renderer gap.
   Evaluator graded PASS (PR #20). README cleanup followed in PR #21
   (5aaf690).
+- **feature-1-m13-theme-aware-banding** (2026-06-04, PRs #22 + #23)
+  — Routed `synthesizeTableStyleAssignments` through a new
+  `EXCEL_TABLE_STYLE_RECIPE_BY_NAME` parallel table
+  (`src/charts/excelTableStyleRecipes.ts`) that names each
+  TableStyle slot's accent index + tint. The synthesizer reads the
+  source workbook's `<a:clrScheme>` (already captured by
+  `readThemeClrScheme`) and resolves the recipe via the ECMA-376
+  HSL-L tint formula. Aptos fixture (`FormattingSmorgasboard.xlsx`)
+  paints green (`#196B24` header + `#84E291` band); Classic fixture
+  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
+  paints grey (`#A5A5A5` header + `#DBDBDB` band). Same
+  `EXCEL_TABLE_STYLE_BY_NAME[Medium4]` lookup; two distinct rendered
+  outputs driven by source clrScheme. Achromatic styles
+  (Light1/8/15, Medium1/8/15/22, Dark1/8) keep their literal greys.
+  First multi-screenshot cycle: added `:variant` suffix support to
+  `eval-screenshot.js` (`feature-1-m13-theme-aware-banding:aptos` +
+  `:classic`), `tableHeaderRowRegion` helper sampling cols B+ to
+  dodge A1 active-cell selection blue, `greyInk` aggregate, and
+  broadened `greenInk` to catch dark Aptos green. Reworks #2 and #3
+  (in PR #22) added a canvas-vs-Excel fidelity test layer
+  (`tests/excelCanvasFidelity.test.ts`) and a `totalsBottomBorder`
+  recipe slot for the totals-row bottom accent strip; Univer
+  renderer-side `bd.b` colour mismatch (renders `#34692E` instead of
+  `#72D068`) documented as a known gap and filed as a separate
+  follow-up. Reference-anchored fidelity gate
+  (`tests/excelReferenceFidelity.test.ts`) added in M13/E rework #1
+  to anchor synthesizer output to operator-captured Excel reference
+  PNGs. PR #17's smoke seed leak in `emptySnapshot()` removed in
+  Phase 1 of the rework cycle. Final test totals 209 passing
+  (was 195 at M13/D baseline; gain = 6 fidelity tests + 4 leak
+  pin-downs + 4 canvas-fidelity tests + 4 totals-border pin-downs
+  - 4 replaced). README cleanup followed in PR #23 (8fa0d6e).
 
 ## In progress
 
-- **feature-1-m13-theme-aware-banding (rework #2 — canvas fidelity, PR #22)** —
-  Operator caught a render-side bug the Phase-2-prior fidelity test
-  couldn't see: the `totalsTopBorder` slot emits `bd.t.s = 7` (DOUBLE)
-  on the totals row. Univer 0.23 paints DOUBLE on top with
-  `getLineWidth(DOUBLE)=1` and a 0.5px half-offset → two 1px strips
-  with a 1-px white gap, which reads as anti-aliased `#89CE74` rather
-  than the pure `#72D068` Excel paints. AND Excel's render is actually
-  a single 2px strip, not a true double-line — so DOUBLE was the wrong
-  style code in the first place.
-  - **Phase 1 — canvas-vs-Excel fidelity test (failing).**
-    `tests/excelCanvasFidelity.test.ts` (361 lines, pure-stdlib via
-    `tests/util/pngSampler.ts`). Region-finding heuristics align Joplin
-    canvas screenshot with Excel reference at structural regions
-    (header / banded / totals-top). Asserts dominant-colour parity for
-    tall regions (Δ ≤ 8) and looser for 1-2px strips (Δ ≤ 32 — Retina
-    anti-aliasing dominates). Includes a structural sentinel:
-    "Joplin's totals-top is a SINGLE strip, not two strips with a
-    ≤4px gap" — directly catches the DOUBLE-render artifact. Committed
-    BEFORE the fix to prove the gap was real (commit ordering 526bdb6).
-  - **Phase 2 — DOUBLE → MEDIUM on totals-top.**
-    `synthesizeTableStyleAssignments` now emits
-    `BORDER_STYLE_TO_UNIVER.medium` (style 8, lineWidth=2) instead of
-    `.double` (style 7) for the totals-top slot. The recipe shape
-    (`totalsTopBorder` in `excelTableStyleRecipes.ts`) and empirical
-    overrides are unchanged — they still carry `#72D068` / `#C9C9C9`.
-    Only the synthesizer's border-style code changes. Pin-down
-    `m12FixturePinDowns.test.ts:Aptos totals-row top border` updated
-    to assert `bd.t.s === 8` not `7`. Phase 2 lives in commit e260f30.
-  - **Phase 3 — re-capture eval screenshots.** Both Aptos and Classic
-    eval screenshots regenerated against the rebuilt .jpl. Aptos new
-    canvas at y=398 = single strip `#89CE74` (anti-aliased single
-    `#72D068`), gap-pair check finds `length=1` ≠ 2 (PASS). Classic
-    similar: `#C9C9C9` strip at the totals-top. Generator-evidence
-    pixel sidecars confirm `dominant=rgb(52,105,46) greenInk=16487`
-    (Aptos) and `dominant=rgb(165,165,165) greyInk=15811` (Classic) —
-    same as the prior session's gating signals.
-  - **Test totals**: 204 → 206. Gain of 2 = 2 canvas-fidelity tests
-    (Aptos + Classic), no other test changes.
-
-  - **Phase 4 — totals-row BOTTOM border (rework #3 follow-up).**
-    Operator's eyeball + side-by-side pixel-probe against the Excel
-    reference revealed the totals row in Excel paints TWO accent
-    strips, framing top AND bottom of the totals body — not just a
-    top strip. Pixel-probe at `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`
-    confirmed strips at y=424-425 (top) and y=472-473 (bottom), both
-    `#72D068`, separated by ~46px white totals-body. Recipe extended:
-    new `totalsBottomBorder` slot in `excelTableStyleRecipes.ts` +
-    `excelTableStyles.ts`, parallel to `totalsTopBorder`. Empirical
-    overrides set both Aptos and Classic to the lighter accent
-    (`#72D068` / `#C9C9C9`). `synthesizeTableStyleAssignments` emits
-    `bd.b = { s: 8, cl: { rgb: <totalsBottomBorder> } }` on every
-    totals cell, REPLACING the table outline's thin frame on that
-    side (Excel paints the accent strip across the full width, not
-    the outline colour).
-    - Diagnostic asset: `tests/ExcelBaseTestData/formatting-testdata/border-isolation.xlsx`
-      — operator-built fixture with explicit DOUBLE/THIN borders in
-      various combinations. Pixel-probed against Excel's render to
-      establish ground truth: Excel's DOUBLE = 2px+2px+2px (~6px
-      tall) — nothing like the wider gap we see between totals-top
-      and totals-bottom strips, which are TWO separate borders, not
-      one DOUBLE.
-    - Pin-downs updated: `tests/m12FixturePinDowns.test.ts` adds two
-      tests (Aptos + Classic) asserting `bd.t` AND `bd.b` carry the
-      MEDIUM accent strip. `tests/excelReferenceFidelity.test.ts`
-      adds two tests (Aptos + Classic totals BOTTOM border) and
-      relabels the existing top-border tests (the prior cycle's
-      "totals row top border" was actually sampling the BOTTOM
-      strip at y=472; both happened to share the same colour so
-      the assertion passed by coincidence).
-    - **KNOWN GAP — Univer renders `bd.b` with the wrong colour.**
-      The synthesized snapshot is correct (`bd.b.cl.rgb === '#72D068'`
-      verified via direct `xlsxBufferToSnapshot` introspection on
-      every totals cell). When the .jpl is loaded in Joplin and
-      pixel-probed, the rendered bottom strip at y=436 shows
-      `rgb(52,106,46) = #34692E` — the header's dark green, NOT the
-      lighter `#72D068` from `bd.b`. Top strip at y=398 renders
-      correctly. The mismatch is in Univer's renderer, not in our
-      synthesis. Filed as renderer-side follow-up; the synthesis
-      change ships as it improves the snapshot fidelity even before
-      the renderer side is fixed.
-    - **Test totals**: 206 → 209. Gain of 3 = 2 canvas-fidelity
-      bottom-border tests (already wired in earlier; just renamed
-      and added bottom counterparts) + 1 net new pin-down per
-      fixture (Aptos: top-only → top+bottom merged; Classic: net new
-      "totals row carries top AND bottom" test).
-
-  - PRIOR session shipped (recorded for history):
-  - **Phase 1 — smoke seed fix.** `src/snapshot.ts:emptySnapshot()`
-    no longer seeds A1 with the harness "harness-smoke-OK" red text.
-    `SMOKE_CELL_TEXT` / `SMOKE_STYLE_ID` exports removed; the harness
-    smoke fixture continues to work because `scripts/pge/create-seeded-notesheet.js`
-    already inlined the seed shape itself. `tests/m13RedoSmokeRedCell.test.ts`
-    rewritten as a leak pin-down (4 tests) — asserts emptySnapshot
-    has no A1 entry and no `pge-smoke-red` style.
-  - **Phase 2 — reference-anchored fidelity gate.** Added
-    `tests/util/pngSampler.ts` (pure-stdlib `zlib` PNG decoder, NOT
-    a runtime dep) and `tests/excelReferenceFidelity.test.ts` (6 new
-    tests). Each test samples the dominant fill of a region in the
-    operator-captured `screenshots/excel-reference/*.png` and asserts
-    our `xlsxBufferToSnapshot` output matches within Δ ≤ 8 per
-    channel. Five of six failed pre-Phase-3 (proves the test gap was
-    real); all six pass post-Phase-3.
-  - **Phase 3 — recipe re-derivation.** Investigation of the
-    transformation algorithm: HSL-L tint, HSV scaling, satMod+lumMod,
-    RGB mix toward grey — none reproduce all four target RGBs from
-    a single accent. Excel's built-in TableStyle definitions live in
-    Office's installed assets (not in `xl/styles.xml` of the workbook)
-    and the actual transformation isn't documented in OOXML. Took the
-    operator's allowed empirical-lookup escape hatch:
-    `src/charts/excelTableStyleRecipes.ts` now ships
-    `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`, keyed by `(styleName,
-    accentHex)`, with measured RGBs sampled from the references. The
-    HSL-L tint formula remains as fallback for unmeasured accents.
-    Added a `totalsTopBorder` slot to the recipe shape (PR #22's
-    shape didn't model the totals-row top double-line border at all)
-    and wired it into `synthesizeTableStyleAssignments` to emit a
-    `BorderStyleTypes.DOUBLE = 7` border on the totals row's top side.
-    `tests/m12FixturePinDowns.test.ts:M13/E pin-down` updated to
-    assert the new (Excel-correct) values + cite the fidelity test
-    as the canonical source.
-  - **Phase 4 — re-capture eval screenshots.** Both Aptos and Classic
-    eval screenshots regenerated. Aptos pixel sidecar:
-    `dominant=rgb(52,105,46) greenInk=16487 greyInk=0` — visibly
-    matches Excel `#34692E`. Classic: `dominant=rgb(165,165,165)
-    greenInk=0 greyInk=15811` — visibly matches Excel `#A5A5A5`. The
-    operator-eyeballed visual reference for both fixtures is in
-    `screenshots/excel-reference/`. Harness fix: `tableHeaderRowRegion`
-    is now DPR-aware (`canvas.width / canvas.clientWidth` ratio) so
-    the y-offset scales correctly on Retina displays where the canvas
-    is 2x the CSS box.
-  - **Test totals**: 197 → 204. Gain of 7 = 6 fidelity tests + 1
-    totals-top-border pin-down + 4 leak pin-downs - 4 (replaced) -
-    0 dropped pin-downs net.
+(Empty — M14 spike landed pending evaluator + operator review; see
+`## Done` for the artefacts.)
 
 ## Next
 
-- **feature-1-m13-theme-aware-banding** — When a workbook ships its
-  own non-Aptos `<a:clrScheme>`, the in-Joplin render of every named-
-  style table (`TableStyleLight*`, `TableStyleMedium*`,
-  `TableStyleDark*`) must derive per-cell `bg` / `cl` / `borderColor`
-  from the source clrScheme rather than the hardcoded Aptos catalog
-  in `src/charts/excelTableStyles.ts`. Two project-owned fixtures
-  pin the two halves: `FormattingSmorgasboard.xlsx` (Aptos, accent3
-  `#196B24` green — regression sentinel) and
-  `FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
-  (Classic, accent3 `#A5A5A5` grey — failure-mode sentinel). Both
-  use `TableStyleMedium4`; the same catalog entry must paint green
-  for one and grey for the other. **First multi-screenshot cycle:**
-  the harness needs a `:variant` suffix on `FEATURE_ID`
-  (`feature-1-m13-theme-aware-banding:aptos` /
-  `feature-1-m13-theme-aware-banding:classic`) plus new entries in
-  `REGION_BY_FEATURE` / `TITLE_PREFIX_BY_FEATURE`, a new
-  `tableHeaderRowRegion` helper, and a new `greyInk` aggregate in
-  `samplePixelsAt`. Don't rename or remove the prior cycles' single-
-  key entries. Jest target: ≥197 (M13/D's 195 baseline + ≥2 new
-  pin-downs for header colour). M12 invariants
-  (`SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN` shape,
-  `SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN` shape, applyFont=1
-  invariant on synth-only header cells, table-name round-trip) must
-  stay green. README "Known shortcomings — Theme-aware banding"
-  edit is out-of-scope (defer to follow-up like PR #21 did for
-  M13/C and M13/D). See `BUILD_PLAN.md` for the full spec.
+(Empty until M14 spike is graded. Post-spike: if GO, M14 Phase 2 is
+the production migration in a new branch. If NO-GO, the spike PR
+either merges as a documentation artefact OR closes without
+merging — operator's call at review time. Post-M14, the next
+candidates per the M13/E reworks' notes are (a) the Univer
+renderer-side `bd.b` follow-up, and (b) inter-banded-row strips for
+`TableStyleMedium4`.)
 
 ## Notes
 
@@ -568,7 +446,6 @@ every feature.
   see "DOUBLE on top renders as anti-aliased two-strip" note below.**
   M13/E pin-down `Aptos fixture: totals-row top border carries the
   Excel separator (#72D068 green, MEDIUM)` is the sentinel.
-
 - **Univer 0.23 DOUBLE-on-top renders as anti-aliased two-strip,
   NOT a true double-line.** `getLineWidth(BorderStyleTypes.DOUBLE)=1`
   in `node_modules/@univerjs/engine-render/lib/es/index.js:1872`,
@@ -585,7 +462,6 @@ every feature.
   perception of the totals-top in Excel comes from the strip pairing
   with the banded-row decoration above it — see the cross-feature
   follow-up below.
-
 - **Cross-feature follow-up: banded-row boundary decoration.**
   Excel paints `#72D068` (Aptos) / `#C9C9C9` (Classic) 2px strips at
   EVERY banded-row boundary inside `TableStyleMedium4`, not just the
@@ -597,7 +473,6 @@ every feature.
   The synthesizer would need to emit MEDIUM borders on every banded-
   data-row boundary (top of rows 2-9 in the Aptos/Classic fixtures)
   in `palette.totalsTopBorder` colour.
-
 - **Canvas-vs-Excel fidelity test layer (`tests/excelCanvasFidelity.test.ts`).**
   Second gate added in M13/E rework #2. The original
   `excelReferenceFidelity.test.ts` compares Excel reference PNG →
@@ -638,3 +513,109 @@ every feature.
   hardcode pixel offsets that work on both Retina and standard
   displays. The simplest invariant: write the offsets in CSS px and
   multiply by `(canvas.width / canvas.clientWidth)` at sample time.
+- **M14 spike convention — research-cycle planning differs from
+  feature-cycle planning.** When a cycle is a spike (deliverables =
+  artefacts, not user-visible behaviour), the BUILD_PLAN's
+  acceptance criteria reference committed files, CLI exits, and
+  text excerpts (e.g. `grep -nE` patterns into the spec). There
+  is no harness involvement, no PGE screenshot loop, no
+  `screenshots/<feature-id>/` directory. The evaluator opens the
+  files, runs the named tests, and confirms by content. The
+  planner-agent template still applies — every criterion must
+  cite an observable signal — but "observable" here means a
+  diff, a passing test, or a markdown heading present in a doc,
+  not a pixel band on a canvas.
+- **`src/xlsx.ts` public surface (M14 spike reference).** The four
+  things `src/xlsxSheetJS.ts` must reproduce: `xlsxBufferToSnapshot`
+  (line 1234), `snapshotToXlsxBuffer` (line 1752),
+  `class NotesheetImportError` (line 113), the constants
+  `NOTESHEET_SYNTH_STYLES_RESOURCE` (line 93) and
+  `NOTESHEET_THEME_CLR_SCHEME_RESOURCE` (line 101). Two
+  parser-agnostic helpers — `readThemeClrScheme` (line 683) and
+  `readNamedHyperlinkCells` (line 744) — read raw XML via JSZip,
+  not exceljs; the spike module should import them rather than
+  reimplement them.
+- **209 tests is the M13/E baseline (post-PR #23).** `npm test`
+  reports `Tests: 209 passed, 1 skipped, 210 total` at the start
+  of the M14 cycle. The spike must keep all 209 green and may
+  add new parity / golden tests on top. The 1 skipped
+  (`smoke.test.ts`'s `xfail` placeholder) stays skipped.
+- **M14 spike: `xlsx-js-style@1.2.0` is `xlsx@0.18.5` under the hood
+  (`XLSX.version === '0.18.5'`).** Both versions ship with `cellStyles: true`
+  parsing flag, but **`cellStyles` only reliably populates fills, not
+  borders / alignment / fonts** for cells whose style comes from the
+  styles.xml indexed-cellXf path (the OOXML standard for Excel-generated
+  files). Verified empirically: `BordersAndCellColors.xlsx` has 11 unique
+  borders in source XML, after `XLSX.read(buf, {cellStyles: true})` the
+  `wb.Styles.Borders` array is `[{}, {}, {}, ...]` (every entry empty)
+  and the per-cell `c.s.border` is undefined. Self-roundtrip works (write
+  via xlsx-js-style → read via xlsx-js-style preserves styles), but
+  cross-tool interop is broken for the styling fork's central feature.
+- **M14 spike: `wb.Styles` registry is exposed via `bookFiles: true`.**
+  `XLSX.read(buf, {cellStyles: true, bookFiles: true})` populates
+  `wb.Styles = { Fonts, Fills, Borders, CellXf }` arrays. Useful for a
+  Phase-2 raw-walker that fills in what `cellStyles` fails to do — but
+  Borders is `{}` arrays even with `bookFiles` on, so a Phase-2 walker
+  has to skip the wb.Styles registry entirely and re-parse `xl/styles.xml`
+  via JSZip + regex (same shape as `readNamedHyperlinkCells`). Estimated
+  2-3 days in the M14 decision doc's migration cost table.
+- **M14 spike: rich-text per-run has to be parsed manually too.** SheetJS
+  collapses `<r><rPr>...<t>…</t></r>` runs into a single `c.v` plain string
+  + `c.h` HTML span (with empty styles for colour). `c.r` is the raw
+  `<t>…</t>` (only the bold survives, colours stripped). The spike's
+  `readInlineRichTextRuns` + `parseInlineRichRuns` (~80 lines in
+  `src/xlsxSheetJS.ts`) re-parses the raw `<is><r><rPr>` directly via
+  JSZip+regex. Reusable as-is in Phase 2 if the migration goes ahead.
+- **M14 spike: Pattern A hyperlinks WORK in xlsx-js-style.** `cell.l.Target`
+  is populated correctly for every `<hyperlinks>`-block hyperlink in
+  source XML. Pattern B (named-style cellStyle="Hyperlink") is parser-
+  agnostic via `readNamedHyperlinkCells` and works with either parser.
+  Similarly: theme palette via `readThemeClrScheme` works with either.
+  These are the parser-agnostic parts of `src/xlsx.ts` — Phase 2 reuses
+  them verbatim.
+- **M14 spike: `xlsx-js-style` is more lenient than exceljs on the
+  fixtures exceljs's reconcile crashes on.** `LargeWorkbook.xlsx`,
+  `MultiSheet.xlsx`, and `FormulasAndStructuredRefs.xlsx` all import
+  cleanly via xlsx-js-style. exceljs throws typed
+  `NotesheetImportError(xlsx-charts-unsupported)` or
+  `NotesheetImportError(xlsx-multi-table-unsupported)` for these. Phase
+  2 (if it ever happens) would either need to preserve the typed-error
+  contract (post-import validation that re-throws in the same code-path
+  shape) OR get operator approval to relax the contract. The lenience
+  is technically a Notesheet improvement, not a regression — but
+  changing the user-visible error surface is operator-territory.
+- **M14 spike: golden snapshots use volatile-id scrubbing.** `src/xlsx.ts`
+  emits four families of dynamic ids that change across runs:
+  `workbook-<unix-ms>`, `tbl-<name>-<base36-now>-<rand36>`,
+  `tblcol-<idx>-<base36-now>-<rand36>`, and
+  `lnk-<base36-now>-<rand36>`. The golden test scrubs each via regex
+  before comparison (`workbook-STABLE`, `tbl-<name>-STABLE`,
+  `tblcol-<idx>-STABLE`, `lnk-STABLE`). The scrub runs over the
+  JSON-stringified snapshot then re-parses, so the table-data
+  resource (a JSON-string-typed field that contains nested ids) gets
+  scrubbed too. **Don't add new dynamic ids without updating the
+  scrub regex** in `tests/goldenSnapshots.test.ts`.
+- **M14 spike: golden tests survive exceljs throwing.** The three
+  fixtures exceljs's reconcile crashes on
+  (`LargeWorkbook.xlsx`, `MultiSheet.xlsx`,
+  `FormulasAndStructuredRefs.xlsx`) get a golden of the form
+  `{"__importError": {"name": "NotesheetImportError", "code": "..."}}`
+  — capturing the typed-error code, NOT the prose message (which
+  could be tweaked for clarity in a Phase-2 follow-up without
+  representing a regression). Phase 2 must produce the same code or
+  document the deliberate change.
+- **M14 spike: production bundle byte-identical after the dep add.**
+  The `.jpl` is 13412864 bytes both before and after `npm install
+  --save-dev xlsx-js-style@^1.2.0`. Webpack tree-shakes the spike
+  module and all its transitives because nothing in the production
+  code path imports it. Verified via `grep -c 'xlsxSheetJS\|xlsx-js-style'`
+  on the three dist files (contentScript.js, editorView.js, index.js)
+  → 0 hits in all three. Confirms `devDependencies` is the right
+  place for the fork.
+- **M14 spike: `tmp-probe*.js` files (in repo root) used during spike
+  development and removed before commit.** If a future cycle wants to
+  redo the SheetJS capability survey, the same probes are easy to
+  reconstruct: load fixture via `XLSX.read(buf, {cellStyles: true,
+  cellNF: true, bookFiles: true})`, inspect `wb.Sheets[name][cell].s`,
+  inspect `wb.Styles.{Fonts,Fills,Borders,CellXf}`. Inspect the raw
+  zip via JSZip for ground truth.

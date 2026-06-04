@@ -1,0 +1,508 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-2": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-3": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-4": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-5": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-6": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "l": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-7": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      }
+    },
+    "style-8": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "r": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-9": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "b": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-10": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "b": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-11": {
+      "ff": "Aptos Narrow",
+      "fs": 12,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "r": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "Sheet1",
+      "cellData": {
+        "1": {
+          "1": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "2": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "3": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "4": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "5": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "2": {
+          "1": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "2": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "3": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "4": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "5": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "3": {
+          "1": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "2": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "3": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "4": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          },
+          "5": {
+            "v": "D",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "5": {
+          "1": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "2": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "3": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "4": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "5": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          }
+        },
+        "6": {
+          "1": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "2": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "3": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "4": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          },
+          "5": {
+            "v": "T",
+            "t": 1,
+            "s": "style-2"
+          }
+        },
+        "7": {
+          "1": {
+            "v": "tl",
+            "t": 1,
+            "s": "style-3"
+          },
+          "2": {
+            "v": "t",
+            "t": 1,
+            "s": "style-4"
+          },
+          "3": {
+            "v": "t",
+            "t": 1,
+            "s": "style-4"
+          },
+          "4": {
+            "v": "t",
+            "t": 1,
+            "s": "style-4"
+          },
+          "5": {
+            "v": "tr",
+            "t": 1,
+            "s": "style-5"
+          }
+        },
+        "8": {
+          "1": {
+            "v": "l",
+            "t": 1,
+            "s": "style-6"
+          },
+          "2": {
+            "v": "-",
+            "t": 1,
+            "s": "style-7"
+          },
+          "3": {
+            "v": "-",
+            "t": 1,
+            "s": "style-7"
+          },
+          "4": {
+            "v": "-",
+            "t": 1,
+            "s": "style-7"
+          },
+          "5": {
+            "v": "r",
+            "t": 1,
+            "s": "style-8"
+          }
+        },
+        "9": {
+          "1": {
+            "v": "l",
+            "t": 1,
+            "s": "style-6"
+          },
+          "2": {
+            "v": "-",
+            "t": 1,
+            "s": "style-7"
+          },
+          "3": {
+            "v": "-",
+            "t": 1,
+            "s": "style-7"
+          },
+          "4": {
+            "v": "-",
+            "t": 1,
+            "s": "style-7"
+          },
+          "5": {
+            "v": "r",
+            "t": 1,
+            "s": "style-8"
+          }
+        },
+        "10": {
+          "1": {
+            "v": "bl",
+            "t": 1,
+            "s": "style-9"
+          },
+          "2": {
+            "v": "b",
+            "t": 1,
+            "s": "style-10"
+          },
+          "3": {
+            "v": "b",
+            "t": 1,
+            "s": "style-10"
+          },
+          "4": {
+            "v": "b",
+            "t": 1,
+            "s": "style-10"
+          },
+          "5": {
+            "v": "br",
+            "t": 1,
+            "s": "style-11"
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {
+        "1": {
+          "h": 24
+        },
+        "2": {
+          "h": 24
+        },
+        "3": {
+          "h": 24
+        },
+        "10": {
+          "h": 23
+        }
+      },
+      "columnData": {}
+    }
+  },
+  "defaultStyle": {
+    "ff": "Aptos Narrow"
+  },
+  "resources": [
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"0E2841\"/></a:dk2><a:lt2><a:srgbClr val=\"E8E8E8\"/></a:lt2><a:accent1><a:srgbClr val=\"156082\"/></a:accent1><a:accent2><a:srgbClr val=\"E97132\"/></a:accent2><a:accent3><a:srgbClr val=\"196B24\"/></a:accent3><a:accent4><a:srgbClr val=\"0F9ED5\"/></a:accent4><a:accent5><a:srgbClr val=\"A02B93\"/></a:accent5><a:accent6><a:srgbClr val=\"4EA72E\"/></a:accent6><a:hlink><a:srgbClr val=\"467886\"/></a:hlink><a:folHlink><a:srgbClr val=\"96607D\"/></a:folHlink></a:clrScheme>"
+    }
+  ]
+}

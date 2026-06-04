@@ -1,0 +1,479 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "bl": 1
+    },
+    "style-2": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0"
+      }
+    },
+    "style-3": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0.00"
+      }
+    },
+    "style-4": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "#,##0"
+      }
+    },
+    "style-5": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "#,##0.00"
+      }
+    },
+    "style-6": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "$#,##0.00"
+      }
+    },
+    "style-7": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "#,##0.00 \"€\""
+      }
+    },
+    "style-8": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "_-* #,##0.00 \"kr\"_-"
+      }
+    },
+    "style-9": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0%"
+      }
+    },
+    "style-10": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0.00%"
+      }
+    },
+    "style-11": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "m/d/yy"
+      }
+    },
+    "style-12": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "yyyy-mm-dd"
+      }
+    },
+    "style-13": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "dd-mmm-yy"
+      }
+    },
+    "style-14": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "[$-409]m/d/yy h:mm AM/PM;@"
+      }
+    },
+    "style-15": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "_(\"$\"* #,##0.00_);_(\"$\"* (#,##0.00);_(\"$\"* \"-\"??_);_(@_)"
+      }
+    },
+    "style-16": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "@ \"suffix\""
+      }
+    },
+    "style-17": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "[Red]#,##0.00;[Blue]#,##0.00"
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "Number Formats",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Format Name",
+            "t": 1,
+            "s": "style-1"
+          },
+          "1": {
+            "v": "Value",
+            "t": 1,
+            "s": "style-1"
+          },
+          "2": {
+            "v": "Format Code",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "1": {
+          "0": {
+            "v": "General",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.5678,
+            "t": 2
+          },
+          "2": {
+            "v": "General",
+            "t": 1
+          }
+        },
+        "2": {
+          "0": {
+            "v": "0",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.5678,
+            "t": 2,
+            "s": "style-2"
+          },
+          "2": {
+            "v": "0",
+            "t": 1
+          }
+        },
+        "3": {
+          "0": {
+            "v": "0.00",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.5678,
+            "t": 2,
+            "s": "style-3"
+          },
+          "2": {
+            "v": "0.00",
+            "t": 1
+          }
+        },
+        "4": {
+          "0": {
+            "v": "#,##0",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.5678,
+            "t": 2,
+            "s": "style-4"
+          },
+          "2": {
+            "v": "#,##0",
+            "t": 1
+          }
+        },
+        "5": {
+          "0": {
+            "v": "#,##0.00",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.5678,
+            "t": 2,
+            "s": "style-5"
+          },
+          "2": {
+            "v": "#,##0.00",
+            "t": 1
+          }
+        },
+        "6": {
+          "0": {
+            "v": "Currency USD",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.56,
+            "t": 2,
+            "s": "style-6"
+          },
+          "2": {
+            "v": "$#,##0.00",
+            "t": 1
+          }
+        },
+        "7": {
+          "0": {
+            "v": "Currency EUR",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.56,
+            "t": 2,
+            "s": "style-7"
+          },
+          "2": {
+            "v": "#,##0.00 \"€\"",
+            "t": 1
+          }
+        },
+        "8": {
+          "0": {
+            "v": "Currency SEK",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.56,
+            "t": 2,
+            "s": "style-8"
+          },
+          "2": {
+            "v": "_-* #,##0.00 \"kr\"_-",
+            "t": 1
+          }
+        },
+        "9": {
+          "0": {
+            "v": "Percent 0%",
+            "t": 1
+          },
+          "1": {
+            "v": 0.35,
+            "t": 2,
+            "s": "style-9"
+          },
+          "2": {
+            "v": "0%",
+            "t": 1
+          }
+        },
+        "10": {
+          "0": {
+            "v": "Percent 0.00%",
+            "t": 1
+          },
+          "1": {
+            "v": 0.3567,
+            "t": 2,
+            "s": "style-10"
+          },
+          "2": {
+            "v": "0.00%",
+            "t": 1
+          }
+        },
+        "11": {
+          "0": {
+            "v": "Date m/d/yy",
+            "t": 1
+          },
+          "1": {
+            "v": 45000,
+            "t": 2,
+            "s": "style-11"
+          },
+          "2": {
+            "v": "m/d/yy",
+            "t": 1
+          }
+        },
+        "12": {
+          "0": {
+            "v": "Date yyyy-mm-dd",
+            "t": 1
+          },
+          "1": {
+            "v": 45000,
+            "t": 2,
+            "s": "style-12"
+          },
+          "2": {
+            "v": "yyyy-mm-dd",
+            "t": 1
+          }
+        },
+        "13": {
+          "0": {
+            "v": "Date dd-mmm-yy",
+            "t": 1
+          },
+          "1": {
+            "v": 45000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "2": {
+            "v": "dd-mmm-yy",
+            "t": 1
+          }
+        },
+        "14": {
+          "0": {
+            "v": "Date AM/PM",
+            "t": 1
+          },
+          "1": {
+            "v": 45000.75,
+            "t": 2,
+            "s": "style-14"
+          },
+          "2": {
+            "v": "[$-409]m/d/yy h:mm AM/PM;@",
+            "t": 1
+          }
+        },
+        "15": {
+          "0": {
+            "v": "Accounting",
+            "t": 1
+          },
+          "1": {
+            "v": 1234.56,
+            "t": 2,
+            "s": "style-15"
+          },
+          "2": {
+            "v": "_(\"$\"* #,##0.00_);_(\"$\"* \\(#,##0.00\\);_(\"$\"* \"-\"??_);_(@_)",
+            "t": 1
+          }
+        },
+        "16": {
+          "0": {
+            "v": "Custom text @",
+            "t": 1
+          },
+          "1": {
+            "v": "Hello",
+            "t": 1,
+            "s": "style-16"
+          },
+          "2": {
+            "v": "@ \"suffix\"",
+            "t": 1
+          }
+        },
+        "17": {
+          "0": {
+            "v": "Conditional [Red]",
+            "t": 1
+          },
+          "1": {
+            "v": -1234.56,
+            "t": 2,
+            "s": "style-17"
+          },
+          "2": {
+            "v": "[Red]#,##0.00;[Blue]#,##0.00",
+            "t": 1
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {
+        "0": {
+          "w": 145
+        },
+        "1": {
+          "w": 215
+        },
+        "2": {
+          "w": 355
+        }
+      }
+    }
+  },
+  "defaultStyle": {
+    "ff": "Calibri"
+  },
+  "resources": [
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\">\n      <a:dk1>\n        <a:sysClr val=\"windowText\" lastClr=\"000000\"/>\n      </a:dk1>\n      <a:lt1>\n        <a:sysClr val=\"window\" lastClr=\"FFFFFF\"/>\n      </a:lt1>\n      <a:dk2>\n        <a:srgbClr val=\"1F497D\"/>\n      </a:dk2>\n      <a:lt2>\n        <a:srgbClr val=\"EEECE1\"/>\n      </a:lt2>\n      <a:accent1>\n        <a:srgbClr val=\"4F81BD\"/>\n      </a:accent1>\n      <a:accent2>\n        <a:srgbClr val=\"C0504D\"/>\n      </a:accent2>\n      <a:accent3>\n        <a:srgbClr val=\"9BBB59\"/>\n      </a:accent3>\n      <a:accent4>\n        <a:srgbClr val=\"8064A2\"/>\n      </a:accent4>\n      <a:accent5>\n        <a:srgbClr val=\"4BACC6\"/>\n      </a:accent5>\n      <a:accent6>\n        <a:srgbClr val=\"F79646\"/>\n      </a:accent6>\n      <a:hlink>\n        <a:srgbClr val=\"0000FF\"/>\n      </a:hlink>\n      <a:folHlink>\n        <a:srgbClr val=\"800080\"/>\n      </a:folHlink>\n    </a:clrScheme>"
+    }
+  ]
+}

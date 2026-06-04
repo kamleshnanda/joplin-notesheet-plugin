@@ -1,0 +1,1456 @@
+{
+  "summary": {
+    "sheetSizes": {
+      "match": 17,
+      "divergence": 4,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 0
+    },
+    "cellValues": {
+      "match": 16,
+      "divergence": 5,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 0
+    },
+    "formulas": {
+      "match": 2,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 19
+    },
+    "mergedCells": {
+      "match": 1,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 20
+    },
+    "styleRecords": {
+      "match": 0,
+      "divergence": 6,
+      "sheetjs-blocked": 10,
+      "exceljs-blocked": 0,
+      "not-applicable": 5
+    },
+    "borders": {
+      "match": 0,
+      "divergence": 0,
+      "sheetjs-blocked": 5,
+      "exceljs-blocked": 0,
+      "not-applicable": 16
+    },
+    "rotatedText": {
+      "match": 0,
+      "divergence": 0,
+      "sheetjs-blocked": 1,
+      "exceljs-blocked": 0,
+      "not-applicable": 20
+    },
+    "numberFormats": {
+      "match": 5,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 16
+    },
+    "hyperlinks": {
+      "match": 4,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 17
+    },
+    "richText": {
+      "match": 1,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 20
+    },
+    "themeClrScheme": {
+      "match": 21,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 0
+    },
+    "defaultStyle": {
+      "match": 0,
+      "divergence": 0,
+      "sheetjs-blocked": 21,
+      "exceljs-blocked": 0,
+      "not-applicable": 0
+    },
+    "tables": {
+      "match": 0,
+      "divergence": 0,
+      "sheetjs-blocked": 3,
+      "exceljs-blocked": 0,
+      "not-applicable": 18
+    },
+    "charts": {
+      "match": 10,
+      "divergence": 0,
+      "sheetjs-blocked": 0,
+      "exceljs-blocked": 0,
+      "not-applicable": 11
+    },
+    "imports": {
+      "excSucceeded": 21,
+      "sjsSucceeded": 24,
+      "both": 21,
+      "excelOnly": 0,
+      "sheetjsOnly": 3,
+      "neither": 0
+    }
+  },
+  "rows": [
+    {
+      "fixture": "01-bar-simple.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "10 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "10/10 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "not-applicable",
+          "note": "no styles"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "02-line-multi-series.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "20 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "20/20 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "not-applicable",
+          "note": "no styles"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "03-pie-single.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "10 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "10/10 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "not-applicable",
+          "note": "no styles"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "04-doughnut.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "10 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "10/10 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "not-applicable",
+          "note": "no styles"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "05-bar-special-chars.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "10 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "10/10 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=1 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "06-two-charts-one-sheet.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "37 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "37/37 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "divergence",
+          "note": "exc=3 sjs=2"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "match",
+          "note": "both have numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "07-chart-cross-sheet.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "10 cells across 2 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "10/10 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "not-applicable",
+          "note": "no styles"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "08-drag-resized.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "10 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "10/10 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=1 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "09-bar-percent-axis.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "12 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "12/12 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "divergence",
+          "note": "exc=2 sjs=1"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "match",
+          "note": "both have numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "10-bar-with-trendline.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "26 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "26/26 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=1 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "match",
+          "note": "opaque pass-through (zip-level; data-shape parity untested)"
+        }
+      }
+    },
+    {
+      "fixture": "border-isolation.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "45 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "45/45 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=11 sjs=0"
+        },
+        "borders": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured borders, sjs missed"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "BordersAndCellColors.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "32 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "32/32 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "divergence",
+          "note": "style count exc=16 sjs=1 (sjs lost >50%)"
+        },
+        "borders": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured borders, sjs missed"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "ConditionalFormatting-Variants.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "55 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "55/55 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=1 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "EmptyAndDegenerate.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "divergence",
+          "note": "cellCount exc=6 sjs=3"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "3/6 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=6 sjs=0"
+        },
+        "borders": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured borders, sjs missed"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured tables, sjs missing"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "divergence",
+          "note": "cellCount exc=60 sjs=58"
+        },
+        "cellValues": {
+          "status": "divergence",
+          "note": "50/60 match, 8 differ, 0 missing on sjs"
+        },
+        "formulas": {
+          "status": "match",
+          "note": "3/3 formulas equal"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "divergence",
+          "note": "style count exc=25 sjs=4 (sjs lost >50%)"
+        },
+        "borders": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured borders, sjs missed"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "match",
+          "note": "both have numFmts"
+        },
+        "hyperlinks": {
+          "status": "match",
+          "note": "8 hyperlinked cells"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured tables, sjs missing"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "FormattingSmorgasboard.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "divergence",
+          "note": "cellCount exc=70 sjs=68"
+        },
+        "cellValues": {
+          "status": "divergence",
+          "note": "60/70 match, 8 differ, 0 missing on sjs"
+        },
+        "formulas": {
+          "status": "match",
+          "note": "4/4 formulas equal"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "divergence",
+          "note": "style count exc=25 sjs=3 (sjs lost >50%)"
+        },
+        "borders": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured borders, sjs missed"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "match",
+          "note": "both have numFmts"
+        },
+        "hyperlinks": {
+          "status": "match",
+          "note": "8 hyperlinked cells"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Aptos Narrow\", sjs has none"
+        },
+        "tables": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured tables, sjs missing"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "FormulasAndStructuredRefs.xlsx",
+      "excelImported": false,
+      "sheetjsImported": true,
+      "excError": "This .xlsx has a structure (multiple sheets each with their own named tables) that Notesheet can't import yet.",
+      "dimensions": {}
+    },
+    {
+      "fixture": "Hyperlinks-Variants.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "9 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "9/9 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=2 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "match",
+          "note": "8 hyperlinked cells"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "LargeWorkbook.xlsx",
+      "excelImported": false,
+      "sheetjsImported": true,
+      "excError": "This .xlsx contains chart drawings that Notesheet can't import yet. The file imports correctly in Excel but cannot be opened in Notesheet.",
+      "dimensions": {}
+    },
+    {
+      "fixture": "MaliciousValues.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "30 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "divergence",
+          "note": "29/30 match, 1 differ, 0 missing on sjs"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=1 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "MergedCellsAndAlignment.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "divergence",
+          "note": "cellCount exc=12 sjs=8"
+        },
+        "cellValues": {
+          "status": "divergence",
+          "note": "7/12 match, 1 differ, 4 missing on sjs"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "match",
+          "note": "2 merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=7 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "sheetjs-blocked",
+          "note": "exc captured tr, sjs missed"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "MultiSheet.xlsx",
+      "excelImported": false,
+      "sheetjsImported": true,
+      "excError": "This .xlsx contains chart drawings that Notesheet can't import yet. The file imports correctly in Excel but cannot be opened in Notesheet.",
+      "dimensions": {}
+    },
+    {
+      "fixture": "NumberFormats.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "54 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "divergence",
+          "note": "50/54 match, 4 differ, 0 missing on sjs"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "divergence",
+          "note": "exc=17 sjs=15"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "match",
+          "note": "both have numFmts"
+        },
+        "hyperlinks": {
+          "status": "not-applicable",
+          "note": "no hyperlinks"
+        },
+        "richText": {
+          "status": "not-applicable",
+          "note": "no multi-run cells"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    },
+    {
+      "fixture": "RichTextInOneCell.xlsx",
+      "excelImported": true,
+      "sheetjsImported": true,
+      "dimensions": {
+        "sheetSizes": {
+          "status": "match",
+          "note": "3 cells across 1 sheet(s)"
+        },
+        "cellValues": {
+          "status": "match",
+          "note": "3/3 values equal"
+        },
+        "formulas": {
+          "status": "not-applicable",
+          "note": "no formulas"
+        },
+        "mergedCells": {
+          "status": "not-applicable",
+          "note": "no merges"
+        },
+        "styleRecords": {
+          "status": "sheetjs-blocked",
+          "note": "exc=1 sjs=0"
+        },
+        "borders": {
+          "status": "not-applicable",
+          "note": "no borders"
+        },
+        "rotatedText": {
+          "status": "not-applicable",
+          "note": "no rotation"
+        },
+        "numberFormats": {
+          "status": "not-applicable",
+          "note": "no numFmts"
+        },
+        "hyperlinks": {
+          "status": "match",
+          "note": "1 hyperlinked cells"
+        },
+        "richText": {
+          "status": "match",
+          "note": "2 multi-run cells on both"
+        },
+        "themeClrScheme": {
+          "status": "match",
+          "note": "identical clrScheme XML"
+        },
+        "defaultStyle": {
+          "status": "sheetjs-blocked",
+          "note": "exc has ff=\"Calibri\", sjs has none"
+        },
+        "tables": {
+          "status": "not-applicable",
+          "note": "no tables"
+        },
+        "charts": {
+          "status": "not-applicable",
+          "note": "not a chart fixture"
+        }
+      }
+    }
+  ]
+}

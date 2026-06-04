@@ -1,223 +1,218 @@
-# Operator ask — M13/E: theme-aware banding
+# Operator ask — M14: SheetJS Community migration spike (Phase 1 only)
 
-Third real-feature cycle through the PGE harness. M13/C (rotated text,
-PR #19) and M13/D (rich text, PR #20) shipped via this same loop.
-M13/E is the last M13 workstream — theme-aware banding accuracy —
-and finishes M13.
+This is the **spike** PR. We do NOT ship the migration in this PR. The
+end of the spike is a documented decision: GO / NO-GO / CONDITIONAL.
 
 ## Why this matters
 
-Notesheet's import path bakes per-cell `bg` / `cl` / `bd` into
-`cellData[row][col].s` for every cell of an imported `.xlsx` table,
-synthesizing the colours from `EXCEL_TABLE_STYLE_BY_NAME` in
-`src/charts/excelTableStyles.ts`. That catalog is hardcoded against
-the **Office 2016+ Aptos theme** (accent1 `#156082`, accent3
-`#196B24` green, etc.).
+`exceljs` has gone quiet (last release Dec 2024) and ships stale
+transitives (uuid@8 with a moderate CVE we tolerate as not-reachable;
+glob@7 deprecated). It's the entire foundation of `src/xlsx.ts` —
+1959 lines of import/export logic for `.xlsx` files. The plan is to
+migrate to SheetJS Community (or `xlsx-js-style`, the community fork
+with basic cell styling on top of SheetJS Community). The spike
+proves whether that migration is feasible without losing the
+formatting fidelity we shipped in M9 / M10 / M12 / M13/A through E.
 
-When a user imports a workbook that ships a non-Aptos `<a:clrScheme>`
-— for example the project-owned fixture
-`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
-whose accent3 is `#A5A5A5` (grey) and whose
-`xl/tables/table1.xml` declares `TableStyleMedium4` (an accent3-keyed
-style) — the in-Joplin render paints **green** header + bands instead
-of the grey Excel would render. The exported `.xlsx` round-trips the
-source clrScheme correctly (verified by an existing pin-down in
-`tests/m12FixturePinDowns.test.ts`), so re-opening the file in Excel
-shows the right colours; only the Joplin-side render is wrong.
+## The constraint
 
-The README's "Theme-aware banding" entry under "Known shortcomings"
-flags this as `→ M13/E`. PR #21 is the most recent edit to that
-entry.
+**ZERO feature regressions on shipped behaviour.** Phase 2 (the actual
+migration, separate PR) must produce a snapshot that's byte-identical
+or structurally equivalent to what `exceljs` produces today, for every
+fixture in `tests/ExcelBaseTestData/`. The spike's job is to prove
+either:
 
-## The feature
+(a) That parity is achievable with reasonable effort, with a clear
+    plan for any divergences, OR
+(b) That SheetJS lacks a capability we depend on — at which point we
+    DON'T migrate, document the gap, and revisit if SheetJS adds it
+    upstream.
 
-When a user imports any workbook that ships its own `<a:clrScheme>`
-(any non-Aptos theme), the in-Joplin render of every named-style
-table (`TableStyleLight*`, `TableStyleMedium*`, `TableStyleDark*`)
-matches what Excel renders for that workbook. Concretely, the
-synthesizer must derive per-cell `bg` / `cl` / `borderColor` from the
-**source workbook's clrScheme** when present, falling back to the
-hardcoded Aptos catalog only when no clrScheme is detected.
+The operator's directive: *"I DO NOT WANT FEATURE REGRESSION ON
+FEATURES THAT ARE ALREADY WORKING."* That is the bar.
 
-The two project-owned fixtures pin down the two halves of this:
+## What ships in this PR
 
-- **Aptos** (`FormattingSmorgasboard.xlsx`, `TableStyleMedium4`,
-  accent3 `#196B24`) — header bg renders **green** `#196B24`, band
-  rows light green `#C2F1C8` (or whatever the catalog already
-  emits). This is the existing behaviour; M13/E must not regress it.
-- **Classic** (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`,
-  `TableStyleMedium4`, accent3 `#A5A5A5`) — header bg renders
-  **grey** `#A5A5A5`, band rows light grey (whatever
-  `tint(+0.6, #A5A5A5)` produces under Excel's tint formula). This
-  is the failure mode being fixed.
+1. **Add `xlsx-js-style` (NOT `xlsx`) as a devDep.** Plain SheetJS
+   Community (`xlsx`) does NOT support cell styles. The fork
+   `xlsx-js-style@1.2.0` adds basic cell styling on top. Confirm at
+   spike time whether it's enough for our needs (theme palette
+   round-trip, named-style banding, hyperlinks Pattern A + Pattern B,
+   rotated text, rich text within a cell). Document gaps explicitly.
 
-## Acceptance criteria
+2. **Parallel module `src/xlsxSheetJS.ts`** implementing the same
+   public surface as `src/xlsx.ts`:
+   - `xlsxBufferToSnapshot(buffer): Promise<UniverSnapshot>`
+   - `snapshotToXlsxBuffer(snapshot): Promise<ArrayBuffer>`
+   - `class NotesheetImportError extends Error` (same `code` /
+     `cause` shape)
+   - The two resource-name string constants
 
-The evaluator must verify ALL of:
+   Coverage goal for the spike: try to handle every code path
+   `src/xlsx.ts` handles. If something can't be done with SheetJS
+   (e.g. theme palette extraction via `xl/theme/theme1.xml` raw read),
+   document it and either implement a workaround or note "this path
+   is the migration's blocker".
 
-1. **Visual — Aptos and Classic fixtures render distinct table
-   colours.** Two evaluator screenshots under
-   `screenshots/feature-1-m13-theme-aware-banding/`, one per fixture:
-   - `eval-aptos-*.png`: header row of the imported `ProjectTracker`
-     table renders **green** (Aptos accent3 `#196B24`). The
-     evaluator must explicitly call out the green hue and that
-     banding rows are light green.
-   - `eval-classic-*.png`: header row of the imported
-     `ProductCatalog` table renders **grey** (Classic accent3
-     `#A5A5A5`), NOT green. The evaluator must explicitly call out
-     that the header is grey, not green, and that banding rows
-     match (light grey, not light green).
-2. **Pixel sidecar — header colour signal differentiates Aptos vs
-   Classic.** Two `<screenshot>.pixels.json` sidecars over a header-
-   row region helper (analogous to `richTextA1A2Region`):
-   - Aptos sidecar: green ink `(R≤80, G≥80, B≤80)` ≥ 30 hits over
-     the header band; grey ink (`R≈G≈B`, mid-range) below 10 hits.
-   - Classic sidecar: grey ink (`R∈[140,180]`, `G∈[140,180]`,
-     `B∈[140,180]`) ≥ 30 hits; green ink below 10 hits.
-   The harness needs new aggregates `greenInk` (already present
-   from M13/D) and `greyInk` (new) plus a `tableHeaderRowRegion`
-   helper that picks the row 1 band. Per-fixture
-   `REGION_BY_FEATURE` and `TITLE_PREFIX_BY_FEATURE` entries with
-   suffixes (e.g. `feature-1-m13-theme-aware-banding:aptos` and
-   `:classic`) — or a single entry with the harness importing
-   both fixtures into separate notes.
-3. **Jest — theme-aware synthesis is pinned down.** New positive
-   pin-down tests in `tests/m12FixturePinDowns.test.ts` (or a new
-   `tests/m13ThemeAwareBanding.test.ts`):
-   - Importing the Classic fixture: the header cell `s` style's `bg`
-     resolves to `#A5A5A5` (grey), NOT `#196B24` (green).
-   - Importing the Aptos fixture: the header cell `s` style's `bg`
-     resolves to `#196B24` (green) — regression check.
-   - The total Jest passing count moves from 195 (M13/D baseline)
-     to at least 197 (M13/E adds ≥2 new pin-downs). No `KNOWN
-     SHORTCOMING — theme-aware banding` test is left referencing
-     M13/E.
-4. **Round-trip — exported tables still carry `tableStyleInfo`
-   pointing at the same style name.** A regression check that the
-   round-tripped table.xml's `name="TableStyleMedium4"` survives —
-   M13/E only changes the in-memory snapshot's per-cell baked
-   colours, not what gets exported. The existing pin-down in
-   `m12FixturePinDowns.test.ts` ("Aptos fixture: round-trip
-   preserves table name + ProjectTracker columns") must stay green.
-5. **`npm run dist` succeeds and the .jpl is installed in the dev
-   profile.** Generator captures its own screenshots under
-   `screenshots/feature-1-m13-theme-aware-banding/` for both
-   fixtures, then opens them via the Read tool so the
-   `verify-gate` hook unlocks the `test-results.json` write.
-   Evaluator captures its own independently.
+3. **Comparison test bed `tests/xlsxParserParity.test.ts`.** For
+   every fixture in `tests/ExcelBaseTestData/formatting-testdata/`
+   AND `tests/ExcelBaseTestData/chart-testdata/`:
+   - Run both parsers on the same input
+   - Deep-equal their resulting snapshots' `cellData`, `styles`,
+     `defaultStyle`, `sheetOrder`, `sheets[*].rowCount` and
+     `columnCount`, `resources` (filter to known-stable fields)
+   - For round-trip: import → export → re-import; assert idempotency
+     within each parser AND cross-parser
+   - When divergence is expected (e.g. `xlsx-js-style` doesn't
+     surface theme-tinted borders), `expect.toEqual(divergence)`
+     against a documented-known-divergence list rather than fail.
 
-## Out of scope
+   This test must produce a clear matrix of "what works / what
+   diverges / what blocks the migration" — the matrix becomes input
+   to the decision document.
 
-- **Theme-tinted borders** (the other "Known shortcomings" entry).
-  Border `{theme: N, tint: T}` references are resolved against
-  whichever clrScheme is loaded at import time. That's already
-  correct in `resolveExceljsColor` (M12). M13/E only addresses
-  table-style synthesis, not direct border references.
-- **Conditional formatting** preserving theme colours. M16.
-- **Custom `<tableStyle>` entries** authored in the workbook (not
-  built-in). Those have real `<dxf>` records the importer can read
-  directly; M13/E only fixes the built-in lookup-catalog path.
-- **First-column / last-column emphasis** (`showFirstColumn`,
-  `showLastColumn`). Not modelled by `EXCEL_TABLE_STYLE_BY_NAME`
-  today; out of scope here.
-- **Column stripes** (`showColumnStripes`). Same — rare, not
-  modelled.
-- **Recomputing tints from the source clrScheme using ECMA-376
-  HSL-L tint maths from scratch.** M13/E may take the simpler
-  path: when a non-Aptos clrScheme is present, swap the catalog
-  entry's accent reference for the source's accent and apply
-  the catalog's pre-computed tint. The catalog's tint maths are
-  already correct (PR #14 verified them); only the accent input
-  changes. Implementation may use whichever approach is cleaner —
-  the spec is the user-observable colour, not the algorithm.
-- **README "Known shortcomings — Theme-aware banding" edit.** Punt
-  to a follow-up like the rotated-text and rich-text entries did.
-  PR #21 set the precedent.
+4. **Decision document `docs/m14-sheetjs-spike.md`.** Markdown only,
+   committed. Sections:
+   - **Capability matrix.** One row per .xlsx feature dimension
+     Notesheet uses today (workbook value read/write, cell styles —
+     bg/fg/font, borders, merged cells, named tables + table styles,
+     hyperlinks Pattern A, hyperlinks Pattern B, rotated text, rich
+     text per-run, theme palette `<a:clrScheme>`, conditional
+     formatting rules, custom `<dxf>` records, drawings/charts,
+     formulas + structured refs, defined names). Columns: exceljs
+     (current), SheetJS (xlsx-js-style), gap notes.
+   - **Migration cost estimate.** For each gap, a 1-3-day estimate of
+     either "SheetJS API supports it, just port the code" or "needs a
+     workaround (raw XML read like our `readThemeClrScheme`)" or
+     "blocked, no path".
+   - **Recommendation.** GO / NO-GO / CONDITIONAL with the
+     conditions named explicitly.
+
+5. **Regression test scaffolding for Phase 2.** Even though Phase 1
+   doesn't ship the migration, leave behind the test bed Phase 2 will
+   need to gate its merge:
+   - **Golden-snapshot tests.** For each fixture, `xlsxBufferToSnapshot`
+     produces a known snapshot. Capture those snapshots as JSON files
+     under `tests/golden-snapshots/` keyed by fixture name. Add a test
+     that asserts current `xlsx.ts` produces the golden. Phase 2 will
+     run the same test against `xlsxSheetJS.ts` and Phase 2 ships only
+     when the assertion passes (or every divergence is documented +
+     accepted).
+   - **Feature-smoke test list.** A bullet list in
+     `docs/m14-sheetjs-spike.md` of every Notesheet feature the
+     operator listed as MUST-NOT-REGRESS:
+     - Snapshot creation via `New Spreadsheet` command
+     - Snapshot editing in Univer (cell value changes round-trip)
+     - Univer toolbar formula bar
+     - Univer formula evaluation (basic + structured refs)
+     - Named tables: insert / right-click row+col operations
+     - Chart insertion + live updates
+     - Anchored chart drag/resize
+     - .xlsx import via Tools menu
+     - .xlsx export via editor button
+     - Note navigation (open note, switch sheets, sidebar nav)
+     - Univer rendering pixel correctness (M13/E reference fidelity)
+
+     For each, state how Phase 2 will validate (existing Jest, new
+     Jest, PGE harness, or manual).
+
+## What does NOT ship in this PR
+
+- **Production swap.** `src/xlsx.ts` stays as the production import.
+  Don't change `src/index.ts` or `src/editorView.tsx`. The new
+  `src/xlsxSheetJS.ts` is dead code from Notesheet's runtime
+  perspective; only the test bed exercises it.
+- **`xlsx` direct dependency.** `package.json` `dependencies` stays
+  unchanged. Only `devDependencies` may add `xlsx-js-style`.
+  Phase 2 will swap `dependencies`.
+- **README "Known shortcomings" edits.** Punted to Phase 2.
+- **Univer renderer follow-up** for M13/E's `bd.b` colour mismatch.
+  Separate cycle.
+- **Inter-banded-row strips for `TableStyleMedium4`.** Separate
+  cycle.
+
+## Acceptance criteria for the spike PR
+
+The spike PR can merge when ALL of these are satisfied:
+
+1. **Existing 209 Jest tests stay green.** Spike adds no production
+   code change; the existing suite must be unaffected.
+2. **`tests/xlsxParserParity.test.ts` runs and produces a matrix.**
+   Either as a JSON output committed to the repo, or printed in the
+   test output and surfaced in the decision document.
+3. **`docs/m14-sheetjs-spike.md` is committed** with capability
+   matrix, migration cost estimate, recommendation, and the
+   feature-smoke test list for Phase 2.
+4. **Golden snapshots committed under `tests/golden-snapshots/`** for
+   at least the M12+M13 fixtures (the operator-owned ones), so
+   Phase 2 has a deterministic target.
+5. **`npm run dist` builds clean.** No new transitive deprecation
+   noise from `xlsx-js-style` worse than what `exceljs` already
+   carries.
+
+## Out of scope for the spike
+
+- **Performance benchmarking.** Both libraries parse a 1MB workbook
+  in well under a second; the migration's value isn't speed, it's
+  longevity / dependency hygiene / better CF/style coverage. Don't
+  spend time on perf comparisons unless the spike surfaces a 10x+
+  delta.
+- **Univer rendering pixel parity.** That's a Phase-2 concern. The
+  spike compares snapshot data shape only.
+- **xlsx-js-style maintenance state.** Read its npm page; if it
+  hasn't shipped in 18+ months, note that as a risk in the
+  recommendation but don't block on it.
+
+## Sequencing
+
+1. Generator runs the spike: parallel module + test bed + decision
+   doc + golden snapshots.
+2. Spike PR opens; CI confirms existing tests still green and the
+   parser parity matrix produces.
+3. Operator reviews the recommendation. If GO, Phase 2 (migration)
+   starts in a new branch / new PR.
+4. If NO-GO, the spike PR can still merge (the parity matrix and
+   decision doc are valuable artefacts even without a migration) OR
+   close it without merging — operator's call at review time.
 
 ## Suggested fixtures
 
-- `tests/ExcelBaseTestData/formatting-testdata/FormattingSmorgasboard.xlsx`
-  (Aptos, accent3 `#196B24`, `TableStyleMedium4`, `ProjectTracker`).
-  Pre-existing fixture; the regression sentinel.
-- `tests/ExcelBaseTestData/formatting-testdata/FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
-  (Classic, accent3 `#A5A5A5`, `TableStyleMedium4`, `ProductCatalog`).
-  Pre-existing fixture; the failure-mode sentinel.
-
-The harness imports both via
-`scripts/pge/import-fixture.sh <fixture-name>` (already wired) into
-two separate notes. Region helper `tableHeaderRowRegion` covers row 1
-of the visible canvas. The eval-screenshot script needs to be
-extended so it can capture both notes in one run — either two
-invocations with different `:aptos` / `:classic` suffixes on the
-feature ID, or a single invocation that opens both notes in
-sequence.
+Every existing `tests/ExcelBaseTestData/` file. The spike's value
+comes from running both parsers across the WHOLE matrix, not
+cherry-picking. If a fixture trips SheetJS (or `xlsx-js-style`),
+that's a finding for the matrix.
 
 ## Related risks
 
-- **The synthesizer is deeply wired into M12.** `synthesizeTableStyleAssignments`
-  in `src/xlsx.ts:943` consumes `EXCEL_TABLE_STYLE_BY_NAME[table.styleName]`
-  and bakes the result into per-cell records. Changing the input
-  source from "static catalog" to "static catalog rebased against
-  source clrScheme" must not change the field shape, the
-  `addedFields` tagging, or the sidecar resource format. The M12
-  pin-downs (synth-styles sidecar, applyFont=1 invariant) are the
-  guards.
+- **`xlsx-js-style` is a fork.** Its `xlsx@0.18.5` base is two years
+  old. The fork itself last shipped in 2022 per npm. If it's
+  abandoned, Phase 2's migration replaces one-quiet-library
+  (`exceljs`) with another (`xlsx-js-style`). The decision doc must
+  consider this honestly.
+- **Cell styling is the biggest open question.** `xlsx` (plain
+  SheetJS Community) explicitly doesn't support styling. `xlsx-js-style`
+  claims to add it. Verify how much of M12/M13 it can actually carry:
+  named-style banding (TableStyleMedium4 with theme accents), rich
+  text per-run formatting, theme-tinted borders, conditional formatting
+  dxfs. If the fork can't carry these, the migration is NO-GO.
+- **Theme palette extraction.** Our `readThemeClrScheme` reads
+  `xl/theme/theme1.xml` directly via JSZip and parses with regex.
+  That's parser-agnostic — the same code works with SheetJS. Confirm
+  the migration retains it.
+- **Pattern B hyperlink detection.** Same — our `readNamedHyperlinkCells`
+  is raw-XML via JSZip. Parser-agnostic. Confirm.
+- **Chart export post-processing.** `src/charts/xlsxChart.ts` patches
+  the zip exceljs writes. Confirm the SheetJS-written zip has the
+  same structure for that patcher to work. If not, Phase 2 needs to
+  port the patcher too.
+- **Don't symptom-patch.** If a parity test fails because SheetJS
+  emits a different cellXf id, do NOT change the test to accept it.
+  Either find the equivalent SheetJS API or document the divergence
+  in the matrix. Test parity is the whole point of the spike.
 
-- **The hardcoded catalog encodes accent INDEXES indirectly through
-  pre-computed RGBs.** `TableStyleMedium2` is accent1, Medium3 is
-  accent2, Medium4 is accent3, … (every 7 entries shifts to the
-  next accent). To rebase against a non-Aptos scheme, you need a
-  table mapping each style name → which accent (1..6) it uses, plus
-  a way to apply the catalog's tint relative to that accent. One
-  approach: precompute the tint amount per style per band slot
-  (header, evenRow, oddRow, totals, border) and store that in a
-  parallel catalog, then rebase by recomputing
-  `applyTint(sourceClrScheme[accent], tintAmount)` at import time.
-  Another: keep the existing catalog, and on import detect non-
-  Aptos themes and remap each accent in the result by HSL channel
-  swap. Either works; the simpler one wins.
+## Output
 
-- **The Jest pin-down for "synth-styles sidecar" expects header
-  tags to include `bg` and `bl` and 3 borders.** That contract is
-  shape, not colour — but verify it stays green after the rebase.
-
-- **The Aptos fixture has hand-edited cell-level colours on top of
-  table-style synthesis.** Cell A2 carries a hand-applied `#F4B183`
-  border. Synthesis must not overwrite hand-edits — the existing
-  `existingCellStyles` map and `addedFields` are how M12 already
-  handles this. A theme-aware rebase must preserve that
-  precedence.
-
-- **The Classic fixture's `ProductCatalog` table also uses
-  `TableStyleMedium4`** — same style name, different accent.
-  That's the whole point of the test: ONE catalog entry must
-  produce two distinct rendered colours depending on the source
-  workbook's clrScheme. If you "fix" by adding a second hardcoded
-  catalog entry, you've missed the design — Excel ships ~thousands
-  of accent permutations, the catalog can't enumerate them.
-
-- **The PGE harness has only screenshotted one note per cycle so
-  far.** M13/E is the first feature requiring TWO independent
-  screenshots in one session. The eval-screenshot script needs an
-  extension: either accept a `--fixture` arg, or look up multiple
-  fixtures in `REGION_BY_FEATURE` keyed by `feature-id:variant`,
-  or take both screenshots in one run. The cleanest approach is
-  probably the variant suffix — keeps backward compatibility with
-  prior cycles' single-screenshot path.
-
-- **Don't symptom-patch by editing the catalog itself.** Hardcoding
-  Classic-accent3 alongside Aptos-accent3 is the wrong shape (see
-  preceding bullet). The fix must be data-driven from the source
-  clrScheme.
-
-- **The feature touches `src/xlsx.ts` (the same file as M9–M13/D)
-  and `src/charts/excelTableStyles.ts`.** Run the full Jest suite,
-  not just the new pin-downs, before flipping the row. Borders,
-  hyperlinks, table styles, chart export, alignment, rotation, and
-  rich text all share the import/export pipeline. The m12, m13/C,
-  and m13/D round-trip tests must stay green.
-
-- **Region-by-feature pixel sampling.** The eval-screenshot script
-  needs `tableHeaderRowRegion` (or whatever name fits) plus a
-  `greyInk` band aggregate. M13/D's `richTextA1A2Region` and
-  `redInk`/`blueInk` aggregates are the template.
+Reply with a paragraph describing what shipped (parallel module, test
+bed, decision doc, golden snapshots), the recommendation (GO / NO-GO
+/ CONDITIONAL), and any blockers found. Then stop. The operator will
+review.

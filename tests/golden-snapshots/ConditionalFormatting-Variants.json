@@ -1,0 +1,287 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "ff": "Calibri",
+      "fs": 11,
+      "bl": 1
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "CF Variants",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Color Scale (3-stop)",
+            "t": 1,
+            "s": "style-1"
+          },
+          "2": {
+            "v": "Data Bar",
+            "t": 1,
+            "s": "style-1"
+          },
+          "4": {
+            "v": "Highlight (>50 = Red)",
+            "t": 1,
+            "s": "style-1"
+          },
+          "6": {
+            "v": "Top 3 (Green)",
+            "t": 1,
+            "s": "style-1"
+          },
+          "8": {
+            "v": "Icon Set (3 Arrows)",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "1": {
+          "0": {
+            "v": 0,
+            "t": 2
+          },
+          "2": {
+            "v": 0,
+            "t": 2
+          },
+          "4": {
+            "v": 0,
+            "t": 2
+          },
+          "6": {
+            "v": 82,
+            "t": 2
+          },
+          "8": {
+            "v": 0,
+            "t": 2
+          }
+        },
+        "2": {
+          "0": {
+            "v": 10,
+            "t": 2
+          },
+          "2": {
+            "v": 10,
+            "t": 2
+          },
+          "4": {
+            "v": 10,
+            "t": 2
+          },
+          "6": {
+            "v": 15,
+            "t": 2
+          },
+          "8": {
+            "v": 10,
+            "t": 2
+          }
+        },
+        "3": {
+          "0": {
+            "v": 20,
+            "t": 2
+          },
+          "2": {
+            "v": 20,
+            "t": 2
+          },
+          "4": {
+            "v": 20,
+            "t": 2
+          },
+          "6": {
+            "v": 4,
+            "t": 2
+          },
+          "8": {
+            "v": 20,
+            "t": 2
+          }
+        },
+        "4": {
+          "0": {
+            "v": 30,
+            "t": 2
+          },
+          "2": {
+            "v": 30,
+            "t": 2
+          },
+          "4": {
+            "v": 30,
+            "t": 2
+          },
+          "6": {
+            "v": 95,
+            "t": 2
+          },
+          "8": {
+            "v": 30,
+            "t": 2
+          }
+        },
+        "5": {
+          "0": {
+            "v": 40,
+            "t": 2
+          },
+          "2": {
+            "v": 40,
+            "t": 2
+          },
+          "4": {
+            "v": 40,
+            "t": 2
+          },
+          "6": {
+            "v": 36,
+            "t": 2
+          },
+          "8": {
+            "v": 40,
+            "t": 2
+          }
+        },
+        "6": {
+          "0": {
+            "v": 50,
+            "t": 2
+          },
+          "2": {
+            "v": 50,
+            "t": 2
+          },
+          "4": {
+            "v": 50,
+            "t": 2
+          },
+          "6": {
+            "v": 32,
+            "t": 2
+          },
+          "8": {
+            "v": 50,
+            "t": 2
+          }
+        },
+        "7": {
+          "0": {
+            "v": 60,
+            "t": 2
+          },
+          "2": {
+            "v": 60,
+            "t": 2
+          },
+          "4": {
+            "v": 60,
+            "t": 2
+          },
+          "6": {
+            "v": 29,
+            "t": 2
+          },
+          "8": {
+            "v": 60,
+            "t": 2
+          }
+        },
+        "8": {
+          "0": {
+            "v": 70,
+            "t": 2
+          },
+          "2": {
+            "v": 70,
+            "t": 2
+          },
+          "4": {
+            "v": 70,
+            "t": 2
+          },
+          "6": {
+            "v": 18,
+            "t": 2
+          },
+          "8": {
+            "v": 70,
+            "t": 2
+          }
+        },
+        "9": {
+          "0": {
+            "v": 80,
+            "t": 2
+          },
+          "2": {
+            "v": 80,
+            "t": 2
+          },
+          "4": {
+            "v": 80,
+            "t": 2
+          },
+          "6": {
+            "v": 95,
+            "t": 2
+          },
+          "8": {
+            "v": 80,
+            "t": 2
+          }
+        },
+        "10": {
+          "0": {
+            "v": 90,
+            "t": 2
+          },
+          "2": {
+            "v": 90,
+            "t": 2
+          },
+          "4": {
+            "v": 90,
+            "t": 2
+          },
+          "6": {
+            "v": 14,
+            "t": 2
+          },
+          "8": {
+            "v": 90,
+            "t": 2
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {}
+    }
+  },
+  "defaultStyle": {
+    "ff": "Calibri"
+  },
+  "resources": [
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"1F497D\"/></a:dk2><a:lt2><a:srgbClr val=\"EEECE1\"/></a:lt2><a:accent1><a:srgbClr val=\"4F81BD\"/></a:accent1><a:accent2><a:srgbClr val=\"C0504D\"/></a:accent2><a:accent3><a:srgbClr val=\"9BBB59\"/></a:accent3><a:accent4><a:srgbClr val=\"8064A2\"/></a:accent4><a:accent5><a:srgbClr val=\"4BACC6\"/></a:accent5><a:accent6><a:srgbClr val=\"F79646\"/></a:accent6><a:hlink><a:srgbClr val=\"0000FF\"/></a:hlink><a:folHlink><a:srgbClr val=\"800080\"/></a:folHlink></a:clrScheme>"
+    }
+  ]
+}

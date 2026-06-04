@@ -1,0 +1,644 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "ff": "Calibri",
+      "fs": 11,
+      "bl": 1
+    },
+    "style-2": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-3": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 2,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 2,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 2,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 2,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-4": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 3,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 3,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 3,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 3,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-5": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 4,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 4,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 4,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 4,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-6": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 5,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 5,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 5,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 5,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-7": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 6,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 6,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 6,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 6,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-8": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 7,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-9": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 8,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 8,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-10": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 9,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 9,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 9,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 9,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-11": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 10,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 10,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 10,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 10,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-12": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 13,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "r": {
+          "s": 13,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "b": {
+          "s": 13,
+          "cl": {
+            "rgb": "#000000"
+          }
+        },
+        "l": {
+          "s": 13,
+          "cl": {
+            "rgb": "#000000"
+          }
+        }
+      }
+    },
+    "style-13": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#B3A2C7"
+      }
+    },
+    "style-14": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#95B3D7"
+          }
+        },
+        "r": {
+          "s": 8,
+          "cl": {
+            "rgb": "#95B3D7"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#95B3D7"
+          }
+        },
+        "l": {
+          "s": 8,
+          "cl": {
+            "rgb": "#95B3D7"
+          }
+        }
+      }
+    },
+    "style-15": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#FF6600"
+      }
+    },
+    "style-16": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bg": {
+        "rgb": "#CCFFCC"
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "Borders and Colors",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Border Style",
+            "t": 1,
+            "s": "style-1"
+          },
+          "1": {
+            "v": "Sample",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "1": {
+          "0": {
+            "v": "thin",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: thin",
+            "t": 1,
+            "s": "style-2"
+          }
+        },
+        "2": {
+          "0": {
+            "v": "hair",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: hair",
+            "t": 1,
+            "s": "style-3"
+          }
+        },
+        "3": {
+          "0": {
+            "v": "dotted",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: dotted",
+            "t": 1,
+            "s": "style-4"
+          }
+        },
+        "4": {
+          "0": {
+            "v": "dashed",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: dashed",
+            "t": 1,
+            "s": "style-5"
+          }
+        },
+        "5": {
+          "0": {
+            "v": "dashDot",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: dashDot",
+            "t": 1,
+            "s": "style-6"
+          }
+        },
+        "6": {
+          "0": {
+            "v": "dashDotDot",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: dashDotDot",
+            "t": 1,
+            "s": "style-7"
+          }
+        },
+        "7": {
+          "0": {
+            "v": "double",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: double",
+            "t": 1,
+            "s": "style-8"
+          }
+        },
+        "8": {
+          "0": {
+            "v": "medium",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: medium",
+            "t": 1,
+            "s": "style-9"
+          }
+        },
+        "9": {
+          "0": {
+            "v": "mediumDashed",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: mediumDashed",
+            "t": 1,
+            "s": "style-10"
+          }
+        },
+        "10": {
+          "0": {
+            "v": "mediumDashDot",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: mediumDashDot",
+            "t": 1,
+            "s": "style-11"
+          }
+        },
+        "11": {
+          "0": {
+            "v": "thick",
+            "t": 1
+          },
+          "1": {
+            "v": "Border: thick",
+            "t": 1,
+            "s": "style-12"
+          }
+        },
+        "13": {
+          "0": {
+            "v": "Theme Font",
+            "t": 1
+          },
+          "1": {
+            "v": "Accent 4, lighter 40%",
+            "t": 1,
+            "s": "style-13"
+          }
+        },
+        "14": {
+          "0": {
+            "v": "Theme Border",
+            "t": 1
+          },
+          "1": {
+            "v": "Accent 1, tint",
+            "t": 1,
+            "s": "style-14"
+          }
+        },
+        "15": {
+          "0": {
+            "v": "RGB Font",
+            "t": 1
+          },
+          "1": {
+            "v": "Custom RGB #FF6600",
+            "t": 1,
+            "s": "style-15"
+          }
+        },
+        "16": {
+          "0": {
+            "v": "RGB Fill",
+            "t": 1
+          },
+          "1": {
+            "v": "Custom RGB Fill #CCFFCC",
+            "t": 1,
+            "s": "style-16"
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {
+        "0": {
+          "w": 145
+        },
+        "1": {
+          "w": 215
+        }
+      }
+    }
+  },
+  "defaultStyle": {
+    "ff": "Calibri"
+  },
+  "resources": [
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"1F497D\"/></a:dk2><a:lt2><a:srgbClr val=\"EEECE1\"/></a:lt2><a:accent1><a:srgbClr val=\"4F81BD\"/></a:accent1><a:accent2><a:srgbClr val=\"C0504D\"/></a:accent2><a:accent3><a:srgbClr val=\"9BBB59\"/></a:accent3><a:accent4><a:srgbClr val=\"8064A2\"/></a:accent4><a:accent5><a:srgbClr val=\"4BACC6\"/></a:accent5><a:accent6><a:srgbClr val=\"F79646\"/></a:accent6><a:hlink><a:srgbClr val=\"0000FF\"/></a:hlink><a:folHlink><a:srgbClr val=\"800080\"/></a:folHlink></a:clrScheme>"
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "ff": "Calibri",
+      "fs": 14,
+      "bl": 1,
+      "ht": 2,
+      "vt": 2
+    },
+    "style-2": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      }
+    },
+    "style-3": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "ht": 2,
+      "vt": 2
+    },
+    "style-4": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "tb": 3
+    },
+    "style-5": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "tr": {
+        "a": 45
+      }
+    },
+    "style-6": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "tr": {
+        "a": 90
+      }
+    },
+    "style-7": {
+      "ff": "Calibri",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "tr": {
+        "a": -45
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "Merged and Alignment",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Header",
+            "t": 1,
+            "s": "style-1"
+          },
+          "1": {
+            "v": "Header",
+            "t": 1,
+            "s": "style-2"
+          },
+          "2": {
+            "v": "Center Middle",
+            "t": 1,
+            "s": "style-3"
+          },
+          "3": {
+            "v": "Center Middle",
+            "t": 1,
+            "s": "style-2"
+          }
+        },
+        "1": {
+          "0": {
+            "v": "Header",
+            "t": 1,
+            "s": "style-2"
+          },
+          "1": {
+            "v": "Header",
+            "t": 1,
+            "s": "style-2"
+          }
+        },
+        "3": {
+          "0": {
+            "v": "This is a long text that should wrap within the cell boundaries to test wrap text behavior in Excel",
+            "t": 1,
+            "s": "style-4"
+          },
+          "1": {
+            "v": "Another wrapped\ntext with\nnewlines",
+            "t": 1,
+            "s": "style-4"
+          },
+          "2": {
+            "v": "Short wrap",
+            "t": 1,
+            "s": "style-4"
+          }
+        },
+        "5": {
+          "0": {
+            "v": "Rotated 45 degrees",
+            "t": 1,
+            "s": "style-5"
+          },
+          "1": {
+            "v": "Rotated 90 degrees",
+            "t": 1,
+            "s": "style-6"
+          },
+          "2": {
+            "v": "Rotated -45 degrees",
+            "t": 1,
+            "s": "style-7"
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [
+        {
+          "startRow": 0,
+          "endRow": 1,
+          "startColumn": 0,
+          "endColumn": 1
+        },
+        {
+          "startRow": 0,
+          "endRow": 0,
+          "startColumn": 2,
+          "endColumn": 3
+        }
+      ],
+      "rowData": {
+        "3": {
+          "h": 107
+        },
+        "5": {
+          "h": 124
+        }
+      },
+      "columnData": {
+        "0": {
+          "w": 145
+        },
+        "1": {
+          "w": 145
+        }
+      }
+    }
+  },
+  "defaultStyle": {
+    "ff": "Calibri"
+  },
+  "resources": [
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"1F497D\"/></a:dk2><a:lt2><a:srgbClr val=\"EEECE1\"/></a:lt2><a:accent1><a:srgbClr val=\"4F81BD\"/></a:accent1><a:accent2><a:srgbClr val=\"C0504D\"/></a:accent2><a:accent3><a:srgbClr val=\"9BBB59\"/></a:accent3><a:accent4><a:srgbClr val=\"8064A2\"/></a:accent4><a:accent5><a:srgbClr val=\"4BACC6\"/></a:accent5><a:accent6><a:srgbClr val=\"F79646\"/></a:accent6><a:hlink><a:srgbClr val=\"0000FF\"/></a:hlink><a:folHlink><a:srgbClr val=\"800080\"/></a:folHlink></a:clrScheme>"
+    }
+  ]
+}

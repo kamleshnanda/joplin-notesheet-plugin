@@ -1,0 +1,437 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "bl": 1
+    },
+    "style-2": {
+      "ul": {
+        "s": 1
+      },
+      "cl": {
+        "rgb": "#0000FF"
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "Hyperlinks",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Hyperlink Variants",
+            "t": 1,
+            "s": "style-1"
+          }
+        },
+        "1": {
+          "0": {
+            "v": "https://example.com",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 19,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 19,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 20
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 18,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          }
+        },
+        "2": {
+          "0": {
+            "v": "mailto:hello@example.com",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "mailto:hello@example.com\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 24,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 24,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 25
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 23,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "mailto:hello@example.com"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          }
+        },
+        "3": {
+          "0": {
+            "v": "file:///Users/kamleshn/Documents/sample.txt",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "file:///Users/kamleshn/Documents/sample.txt\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 43,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 43,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 44
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 42,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "file:///Users/kamleshn/Documents/sample.txt"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          }
+        },
+        "4": {
+          "0": {
+            "v": "https://x.com/a&b<c>d?e=1",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://x.com/a&b<c>d?e=1\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 25,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 25,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 26
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 24,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://x.com/a&b<c>d?e=1"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          }
+        },
+        "5": {
+          "0": {
+            "v": "Click here to visit our very long path page",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "Click here to visit our very long path page\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 43,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 43,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 44
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 42,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/longpath/to/some/resource/that/is/quite/lengthy"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          }
+        },
+        "6": {
+          "0": {
+            "v": "https://example.com/shared",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/shared\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 26,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 26,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 27
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 25,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/shared"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          },
+          "1": {
+            "v": "https://example.com/shared",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/shared\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 26,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 26,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 27
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 25,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/shared"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          },
+          "2": {
+            "v": "https://example.com/shared",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/shared\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 26,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 26,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 27
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 25,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/shared"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-2"
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {
+        "0": {
+          "w": 390
+        }
+      }
+    }
+  },
+  "defaultStyle": {
+    "ff": "Calibri"
+  },
+  "resources": [
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\">\n      <a:dk1>\n        <a:sysClr val=\"windowText\" lastClr=\"000000\"/>\n      </a:dk1>\n      <a:lt1>\n        <a:sysClr val=\"window\" lastClr=\"FFFFFF\"/>\n      </a:lt1>\n      <a:dk2>\n        <a:srgbClr val=\"1F497D\"/>\n      </a:dk2>\n      <a:lt2>\n        <a:srgbClr val=\"EEECE1\"/>\n      </a:lt2>\n      <a:accent1>\n        <a:srgbClr val=\"4F81BD\"/>\n      </a:accent1>\n      <a:accent2>\n        <a:srgbClr val=\"C0504D\"/>\n      </a:accent2>\n      <a:accent3>\n        <a:srgbClr val=\"9BBB59\"/>\n      </a:accent3>\n      <a:accent4>\n        <a:srgbClr val=\"8064A2\"/>\n      </a:accent4>\n      <a:accent5>\n        <a:srgbClr val=\"4BACC6\"/>\n      </a:accent5>\n      <a:accent6>\n        <a:srgbClr val=\"F79646\"/>\n      </a:accent6>\n      <a:hlink>\n        <a:srgbClr val=\"0000FF\"/>\n      </a:hlink>\n      <a:folHlink>\n        <a:srgbClr val=\"800080\"/>\n      </a:folHlink>\n    </a:clrScheme>"
+    }
+  ]
+}

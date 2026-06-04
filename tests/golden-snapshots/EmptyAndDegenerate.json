@@ -1,0 +1,233 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1",
+    "sheet-2",
+    "sheet-3"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "bg": {
+        "rgb": "#4F81BD"
+      },
+      "cl": {
+        "rgb": "#FFFFFF"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        }
+      }
+    },
+    "style-2": {
+      "bg": {
+        "rgb": "#4F81BD"
+      },
+      "cl": {
+        "rgb": "#FFFFFF"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        }
+      }
+    },
+    "style-3": {
+      "bg": {
+        "rgb": "#4F81BD"
+      },
+      "cl": {
+        "rgb": "#FFFFFF"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        }
+      }
+    },
+    "style-4": {
+      "bg": {
+        "rgb": "#B9CDE5"
+      },
+      "bd": {
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        }
+      }
+    },
+    "style-5": {
+      "bg": {
+        "rgb": "#B9CDE5"
+      },
+      "bd": {
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        }
+      }
+    },
+    "style-6": {
+      "bg": {
+        "rgb": "#B9CDE5"
+      },
+      "bd": {
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#4F81BD"
+          }
+        }
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "EmptySheet",
+      "cellData": {},
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {}
+    },
+    "sheet-2": {
+      "id": "sheet-2",
+      "name": "BareSheet",
+      "cellData": {},
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {}
+    },
+    "sheet-3": {
+      "id": "sheet-3",
+      "name": "HeaderOnlyTable",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Name",
+            "t": 1,
+            "s": "style-1"
+          },
+          "1": {
+            "v": "Age",
+            "t": 1,
+            "s": "style-2"
+          },
+          "2": {
+            "v": "City",
+            "t": 1,
+            "s": "style-3"
+          }
+        },
+        "1": {
+          "0": {
+            "s": "style-4"
+          },
+          "1": {
+            "s": "style-5"
+          },
+          "2": {
+            "s": "style-6"
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {},
+      "columnData": {}
+    }
+  },
+  "defaultStyle": {
+    "ff": "Calibri"
+  },
+  "resources": [
+    {
+      "name": "SHEET_TABLE_PLUGIN",
+      "data": "{\"sheet-3\":{\"tables\":[{\"id\":\"tbl-EmptyTable-STABLE\",\"name\":\"EmptyTable\",\"range\":{\"startRow\":0,\"endRow\":1,\"startColumn\":0,\"endColumn\":2},\"options\":{\"showHeader\":true,\"showFooter\":false},\"filters\":{\"tableColumnFilterList\":[]},\"columns\":[{\"id\":\"tblcol-0-STABLE\",\"displayName\":\"Name\",\"dataType\":\"string\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-1-STABLE\",\"displayName\":\"Age\",\"dataType\":\"string\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-2-STABLE\",\"displayName\":\"City\",\"dataType\":\"string\",\"formula\":\"\",\"meta\":{},\"style\":{}}],\"meta\":{\"notesheetExcelStyleName\":\"TableStyleMedium9\",\"notesheetShowRowStripes\":true}}],\"tableFilteredOutRows\":[]}}"
+    },
+    {
+      "name": "NOTESHEET_TABLE_SCHEMA",
+      "data": "{\"version\":\"0.23\"}"
+    },
+    {
+      "name": "SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN",
+      "data": "{\"sheet-3\":{\"0:0\":[\"bg\",\"cl\",\"bl\",\"bd.t\",\"bd.b\",\"bd.l\"],\"0:1\":[\"bg\",\"cl\",\"bl\",\"bd.t\",\"bd.b\"],\"0:2\":[\"bg\",\"cl\",\"bl\",\"bd.t\",\"bd.b\",\"bd.r\"],\"1:0\":[\"bg\",\"bd.l\",\"bd.b\"],\"1:1\":[\"bg\",\"bd.b\"],\"1:2\":[\"bg\",\"bd.r\",\"bd.b\"]}}"
+    },
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"1F497D\"/></a:dk2><a:lt2><a:srgbClr val=\"EEECE1\"/></a:lt2><a:accent1><a:srgbClr val=\"4F81BD\"/></a:accent1><a:accent2><a:srgbClr val=\"C0504D\"/></a:accent2><a:accent3><a:srgbClr val=\"9BBB59\"/></a:accent3><a:accent4><a:srgbClr val=\"8064A2\"/></a:accent4><a:accent5><a:srgbClr val=\"4BACC6\"/></a:accent5><a:accent6><a:srgbClr val=\"F79646\"/></a:accent6><a:hlink><a:srgbClr val=\"0000FF\"/></a:hlink><a:folHlink><a:srgbClr val=\"800080\"/></a:folHlink></a:clrScheme>"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "__importError": {
+    "name": "NotesheetImportError",
+    "code": "xlsx-multi-table-unsupported"
+  }
+}

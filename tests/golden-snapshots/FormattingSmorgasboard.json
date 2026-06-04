@@ -1,0 +1,1246 @@
+{
+  "id": "workbook-STABLE",
+  "sheetOrder": [
+    "sheet-1"
+  ],
+  "name": "Spreadsheet",
+  "appVersion": "0.1.0",
+  "locale": "enUS",
+  "styles": {
+    "style-1": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      }
+    },
+    "style-2": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        },
+        "r": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        },
+        "l": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        }
+      }
+    },
+    "style-3": {
+      "ff": "Aptos",
+      "fs": 11,
+      "ul": {
+        "s": 1
+      },
+      "cl": {
+        "rgb": "#467886"
+      }
+    },
+    "style-4": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "\"$\"#,##0"
+      }
+    },
+    "style-5": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0%"
+      }
+    },
+    "style-6": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "yyyy-mm-dd"
+      }
+    },
+    "style-7": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#8FAADC"
+      }
+    },
+    "style-8": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bg": {
+        "rgb": "#34692E"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        },
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-9": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bg": {
+        "rgb": "#34692E"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-10": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bg": {
+        "rgb": "#34692E"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        },
+        "b": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        },
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-11": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        },
+        "r": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        },
+        "l": {
+          "s": 8,
+          "cl": {
+            "rgb": "#F4B183"
+          }
+        }
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      }
+    },
+    "style-12": {
+      "ff": "Aptos",
+      "fs": 11,
+      "ul": {
+        "s": 1
+      },
+      "cl": {
+        "rgb": "#467886"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      }
+    },
+    "style-13": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "\"$\"#,##0"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      }
+    },
+    "style-14": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0%"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      }
+    },
+    "style-15": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "yyyy-mm-dd"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      }
+    },
+    "style-16": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#8FAADC"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      },
+      "bd": {
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-17": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-18": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bd": {
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-19": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      },
+      "bd": {
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-20": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bg": {
+        "rgb": "#CAEFCB"
+      },
+      "bd": {
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-21": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "l": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    },
+    "style-22": {
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        }
+      }
+    },
+    "style-23": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "\"$\"#,##0"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        }
+      }
+    },
+    "style-24": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "n": {
+        "pattern": "0%"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        }
+      }
+    },
+    "style-25": {
+      "ff": "Aptos",
+      "fs": 11,
+      "cl": {
+        "rgb": "#000000"
+      },
+      "bl": 1,
+      "bd": {
+        "t": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "b": {
+          "s": 8,
+          "cl": {
+            "rgb": "#72D068"
+          }
+        },
+        "r": {
+          "s": 1,
+          "cl": {
+            "rgb": "#196B24"
+          }
+        }
+      }
+    }
+  },
+  "sheets": {
+    "sheet-1": {
+      "id": "sheet-1",
+      "name": "Sheet1",
+      "cellData": {
+        "0": {
+          "0": {
+            "v": "Project",
+            "t": 1,
+            "s": "style-8"
+          },
+          "1": {
+            "v": "Website",
+            "t": 1,
+            "s": "style-9"
+          },
+          "2": {
+            "v": "Budget",
+            "t": 1,
+            "s": "style-9"
+          },
+          "3": {
+            "v": "Spent",
+            "t": 1,
+            "s": "style-9"
+          },
+          "4": {
+            "v": "% Complete",
+            "t": 1,
+            "s": "style-9"
+          },
+          "5": {
+            "v": "Start Date",
+            "t": 1,
+            "s": "style-9"
+          },
+          "6": {
+            "v": "Status",
+            "t": 1,
+            "s": "style-10"
+          }
+        },
+        "1": {
+          "0": {
+            "v": "Alpha Launch",
+            "t": 1,
+            "s": "style-11"
+          },
+          "1": {
+            "v": "https://example.com/alpha",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/alpha\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 25,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 25,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 26
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 24,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/alpha"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-12"
+          },
+          "2": {
+            "v": 50000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "3": {
+            "v": 32000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "4": {
+            "v": 0.64,
+            "t": 2,
+            "s": "style-14"
+          },
+          "5": {
+            "v": 46037,
+            "t": 2,
+            "s": "style-15"
+          },
+          "6": {
+            "v": "Active",
+            "t": 1,
+            "s": "style-16"
+          }
+        },
+        "2": {
+          "0": {
+            "v": "Beta Platform",
+            "t": 1,
+            "s": "style-17"
+          },
+          "1": {
+            "v": "https://example.com/beta",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/beta\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 24,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 24,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 25
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 23,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/beta"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-3"
+          },
+          "2": {
+            "v": 75000,
+            "t": 2,
+            "s": "style-4"
+          },
+          "3": {
+            "v": 41250,
+            "t": 2,
+            "s": "style-4"
+          },
+          "4": {
+            "v": 0.55,
+            "t": 2,
+            "s": "style-5"
+          },
+          "5": {
+            "v": 46054,
+            "t": 2,
+            "s": "style-6"
+          },
+          "6": {
+            "v": "Active",
+            "t": 1,
+            "s": "style-18"
+          }
+        },
+        "3": {
+          "0": {
+            "v": "Gamma Analytics",
+            "t": 1,
+            "s": "style-19"
+          },
+          "1": {
+            "v": "https://example.com/gamma",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/gamma\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 25,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 25,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 26
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 24,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/gamma"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-12"
+          },
+          "2": {
+            "v": 120000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "3": {
+            "v": 108000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "4": {
+            "v": 0.9,
+            "t": 2,
+            "s": "style-14"
+          },
+          "5": {
+            "v": 45971,
+            "t": 2,
+            "s": "style-15"
+          },
+          "6": {
+            "v": "Complete",
+            "t": 1,
+            "s": "style-20"
+          }
+        },
+        "4": {
+          "0": {
+            "v": "Delta Migration",
+            "t": 1,
+            "s": "style-17"
+          },
+          "1": {
+            "v": "https://example.com/delta",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/delta\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 25,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 25,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 26
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 24,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/delta"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-3"
+          },
+          "2": {
+            "v": 30000,
+            "t": 2,
+            "s": "style-4"
+          },
+          "3": {
+            "v": 9000,
+            "t": 2,
+            "s": "style-4"
+          },
+          "4": {
+            "v": 0.3,
+            "t": 2,
+            "s": "style-5"
+          },
+          "5": {
+            "v": 46101,
+            "t": 2,
+            "s": "style-6"
+          },
+          "6": {
+            "v": "Planning",
+            "t": 1,
+            "s": "style-18"
+          }
+        },
+        "5": {
+          "0": {
+            "v": "Epsilon Portal",
+            "t": 1,
+            "s": "style-19"
+          },
+          "1": {
+            "v": "https://example.com/epsilon",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/epsilon\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 27,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 27,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 28
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 26,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/epsilon"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-12"
+          },
+          "2": {
+            "v": 95000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "3": {
+            "v": 66500,
+            "t": 2,
+            "s": "style-13"
+          },
+          "4": {
+            "v": 0.7,
+            "t": 2,
+            "s": "style-14"
+          },
+          "5": {
+            "v": 46027,
+            "t": 2,
+            "s": "style-15"
+          },
+          "6": {
+            "v": "Active",
+            "t": 1,
+            "s": "style-20"
+          }
+        },
+        "6": {
+          "0": {
+            "v": "Zeta Security",
+            "t": 1,
+            "s": "style-17"
+          },
+          "1": {
+            "v": "https://example.com/zeta",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/zeta\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 24,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 24,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 25
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 23,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/zeta"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-3"
+          },
+          "2": {
+            "v": 60000,
+            "t": 2,
+            "s": "style-4"
+          },
+          "3": {
+            "v": 54000,
+            "t": 2,
+            "s": "style-4"
+          },
+          "4": {
+            "v": 0.9,
+            "t": 2,
+            "s": "style-5"
+          },
+          "5": {
+            "v": 45992,
+            "t": 2,
+            "s": "style-6"
+          },
+          "6": {
+            "v": "Complete",
+            "t": 1,
+            "s": "style-18"
+          }
+        },
+        "7": {
+          "0": {
+            "v": "Eta Dashboard",
+            "t": 1,
+            "s": "style-19"
+          },
+          "1": {
+            "v": "https://example.com/eta",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/eta\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 23,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 23,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 24
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 22,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/eta"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-12"
+          },
+          "2": {
+            "v": 45000,
+            "t": 2,
+            "s": "style-13"
+          },
+          "3": {
+            "v": 22500,
+            "t": 2,
+            "s": "style-13"
+          },
+          "4": {
+            "v": 0.5,
+            "t": 2,
+            "s": "style-14"
+          },
+          "5": {
+            "v": 46124,
+            "t": 2,
+            "s": "style-15"
+          },
+          "6": {
+            "v": "Active",
+            "t": 1,
+            "s": "style-20"
+          }
+        },
+        "8": {
+          "0": {
+            "v": "Theta API",
+            "t": 1,
+            "s": "style-17"
+          },
+          "1": {
+            "v": "https://example.com/theta",
+            "t": 1,
+            "p": {
+              "id": "__INTERNAL_EDITOR__DOCS_NORMAL",
+              "body": {
+                "dataStream": "https://example.com/theta\r\n",
+                "textRuns": [
+                  {
+                    "st": 0,
+                    "ed": 25,
+                    "ts": {}
+                  }
+                ],
+                "paragraphs": [
+                  {
+                    "startIndex": 25,
+                    "paragraphStyle": {}
+                  }
+                ],
+                "sectionBreaks": [
+                  {
+                    "startIndex": 26
+                  }
+                ],
+                "customRanges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 24,
+                    "rangeId": "lnk-STABLE",
+                    "rangeType": 0,
+                    "properties": {
+                      "url": "https://example.com/theta"
+                    }
+                  }
+                ]
+              },
+              "documentStyle": {
+                "pageSize": {
+                  "width": 1000000000,
+                  "height": 1000000000
+                }
+              }
+            },
+            "s": "style-3"
+          },
+          "2": {
+            "v": 85000,
+            "t": 2,
+            "s": "style-4"
+          },
+          "3": {
+            "v": 25500,
+            "t": 2,
+            "s": "style-4"
+          },
+          "4": {
+            "v": 0.3,
+            "t": 2,
+            "s": "style-5"
+          },
+          "5": {
+            "v": 46143,
+            "t": 2,
+            "s": "style-6"
+          },
+          "6": {
+            "v": "Planning",
+            "t": 1,
+            "s": "style-18"
+          }
+        },
+        "9": {
+          "0": {
+            "v": "Totals",
+            "t": 1,
+            "s": "style-21"
+          },
+          "1": {
+            "s": "style-22"
+          },
+          "2": {
+            "v": 560000,
+            "f": "=SUBTOTAL(109,ProjectTracker[Budget])",
+            "t": 2,
+            "s": "style-23"
+          },
+          "3": {
+            "v": 358750,
+            "f": "=SUBTOTAL(109,ProjectTracker[Spent])",
+            "t": 2,
+            "s": "style-23"
+          },
+          "4": {
+            "v": 0.59875,
+            "f": "=SUBTOTAL(101,ProjectTracker[% Complete])",
+            "t": 2,
+            "s": "style-24"
+          },
+          "5": {
+            "s": "style-22"
+          },
+          "6": {
+            "v": 8,
+            "f": "=SUBTOTAL(103,ProjectTracker[Status])",
+            "t": 2,
+            "s": "style-25"
+          }
+        }
+      },
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultColumnWidth": 73,
+      "defaultRowHeight": 19,
+      "mergeData": [],
+      "rowData": {
+        "0": {
+          "h": 23
+        },
+        "1": {
+          "h": 23
+        }
+      },
+      "columnData": {
+        "0": {
+          "w": 111
+        },
+        "1": {
+          "w": 179
+        },
+        "2": {
+          "w": 72
+        },
+        "3": {
+          "w": 66
+        },
+        "4": {
+          "w": 101
+        },
+        "5": {
+          "w": 90
+        },
+        "6": {
+          "w": 69
+        }
+      }
+    }
+  },
+  "defaultStyle": {
+    "ff": "Aptos Narrow"
+  },
+  "resources": [
+    {
+      "name": "SHEET_TABLE_PLUGIN",
+      "data": "{\"sheet-1\":{\"tables\":[{\"id\":\"tbl-ProjectTracker-STABLE\",\"name\":\"ProjectTracker\",\"range\":{\"startRow\":0,\"endRow\":9,\"startColumn\":0,\"endColumn\":6},\"options\":{\"showHeader\":true,\"showFooter\":true},\"filters\":{\"tableColumnFilterList\":[]},\"columns\":[{\"id\":\"tblcol-0-STABLE\",\"displayName\":\"Project\",\"dataType\":\"string\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-1-STABLE\",\"displayName\":\"Website\",\"dataType\":\"string\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-2-STABLE\",\"displayName\":\"Budget\",\"dataType\":\"number\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-3-STABLE\",\"displayName\":\"Spent\",\"dataType\":\"number\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-4-STABLE\",\"displayName\":\"% Complete\",\"dataType\":\"number\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-5-STABLE\",\"displayName\":\"Start Date\",\"dataType\":\"date\",\"formula\":\"\",\"meta\":{},\"style\":{}},{\"id\":\"tblcol-6-STABLE\",\"displayName\":\"Status\",\"dataType\":\"string\",\"formula\":\"\",\"meta\":{},\"style\":{}}],\"meta\":{\"notesheetExcelStyleName\":\"TableStyleMedium4\",\"notesheetShowRowStripes\":true}}],\"tableFilteredOutRows\":[]}}"
+    },
+    {
+      "name": "NOTESHEET_TABLE_SCHEMA",
+      "data": "{\"version\":\"0.23\"}"
+    },
+    {
+      "name": "SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN",
+      "data": "{\"sheet-1\":{\"0:0\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\",\"bd.l\"],\"0:1\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\"],\"0:2\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\"],\"0:3\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\"],\"0:4\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\"],\"0:5\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\"],\"0:6\":[\"bg\",\"bl\",\"bd.t\",\"bd.b\",\"bd.r\"],\"1:0\":[\"bg\"],\"1:1\":[\"bg\"],\"1:2\":[\"bg\"],\"1:3\":[\"bg\"],\"1:4\":[\"bg\"],\"1:5\":[\"bg\"],\"1:6\":[\"bg\",\"bd.r\"],\"2:0\":[\"bd.l\"],\"2:6\":[\"bd.r\"],\"3:0\":[\"bg\",\"bd.l\"],\"3:1\":[\"bg\"],\"3:2\":[\"bg\"],\"3:3\":[\"bg\"],\"3:4\":[\"bg\"],\"3:5\":[\"bg\"],\"3:6\":[\"bg\",\"bd.r\"],\"4:0\":[\"bd.l\"],\"4:6\":[\"bd.r\"],\"5:0\":[\"bg\",\"bd.l\"],\"5:1\":[\"bg\"],\"5:2\":[\"bg\"],\"5:3\":[\"bg\"],\"5:4\":[\"bg\"],\"5:5\":[\"bg\"],\"5:6\":[\"bg\",\"bd.r\"],\"6:0\":[\"bd.l\"],\"6:6\":[\"bd.r\"],\"7:0\":[\"bg\",\"bd.l\"],\"7:1\":[\"bg\"],\"7:2\":[\"bg\"],\"7:3\":[\"bg\"],\"7:4\":[\"bg\"],\"7:5\":[\"bg\"],\"7:6\":[\"bg\",\"bd.r\"],\"8:0\":[\"bd.l\"],\"8:6\":[\"bd.r\"],\"9:0\":[\"bl\",\"bd.t\",\"bd.b\",\"bd.l\"],\"9:1\":[\"cl\",\"bl\",\"bd.t\",\"bd.b\"],\"9:2\":[\"bl\",\"bd.t\",\"bd.b\"],\"9:3\":[\"bl\",\"bd.t\",\"bd.b\"],\"9:4\":[\"bl\",\"bd.t\",\"bd.b\"],\"9:5\":[\"cl\",\"bl\",\"bd.t\",\"bd.b\"],\"9:6\":[\"bl\",\"bd.t\",\"bd.b\",\"bd.r\"]}}"
+    },
+    {
+      "name": "SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN",
+      "data": "<a:clrScheme name=\"Office\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"0E2841\"/></a:dk2><a:lt2><a:srgbClr val=\"E8E8E8\"/></a:lt2><a:accent1><a:srgbClr val=\"156082\"/></a:accent1><a:accent2><a:srgbClr val=\"E97132\"/></a:accent2><a:accent3><a:srgbClr val=\"196B24\"/></a:accent3><a:accent4><a:srgbClr val=\"0F9ED5\"/></a:accent4><a:accent5><a:srgbClr val=\"A02B93\"/></a:accent5><a:accent6><a:srgbClr val=\"4EA72E\"/></a:accent6><a:hlink><a:srgbClr val=\"467886\"/></a:hlink><a:folHlink><a:srgbClr val=\"96607D\"/></a:folHlink></a:clrScheme>"
+    }
+  ]
+}
