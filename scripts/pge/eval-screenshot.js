@@ -86,6 +86,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-m13-rich-text-renders': 'PGE M13D eval ',
     'feature-1-m13-theme-aware-banding:aptos': 'PGE M13E aptos eval ',
     'feature-1-m13-theme-aware-banding:classic': 'PGE M13E classic eval ',
+    'feature-1-m15-conditional-formatting': 'PGE M15 CF eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -98,6 +99,7 @@ const REGION_BY_FEATURE = {
     'feature-1-m13-rich-text-renders': 'richTextA1A2',
     'feature-1-m13-theme-aware-banding:aptos': 'tableHeaderRow',
     'feature-1-m13-theme-aware-banding:classic': 'tableHeaderRow',
+    'feature-1-m15-conditional-formatting': 'cfAllColumns',
 };
 
 function discoverApiPort() {
@@ -254,6 +256,198 @@ async function waitForUniverRender(frame) {
 // Future features that need precise per-cell rects can compute them
 // from Univer's `defaultRowHeight` / `defaultColumnWidth` (snapshot
 // fields).
+// Sample five CF column bands (A, C, E, G, I) and return per-column
+// pixel summaries plus an aggregated whole-CF-area summary. Used by
+// the M15 cycle's `cfAllColumns` region kind — instead of one
+// (regionFn) → one (summary) shape, this produces a `cfColumns`
+// object keyed by column letter.
+//
+// Geometry discovery (post-M15 fix): the original implementation
+// hardcoded `COL_W_CSS = 73` (Univer's default column width). The
+// operator captured the M15 reference screenshot with all CF columns
+// expanded to content width so the long header labels fit, which made
+// the per-column sampling regions drift sideways and bucket pink/
+// light-green ink into the wrong columns. We now read the LIVE
+// per-column widths and per-row heights from the Univer FUniver facade
+// (`window.__notesheetUniverAPI`, exposed by `bootUniver` in
+// `src/editorView.tsx` for diagnostic use). When the facade isn't
+// reachable (e.g. plugin failed to load, ancient build) we fall back
+// to the previous default-width math so the sampler degrades
+// gracefully — but the sidecar's `geometrySource` field flags which
+// path was taken.
+async function sampleCfColumns(frame, maxColors = 8) {
+    return frame.evaluate(({ maxColors }) => {
+        const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
+        if (!canvas) return { error: 'no main canvas' };
+        const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+        const ROW_HEADER_W_CSS = 46;
+        const COL_HEADER_H_CSS = 18;
+        const DEFAULT_COL_W_CSS = 73;
+        const DEFAULT_ROW_H_CSS = 19;
+        const COLS = { A: 0, C: 2, E: 4, G: 6, I: 8 };
+        const MAX_COL = 8; // we sample through col I (index 8)
+        const MAX_ROW = 11; // through row 11 (index 10) for CF aggregate
+
+        // Try to discover actual column widths / row heights via the
+        // FUniver facade exposed by editorView.tsx. The facade returns
+        // numeric CSS pixel sizes that already account for any user
+        // (or fixture) column resize.
+        let geometrySource = 'default-fallback';
+        const colWidths = new Array(MAX_COL + 1).fill(DEFAULT_COL_W_CSS);
+        const rowHeights = new Array(MAX_ROW + 1).fill(DEFAULT_ROW_H_CSS);
+        try {
+            const api = (window).__notesheetUniverAPI;
+            const wb = api && (api.getActiveWorkbook ? api.getActiveWorkbook() : null);
+            const ws = wb && (wb.getActiveSheet ? wb.getActiveSheet() : null);
+            if (ws && typeof ws.getColumnWidth === 'function' && typeof ws.getRowHeight === 'function') {
+                for (let c = 0; c <= MAX_COL; c++) {
+                    const w = Number(ws.getColumnWidth(c));
+                    if (Number.isFinite(w) && w > 0) colWidths[c] = w;
+                }
+                for (let r = 0; r <= MAX_ROW; r++) {
+                    const h = Number(ws.getRowHeight(r));
+                    if (Number.isFinite(h) && h > 0) rowHeights[r] = h;
+                }
+                geometrySource = 'fUniver';
+            }
+        } catch (e) {
+            // Facade not reachable — fall through to defaults below.
+            geometrySource = 'default-fallback:' + (e && e.message ? e.message : 'unknown');
+        }
+
+        // Cumulative x-origins per column index (CSS px from canvas left).
+        const colXCss = new Array(MAX_COL + 2).fill(0);
+        colXCss[0] = ROW_HEADER_W_CSS;
+        for (let c = 0; c <= MAX_COL; c++) {
+            colXCss[c + 1] = colXCss[c] + colWidths[c];
+        }
+        // Cumulative y-origins per row index (CSS px from canvas top).
+        const rowYCss = new Array(MAX_ROW + 2).fill(0);
+        rowYCss[0] = COL_HEADER_H_CSS;
+        for (let r = 0; r <= MAX_ROW; r++) {
+            rowYCss[r + 1] = rowYCss[r] + rowHeights[r];
+        }
+
+        function sampleRegion(rx, ry, rw, rh) {
+            const off = document.createElement('canvas');
+            off.width = rw;
+            off.height = rh;
+            const ctx = off.getContext('2d');
+            ctx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+            const data = ctx.getImageData(0, 0, rw, rh).data;
+            const hist = new Map();
+            const inkY = new Set();
+            let sampled = 0;
+            let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
+            let pinkInk = 0, lightGreenInk = 0, yellowInk = 0;
+            for (let y = 0; y < rh; y += 1) {
+                for (let x = 0; x < rw; x += 1) {
+                    const i = (y * rw + x) * 4;
+                    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                    if (a < 200) continue;
+                    if (r > 235 && g > 235 && b > 235) continue;
+                    if (r < 30 && g < 30 && b < 30) continue;
+                    sampled++;
+                    inkY.add(y);
+                    // M13/D originally required pure red (g/b ≤ 80); M15
+                // broadens to g/b ≤ 140 so the colorScale's #F8696B
+                // family (R=248, G=105, B=107) qualifies. Pure red text
+                // (rgb(255,0,0)) still passes; Aptos accent3 dark green
+                // (rgb(25,107,36)) doesn't (R=25 < 200). The threshold
+                // change is monotonic (only widens), so no prior cycle's
+                // gate that already passed can fail.
+                if (r >= 200 && g <= 140 && b <= 140) redInk++;
+                    // M15 broadens blueInk: dataBar colour #638EC6
+                // (R=99, G=142, B=198) is the spec target. The
+                // original M13/D thresholds (r<=80 AND g<=80 AND
+                // b>=200) only matched pure blue text. We loosen to
+                // "B clearly dominant by ≥30 over R AND G, AND B at
+                // least 150" — catches every saturated blue from
+                // pure rgb(0,0,255) down through Excel's dataBar
+                // accent. Pure blue still passes; the change is
+                // monotonic so no prior gate regresses.
+                if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
+                    if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
+                    if (
+                        r >= 140 && r <= 180
+                        && g >= 140 && g <= 180
+                        && b >= 140 && b <= 180
+                        && Math.abs(r - g) <= 10
+                        && Math.abs(g - b) <= 10
+                    ) greyInk++;
+                    if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
+                    if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
+                    if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
+                    const key = `rgb(${r},${g},${b})`;
+                    hist.set(key, (hist.get(key) || 0) + 1);
+                }
+            }
+            const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
+            const [dominant, count] = top[0] || [null, 0];
+            return {
+                dominant, count, sampled, top,
+                regionX: rx, regionY: ry, regionWidth: rw, regionHeight: rh,
+                inkRows: inkY.size,
+                inkRowSpread: inkY.size / Math.max(1, rh),
+                redInk, blueInk, greenInk, greyInk,
+                pinkInk, lightGreenInk, yellowInk,
+            };
+        }
+
+        const cfColumns = {};
+        // Per-column sampling: each CF column gets its own region whose
+        // x-origin/width comes from the discovered colWidths array, and
+        // whose y-band covers data rows 1..10 (zero-based) — the rows
+        // that carry CF output in the fixture. We carve a 6px inset on
+        // both x edges so we land safely inside the cell rather than
+        // straddling the gridline; with content-widened columns the
+        // inset is negligible against the column body, but on default
+        // narrow columns it's still safe (>= 60px effective width).
+        const yCssCol = rowYCss[1];                // top of row 2 (data row 1)
+        const yCssEnd = rowYCss[Math.min(11, MAX_ROW + 1)]; // bottom of row 11
+        const hCssCol = Math.max(0, yCssEnd - yCssCol);
+        for (const col of Object.keys(COLS)) {
+            const colIndex = COLS[col];
+            const xLeft = colXCss[colIndex];
+            const xRight = colXCss[colIndex + 1];
+            const xInset = 6;
+            const xCss = xLeft + xInset;
+            const wCss = Math.max(0, xRight - xLeft - 2 * xInset);
+            const x = Math.round(xCss * dpr);
+            const y = Math.round(yCssCol * dpr);
+            const w = Math.round(wCss * dpr);
+            const h = Math.round(hCssCol * dpr);
+            const useX = Math.min(canvas.width - 1, x);
+            const useY = Math.min(canvas.height - 1, y);
+            const useW = Math.min(Math.max(canvas.width - useX, 0), w);
+            const useH = Math.min(Math.max(canvas.height - useY, 0), h);
+            cfColumns[col] = sampleRegion(useX, useY, useW, useH);
+        }
+
+        // Aggregate: a whole-band sample covering A2:I11 for the
+        // top-level `dominant` and `top` histogram (legacy compat).
+        const aggXCss = ROW_HEADER_W_CSS;
+        const aggYCss = rowYCss[1];
+        const aggWCss = Math.max(0, colXCss[Math.min(9, MAX_COL + 1)] - ROW_HEADER_W_CSS);
+        const aggHCss = hCssCol;
+        const aggX = Math.round(aggXCss * dpr);
+        const aggY = Math.round(aggYCss * dpr);
+        const aggWPx = Math.round(aggWCss * dpr);
+        const aggHPx = Math.round(aggHCss * dpr);
+        const useAggW = Math.min(Math.max(canvas.width - aggX, 0), aggWPx);
+        const useAggH = Math.min(Math.max(canvas.height - aggY, 0), aggHPx);
+        const agg = sampleRegion(aggX, aggY, useAggW, useAggH);
+
+        return {
+            ...agg,
+            cfColumns,
+            geometrySource,
+            colWidthsCss: colWidths,
+            rowHeightsCss: rowHeights,
+        };
+    }, { maxColors });
+}
+
 async function samplePixelsAt(frame, regionFn, maxColors = 8) {
     return frame.evaluate(({ regionFnSrc, maxColors }) => {
         const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
@@ -301,6 +495,12 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
         //            luminance; M13/E uses this to gate the Classic
         //            fixture's grey header rendering.)
         let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
+        // M15 CF aggregates. pinkInk targets #FFC7CE (cellIs > 50 fill);
+        // lightGreenInk targets #C6EFCE (top-3 rank fill); yellowInk
+        // targets the iconSet middle band's gold arrow (RGB roughly
+        // 255,189,55 in Univer's ICON_MAP arrow["right-gold"]).
+        // Loose-by-design — glyphs are small and anti-aliased.
+        let pinkInk = 0, lightGreenInk = 0, yellowInk = 0;
         // Stride 1 (every pixel) — region is small and we want the
         // colour signal to cross the spec thresholds even on
         // narrow-glyph runs.
@@ -313,8 +513,24 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
                 if (r < 30 && g < 30 && b < 30) continue;          // gridline
                 sampled++;
                 inkY.add(y);
-                if (r >= 200 && g <= 80 && b <= 80) redInk++;
-                if (r <= 80 && g <= 80 && b >= 200) blueInk++;
+                // M13/D originally required pure red (g/b ≤ 80); M15
+                // broadens to g/b ≤ 140 so the colorScale's #F8696B
+                // family (R=248, G=105, B=107) qualifies. Pure red text
+                // (rgb(255,0,0)) still passes; Aptos accent3 dark green
+                // (rgb(25,107,36)) doesn't (R=25 < 200). The threshold
+                // change is monotonic (only widens), so no prior cycle's
+                // gate that already passed can fail.
+                if (r >= 200 && g <= 140 && b <= 140) redInk++;
+                // M15 broadens blueInk: dataBar colour #638EC6
+                // (R=99, G=142, B=198) is the spec target. The
+                // original M13/D thresholds (r<=80 AND g<=80 AND
+                // b>=200) only matched pure blue text. We loosen to
+                // "B clearly dominant by ≥30 over R AND G, AND B at
+                // least 150" — catches every saturated blue from
+                // pure rgb(0,0,255) down through Excel's dataBar
+                // accent. Pure blue still passes; the change is
+                // monotonic so no prior gate regresses.
+                if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
                 if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
                 if (
                     r >= 140 && r <= 180
@@ -323,6 +539,12 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
                     && Math.abs(r - g) <= 10
                     && Math.abs(g - b) <= 10
                 ) greyInk++;
+                // Pink: #FFC7CE family — R high, G in [180,220], B in [180,220].
+                if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
+                // Light green: #C6EFCE family — R in [180,220], G high, B in [180,220].
+                if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
+                // Yellow: R high, G high, B low (gold arrow / yellow-flat icon).
+                if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
                 const key = `rgb(${r},${g},${b})`;
                 hist.set(key, (hist.get(key) || 0) + 1);
             }
@@ -348,6 +570,9 @@ async function samplePixelsAt(frame, regionFn, maxColors = 8) {
             blueInk,
             greenInk,
             greyInk,
+            pinkInk,
+            lightGreenInk,
+            yellowInk,
         };
     }, { regionFnSrc: regionFn.toString(), maxColors });
 }
@@ -424,6 +649,13 @@ function richTextA1A2Region(canvas) {
 //     x=80..min(width, 80+400)=480, covering cols B..G (or B..F for
 //     the Classic fixture's 6-col table) — well past the active-cell
 //     selection.
+// CF column regions for the M15 ConditionalFormatting-Variants fixture
+// are computed inline by `sampleCfColumns()` above (see lines 264–...);
+// the per-column geometry (row-header 46px + colIndex*73px, col widths,
+// row heights, DPR scaling) lives there. No standalone region helper
+// is needed because the regionKind 'cfAllColumns' bypasses the
+// single-region sampling pipeline entirely.
+
 function tableHeaderRowRegion(canvas) {
     // Univer's canvas has a backing store sized at devicePixelRatio
     // multiples of its CSS box. On a Retina display the canvas is 2x
@@ -549,6 +781,8 @@ async function main() {
         // Resolve the region kind: variant-suffixed key first, then the
         // plain feature id, then the row-0 default.
         const regionKind = REGION_BY_FEATURE[FEATURE_ID] || REGION_BY_FEATURE[BASE_FEATURE_ID] || 'rowZero';
+        // For 'cfAllColumns' regionKind we use the dedicated multi-region
+        // sampler `sampleCfColumns` below — no single-region regionFn.
         const regionFn = regionKind === 'rotatedRow'
             ? rotatedRowRegion
             : regionKind === 'richTextA1A2'
@@ -574,7 +808,11 @@ async function main() {
                     let sampleFrame = captureWebview;
                     for (let attempt = 0; attempt < 6; attempt++) {
                         try {
-                            pixelSummary = await samplePixelsAt(sampleFrame, regionFn);
+                            if (regionKind === 'cfAllColumns') {
+                                pixelSummary = await sampleCfColumns(sampleFrame);
+                            } else {
+                                pixelSummary = await samplePixelsAt(sampleFrame, regionFn);
+                            }
                             if (pixelSummary && !pixelSummary.error) break;
                         } catch (e) {
                             console.error(`eval-screenshot: pixel sample attempt ${attempt} threw: ${e.message}`);
@@ -620,7 +858,9 @@ async function main() {
                     ? 'rich-text A2 band (y 41–58, multi-colour pin-down: Red+default+Blue+default)'
                     : regionKind === 'tableHeaderRow'
                         ? 'table header band (x 80–480, y 22–35; cols B+ of A1:_ table header row, excludes A1 active-cell selection border)'
-                        : 'row-0 (top 80px slab of main canvas)';
+                        : regionKind === 'cfAllColumns'
+                            ? 'CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)'
+                            : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(sidecar, JSON.stringify({
                 source: out,
                 region: regionLabel,
@@ -629,6 +869,15 @@ async function main() {
             }, null, 2));
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
             console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`);
+            if (pixelSummary.cfColumns) {
+                if (pixelSummary.geometrySource) {
+                    console.error(`eval-screenshot:   geometrySource=${pixelSummary.geometrySource} colWidthsCss=${JSON.stringify(pixelSummary.colWidthsCss)}`);
+                }
+                for (const col of Object.keys(pixelSummary.cfColumns)) {
+                    const c = pixelSummary.cfColumns[col];
+                    console.error(`eval-screenshot:   cfColumn[${col}]: dominant=${c.dominant} sampled=${c.sampled} redInk=${c.redInk} blueInk=${c.blueInk} greenInk=${c.greenInk} pinkInk=${c.pinkInk} lightGreenInk=${c.lightGreenInk} yellowInk=${c.yellowInk}`);
+                }
+            }
         }
     } finally {
         // Detach but DO NOT close Joplin.

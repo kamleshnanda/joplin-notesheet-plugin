@@ -141,6 +141,47 @@ export function dominantColor(
     return { rgb: [r, g, b], hex, hits: bestHits, total };
 }
 
+/**
+ * Dominant colour over a region, ignoring near-white background pixels.
+ * Useful when the target fill / glyph occupies a minority of the
+ * sampled region (e.g. a partial-width data bar in a mostly-white cell,
+ * or a small icon glyph). White / near-white (all channels > whiteThreshold)
+ * is excluded from the histogram so the dominant reflects the inked
+ * pixels only.
+ *
+ * Returns `null` if the region contains only near-white pixels — caller
+ * decides how to handle (test failure with a helpful message, or skip).
+ */
+export function dominantColorSkipWhite(
+    img: DecodedPng,
+    xMin: number, xMax: number,
+    yMin: number, yMax: number,
+    whiteThreshold = 240,
+): { rgb: [number, number, number]; hex: string; hits: number; total: number } | null {
+    const counts = new Map<number, number>();
+    let total = 0;
+    for (let y = yMin; y <= yMax; y++) {
+        for (let x = xMin; x <= xMax; x++) {
+            const idx = (y * img.width + x) * img.channels;
+            const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
+            if (r > whiteThreshold && g > whiteThreshold && b > whiteThreshold) continue;
+            const key = (r << 16) | (g << 8) | b;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+            total += 1;
+        }
+    }
+    if (total === 0) return null;
+    let bestKey = 0; let bestHits = 0;
+    for (const [key, hits] of counts) {
+        if (hits > bestHits) { bestKey = key; bestHits = hits; }
+    }
+    const r = (bestKey >> 16) & 0xff;
+    const g = (bestKey >> 8) & 0xff;
+    const b = bestKey & 0xff;
+    const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    return { rgb: [r, g, b], hex, hits: bestHits, total };
+}
+
 /** Manhattan-style per-channel deviation between two RGB tuples. */
 export function rgbDelta(a: readonly [number, number, number], b: readonly [number, number, number]): { dR: number; dG: number; dB: number; max: number } {
     const dR = Math.abs(a[0] - b[0]);

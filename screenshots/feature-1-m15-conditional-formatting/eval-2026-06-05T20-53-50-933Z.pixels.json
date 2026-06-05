@@ -1,0 +1,327 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-53-50-933Z.png",
+  "region": "CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)",
+  "regionKind": "cfAllColumns",
+  "dominant": "rgb(255,199,206)",
+  "count": 26513,
+  "sampled": 162598,
+  "top": [
+    [
+      "rgb(255,199,206)",
+      26513
+    ],
+    [
+      "rgb(198,239,206)",
+      20388
+    ],
+    [
+      "rgb(214,216,219)",
+      16567
+    ],
+    [
+      "rgb(248,105,107)",
+      7020
+    ],
+    [
+      "rgb(250,134,113)",
+      6909
+    ],
+    [
+      "rgb(168,210,127)",
+      6875
+    ],
+    [
+      "rgb(254,221,129)",
+      6853
+    ],
+    [
+      "rgb(251,163,118)",
+      6837
+    ]
+  ],
+  "regionX": 92,
+  "regionY": 74,
+  "regionWidth": 1710,
+  "regionHeight": 380,
+  "inkRows": 380,
+  "inkRowSpread": 1,
+  "redInk": 14298,
+  "blueInk": 15912,
+  "greenInk": 40887,
+  "greyInk": 41,
+  "pinkInk": 26682,
+  "lightGreenInk": 20530,
+  "yellowInk": 17,
+  "cfColumns": {
+    "A": {
+      "dominant": "rgb(248,105,107)",
+      "count": 6216,
+      "sampled": 61011,
+      "top": [
+        [
+          "rgb(248,105,107)",
+          6216
+        ],
+        [
+          "rgb(250,134,113)",
+          6105
+        ],
+        [
+          "rgb(168,210,127)",
+          6071
+        ],
+        [
+          "rgb(254,221,129)",
+          6049
+        ],
+        [
+          "rgb(251,163,118)",
+          6033
+        ],
+        [
+          "rgb(253,192,124)",
+          6026
+        ],
+        [
+          "rgb(238,230,131)",
+          6010
+        ],
+        [
+          "rgb(203,220,129)",
+          5996
+        ]
+      ],
+      "regionX": 104,
+      "regionY": 74,
+      "regionWidth": 166,
+      "regionHeight": 380,
+      "inkRows": 376,
+      "inkRowSpread": 0.9894736842105263,
+      "redInk": 12369,
+      "blueInk": 0,
+      "greenInk": 17655,
+      "greyInk": 0,
+      "pinkInk": 0,
+      "lightGreenInk": 0,
+      "yellowInk": 14
+    },
+    "C": {
+      "dominant": "rgb(99,142,198)",
+      "count": 3235,
+      "sampled": 26146,
+      "top": [
+        [
+          "rgb(99,142,198)",
+          3235
+        ],
+        [
+          "rgb(214,216,219)",
+          1660
+        ],
+        [
+          "rgb(219,229,242)",
+          183
+        ],
+        [
+          "rgb(176,198,226)",
+          175
+        ],
+        [
+          "rgb(214,225,240)",
+          174
+        ],
+        [
+          "rgb(211,223,239)",
+          173
+        ],
+        [
+          "rgb(132,166,210)",
+          172
+        ],
+        [
+          "rgb(222,231,243)",
+          171
+        ]
+      ],
+      "regionX": 484,
+      "regionY": 74,
+      "regionWidth": 166,
+      "regionHeight": 380,
+      "inkRows": 305,
+      "inkRowSpread": 0.8026315789473685,
+      "redInk": 0,
+      "blueInk": 13190,
+      "greenInk": 0,
+      "greyInk": 34,
+      "pinkInk": 0,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    },
+    "E": {
+      "dominant": "rgb(255,199,206)",
+      "count": 23389,
+      "sampled": 24928,
+      "top": [
+        [
+          "rgb(255,199,206)",
+          23389
+        ],
+        [
+          "rgb(214,216,219)",
+          996
+        ],
+        [
+          "rgb(243,190,196)",
+          20
+        ],
+        [
+          "rgb(245,191,198)",
+          15
+        ],
+        [
+          "rgb(96,75,78)",
+          14
+        ],
+        [
+          "rgb(233,182,188)",
+          14
+        ],
+        [
+          "rgb(69,54,56)",
+          13
+        ],
+        [
+          "rgb(251,196,203)",
+          11
+        ]
+      ],
+      "regionX": 864,
+      "regionY": 74,
+      "regionWidth": 166,
+      "regionHeight": 380,
+      "inkRows": 154,
+      "inkRowSpread": 0.4052631578947368,
+      "redInk": 0,
+      "blueInk": 0,
+      "greenInk": 0,
+      "greyInk": 0,
+      "pinkInk": 23521,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    },
+    "G": {
+      "dominant": "rgb(198,239,206)",
+      "count": 17982,
+      "sampled": 19589,
+      "top": [
+        [
+          "rgb(198,239,206)",
+          17982
+        ],
+        [
+          "rgb(214,216,219)",
+          1162
+        ],
+        [
+          "rgb(197,238,205)",
+          14
+        ],
+        [
+          "rgb(191,231,199)",
+          11
+        ],
+        [
+          "rgb(46,55,48)",
+          10
+        ],
+        [
+          "rgb(189,228,196)",
+          10
+        ],
+        [
+          "rgb(196,237,204)",
+          9
+        ],
+        [
+          "rgb(75,90,78)",
+          9
+        ]
+      ],
+      "regionX": 1244,
+      "regionY": 74,
+      "regionWidth": 166,
+      "regionHeight": 380,
+      "inkRows": 121,
+      "inkRowSpread": 0.31842105263157894,
+      "redInk": 0,
+      "blueInk": 0,
+      "greenInk": 18077,
+      "greyInk": 0,
+      "pinkInk": 0,
+      "lightGreenInk": 18082,
+      "yellowInk": 0
+    },
+    "I": {
+      "dominant": "rgb(214,216,219)",
+      "count": 1660,
+      "sampled": 2620,
+      "top": [
+        [
+          "rgb(214,216,219)",
+          1660
+        ],
+        [
+          "rgb(255,189,55)",
+          408
+        ],
+        [
+          "rgb(89,208,30)",
+          279
+        ],
+        [
+          "rgb(254,75,75)",
+          273
+        ]
+      ],
+      "regionX": 1624,
+      "regionY": 74,
+      "regionWidth": 166,
+      "regionHeight": 380,
+      "inkRows": 195,
+      "inkRowSpread": 0.5131578947368421,
+      "redInk": 273,
+      "blueInk": 0,
+      "greenInk": 279,
+      "greyInk": 0,
+      "pinkInk": 0,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    }
+  },
+  "geometrySource": "fUniver",
+  "colWidthsCss": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+  ],
+  "rowHeightsCss": [
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19,
+    19
+  ]
+}

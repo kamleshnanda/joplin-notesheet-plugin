@@ -71,6 +71,7 @@ import { readdirSync, statSync } from 'fs';
 import {
     decodePng,
     dominantColor,
+    dominantColorSkipWhite,
     hexToRgb,
     rgbDelta,
     DecodedPng,
@@ -366,5 +367,232 @@ describe('Canvas vs Excel fidelity — TableStyleMedium4 (M13/E rework)', () => 
             excelXMin: 200,
             excelXMax: 1200,
         });
+    });
+});
+
+// ─── M15: Conditional Formatting canvas fidelity ────────────────────────
+//
+// Canvas-vs-Excel parity gate for the 5 CF rule types. Compares the
+// Joplin canvas screenshot
+// (`screenshots/feature-1-m15-conditional-formatting/eval-*.png`)
+// against the operator-captured Excel reference
+// (`screenshots/excel-reference/ConditionalFormatting-Variants.png`)
+// at five sentinel points (one per CF column).
+//
+// SKIP-WHEN-MISSING: the reference PNG does not exist at planner /
+// generator time — the operator captures it from real Excel during
+// the cycle. Tests skip via fs.existsSync; once the reference lands,
+// they run and the evaluator can act on the parity verdict.
+//
+// Per-column sentinel:
+//   - A (colorScale): dominant colour of the median cell A6 (value 40).
+//     At #FFEB84 family on the gradient it's the most stable measure;
+//     A2 (red end) and A11 (green end) anti-alias more aggressively.
+//   - C (dataBar): the right edge of the longest-bar cell C11 (value 90).
+//     At #638EC6.
+//   - E (cellIs > 50): cell E10 (value 80). At #FFC7CE.
+//   - G (top-3 rank): the top cell G2 (value 82). At #C6EFCE.
+//   - I (iconSet): the top-band cell I11 (value 90, green-up arrow).
+//     Looser tolerance because the icon glyph is small.
+
+const CF_VARIANTS_REF = path.join(REFERENCES_DIR, 'ConditionalFormatting-Variants.png');
+const CF_FEATURE_DIR = path.join(REPO_ROOT, 'screenshots', 'feature-1-m15-conditional-formatting');
+
+function existsSync(p: string): boolean {
+    try { statSync(p); return true; } catch { return false; }
+}
+
+function latestCfEvalPng(): string | null {
+    if (!existsSync(CF_FEATURE_DIR)) return null;
+    const matches = readdirSync(CF_FEATURE_DIR).filter((n) =>
+        n.startsWith('eval-') && n.endsWith('.png'),
+    );
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => {
+        const ma = statSync(path.join(CF_FEATURE_DIR, a)).mtimeMs;
+        const mb = statSync(path.join(CF_FEATURE_DIR, b)).mtimeMs;
+        return mb - ma;
+    });
+    return path.join(CF_FEATURE_DIR, matches[0]);
+}
+
+const CF_REF_PRESENT = existsSync(CF_VARIANTS_REF);
+const CF_EVAL_PRESENT = !!latestCfEvalPng();
+
+// describe.skip when the reference is absent (M13/E pattern: skip
+// loudly when ground truth is missing, run when present). The
+// evaluator unskips by capturing the reference; the tests fail-fast
+// inside `beforeAll` if the reference is later removed.
+const cfDescribe = (CF_REF_PRESENT && CF_EVAL_PRESENT) ? describe : describe.skip;
+
+cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', () => {
+    let refImg: DecodedPng;
+    let joplinImg: DecodedPng;
+
+    beforeAll(() => {
+        if (!CF_REF_PRESENT) {
+            throw new Error(
+                `Excel reference PNG missing at ${CF_VARIANTS_REF}. ` +
+                `Operator must capture from real Excel: open ` +
+                `tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx ` +
+                `in Excel and screenshot the visible CF columns A..I.`,
+            );
+        }
+        const evalPath = latestCfEvalPng();
+        if (!evalPath) {
+            throw new Error(
+                `No eval-*.png in ${CF_FEATURE_DIR}. ` +
+                `Re-run scripts/pge/eval-screenshot.sh feature-1-m15-conditional-formatting.`,
+            );
+        }
+        refImg = decodePng(CF_VARIANTS_REF);
+        joplinImg = decodePng(evalPath);
+    });
+
+    test('Column A (colorScale): both renders carry the gradient mid-band yellow #FFEB84 family', () => {
+        // Sample a small mid-cell band on column A in BOTH renders. The
+        // y-positions and column x-bands are deliberately approximate;
+        // the assertion is parity between Joplin and Excel, not absolute
+        // RGB. We pick the median row (row 7 = value 50 → midpoint of
+        // gradient) and scan a horizontal slice for the dominant fill.
+        // We don't reach inside text glyphs — column A's data area is
+        // narrower than the cell width, so a 1-pixel vertical strip in
+        // the middle of the row catches the cell fill cleanly.
+        //
+        // Joplin canvas at DPR=2: col A starts at x≈92 (row header 46
+        // CSS px ≈ 92 device px). Median row y depends on canvas size;
+        // we sample a slab.
+        const refDom = dominantColor(refImg, 0, refImg.width, Math.floor(refImg.height * 0.4), Math.floor(refImg.height * 0.5));
+        const joplinDom = dominantColor(joplinImg, 92, 200, Math.floor(joplinImg.height * 0.4), Math.floor(joplinImg.height * 0.5));
+        // Both should carry yellow-ish ink on the gradient mid-band.
+        // We don't pin to #FFEB84 explicitly — the assertion is
+        // dominant-colour parity within Δ ≤ 24 (gradient anti-aliasing
+        // blends adjacent cells more than the catalog tests do).
+        const d = rgbDelta(refDom.rgb, joplinDom.rgb);
+        if (d.max > 24) {
+            throw new Error(
+                `Column A gradient parity: Excel reference dominant ${refDom.hex}, ` +
+                `Joplin canvas dominant ${joplinDom.hex} (Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+            );
+        }
+    });
+
+    // CF column-fill parity tests. Sampling strategy: pick a y-band
+    // where each column's dominant fill is visible AND distinct from
+    // the column's text glyph rasters. Column geometry differs between
+    // Excel (1734×466, no row-headers / col-letter strips) and Joplin
+    // (DPR=2, includes row/col headers). The Joplin reference was
+    // captured with all CF columns expanded to content width so the
+    // five rule columns are visible side-by-side without truncation —
+    // re-deriving these coordinates requires a fresh content-width
+    // capture (`scripts/pge/eval-screenshot.sh feature-1-m15-conditional-formatting`).
+    //
+    // The assertions are dominant-colour parity within Δ ≤ 24 per
+    // channel for fills and family-only (green-dominant / blue-
+    // dominant / pink-family) for narrow-glyph cells (data bars, icon
+    // arrows). Δ ≤ 24 is forgiving enough for sub-pixel anti-aliasing
+    // but still fails on a wrong family (e.g. blue vs grey).
+
+    test('Column C (dataBar): both renders carry the dataBar blue #638EC6 family on a long-bar row', () => {
+        // Excel ref col C: data bar starts at x=420 with a left-anchored
+        // blue gradient. At y=325 (row 8 mid-band, value 60), x=425..480
+        // is solid blue gradient; the right side of the cell carries
+        // the value text. Tight x-range avoids the text glyph.
+        // Joplin (widened cols) col C: x≈540..640, row 11 (value 90 →
+        // full-width bar) at y≈360..390 → dominant (108,141,194).
+        const refDom = dominantColorSkipWhite(refImg, 425, 480, 325, 330);
+        const joplinDom = dominantColorSkipWhite(joplinImg, 540, 640, 360, 390);
+        if (!refDom || !joplinDom) {
+            throw new Error(`Column C dataBar: no inked pixels in ref or joplin sampling region`);
+        }
+        // Sanity: both should be in the blue family (B > R AND B > G).
+        const refIsBlue = refDom.rgb[2] > refDom.rgb[0] && refDom.rgb[2] > refDom.rgb[1];
+        const joplinIsBlue = joplinDom.rgb[2] > joplinDom.rgb[0] && joplinDom.rgb[2] > joplinDom.rgb[1];
+        if (!refIsBlue) {
+            throw new Error(
+                `Column C dataBar: Excel ref dominant ${refDom.hex} is not blue-dominant — ` +
+                `the sampling region may be off; re-derive from screenshots/excel-reference/ConditionalFormatting-Variants.png.`,
+            );
+        }
+        if (!joplinIsBlue) {
+            throw new Error(
+                `Column C dataBar: Joplin canvas dominant ${joplinDom.hex} is not blue-dominant. ` +
+                `Excel ref dominant ${refDom.hex}. The data bar at C11 (value 90) should render in the #638EC6 blue family.`,
+            );
+        }
+    });
+
+    test('Column E (cellIs > 50): both renders fill the > 50 cells with the #FFC7CE family', () => {
+        // Excel ref col E: x=688..968, rows 8..11 (values 60/70/80/90
+        // → > 50 → pink fill). Sample y=300..400 to cover several
+        // pink rows; dominant ≈ (246,201,206) per earlier probe.
+        // Joplin col E: x≈824..1100, rows 8..11 → pink fill, dominant
+        // (247,201,207) per y=370 probe.
+        const refDom = dominantColor(refImg, 688, 968, 300, 400);
+        const joplinDom = dominantColor(joplinImg, 830, 1090, 320, 420);
+        const d = rgbDelta(refDom.rgb, joplinDom.rgb);
+        if (d.max > 24) {
+            throw new Error(
+                `Column E cellIs>50 parity: Excel ${refDom.hex}, Joplin ${joplinDom.hex} ` +
+                `(Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+            );
+        }
+    });
+
+    test('Column G (top-3): both renders fill the top-3 cells with the #C6EFCE family', () => {
+        // Excel ref col G: x=1124..1240, top-3 fill at G2 (value 82)
+        // starts at y=40. Dominant (206,238,208) per probe. Joplin col
+        // G: x≈1280..1480, top-3 fill on G2 row at y≈90..115 → dominant
+        // (206,238,209) per probe.
+        // Skip-white because the top-3 fill is on individual rows; the
+        // sampling band may include other (white-fill) data rows.
+        const refDom = dominantColorSkipWhite(refImg, 1124, 1240, 35, 75);
+        const joplinDom = dominantColorSkipWhite(joplinImg, 1290, 1480, 80, 115);
+        if (!refDom || !joplinDom) {
+            throw new Error(`Column G top-3: no inked pixels in ref or joplin sampling region`);
+        }
+        const d = rgbDelta(refDom.rgb, joplinDom.rgb);
+        if (d.max > 24) {
+            throw new Error(
+                `Column G top-3 parity: Excel ${refDom.hex}, Joplin ${joplinDom.hex} ` +
+                `(Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+            );
+        }
+    });
+
+    test('Column I (iconSet 3-Arrows): both renders carry a green up-arrow on a high-value row', () => {
+        // Excel ref col I: x≈1160..1400. I11 (value 90, y≈430..460)
+        // renders an UP arrow → green stroke. Joplin col I: x≈1500..
+        // 1700, I11 at y≈395..420; arrow stroke at x≈1640 with rgb
+        // (122,206,69) per probe (G clearly dominant). The icon glyph
+        // is small (~10px) so we sample a wider y-band and assert
+        // green-family dominance rather than exact RGB.
+        // Skip-white because icon glyphs are tiny (~10px) compared to
+        // the cell width — a region-wide dominantColor would just
+        // return white.
+        // Excel ref I11 green arrow at x=1478..1488, y≈400..410 →
+        // dominant (109,181,117) per probe (tight region needed —
+        // wider region picks up the gridline grey #D4D4D4). Joplin
+        // I11 arrow at x≈1635..1655, y≈395..415 per probe.
+        const refDom = dominantColorSkipWhite(refImg, 1478, 1488, 400, 410);
+        const joplinDom = dominantColorSkipWhite(joplinImg, 1635, 1655, 395, 415);
+        if (!refDom || !joplinDom) {
+            throw new Error(`Column I 3-Arrows: no inked pixels in ref or joplin sampling region`);
+        }
+        // Both should be green-dominant (G > R AND G > B).
+        const refIsGreen = refDom.rgb[1] > refDom.rgb[0] && refDom.rgb[1] > refDom.rgb[2];
+        const joplinIsGreen = joplinDom.rgb[1] > joplinDom.rgb[0] && joplinDom.rgb[1] > joplinDom.rgb[2];
+        if (!refIsGreen) {
+            throw new Error(
+                `Column I 3-Arrows: Excel reference dominant ${refDom.hex} is not green-dominant — ` +
+                `the sampling region may be off; re-derive from screenshots/excel-reference/ConditionalFormatting-Variants.png.`,
+            );
+        }
+        if (!joplinIsGreen) {
+            throw new Error(
+                `Column I 3-Arrows: Joplin canvas dominant ${joplinDom.hex} is not green-dominant. ` +
+                `Excel ref dominant ${refDom.hex}. The arrow glyph for I11 (value 90) should render as green-up.`,
+            );
+        }
     });
 });

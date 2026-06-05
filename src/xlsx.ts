@@ -100,6 +100,18 @@ export const NOTESHEET_SYNTH_STYLES_RESOURCE = 'SHEET_NOTESHEET_SYNTH_STYLES_PLU
 // even though both declare the same style.
 export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN';
 
+// Univer's Conditional Formatting plugin reads / writes its rules
+// through this resource entry name (M15). Confirmed in
+// `@univerjs/sheets-conditional-formatting/lib/types/base/const.d.ts`
+// — exported as `SHEET_CONDITIONAL_FORMATTING_PLUGIN`. We DON'T import
+// the constant from the package here because that would couple
+// `src/xlsx.ts` (a runtime-and-test module) to the CF plugin's
+// transitive `lodash-es` ESM, which jest-runtime can't parse without a
+// transformer override. The string is stable per Univer's stated API
+// surface; a Jest test in `excelReferenceFidelity.test.ts` pins the
+// same literal so a Univer-side rename trips a loud test failure.
+export const CONDITIONAL_FORMATTING_RESOURCE = 'SHEET_CONDITIONAL_FORMATTING_PLUGIN';
+
 // Typed error surface for .xlsx import failures. exceljs's reconcile pipeline
 // has a few known crash sites we can't fix without forking (chart drawings
 // that lose their drawing reference, multi-sheet workbooks with multiple
@@ -818,6 +830,464 @@ async function readNamedHyperlinkCells(
     return result;
 }
 
+// ───────── M15: Conditional Formatting translators ─────────────────────
+//
+// Univer's CF model and exceljs's CF surface differ in shape; each rule
+// type gets a per-direction translator pair (xlsx → Univer on import;
+// Univer → xlsx on export). All five exceljs rule types we support are
+// covered:
+//
+//   exceljs `colorScale` → Univer `colorScale`
+//   exceljs `dataBar`    → Univer `dataBar`
+//   exceljs `cellIs`     → Univer `highlightCell` (subType=`number`)
+//   exceljs `top10`      → Univer `highlightCell` (subType=`rank`)
+//   exceljs `iconSet`    → Univer `iconSet`
+//
+// Colours: exceljs surfaces argb (`FF...`); Univer uses `#RRGGBB`.
+// The existing `argbToHex` / `hexToArgb` helpers are the seam.
+//
+// Snapshot resource shape (per Univer's CF model service):
+//   { [subUnitId]: IConditionFormattingRule[] }
+// where each rule has `{cfId, ranges, stopIfTrue, rule: <type-specific>}`.
+// We JSON.stringify the entire object as the resource's `data` field —
+// exactly what the CF preset's `parseJson` expects on snapshot load.
+
+interface UniverCfRange {
+    startRow: number;
+    endRow: number;
+    startColumn: number;
+    endColumn: number;
+}
+
+interface UniverCfRuleEntry {
+    cfId: string;
+    ranges: UniverCfRange[];
+    stopIfTrue: boolean;
+    rule: Record<string, unknown>;
+}
+
+// Convert an exceljs CF `ref` (a space-separated list of A1 ranges)
+// to Univer's IRange[] shape. exceljs uses tokens like "A2:A11" or
+// single cells "A2".
+function cfRefToRanges(ref: string | undefined): UniverCfRange[] {
+    if (!ref || typeof ref !== 'string') return [];
+    const tokens = ref.split(/\s+/).filter(Boolean);
+    const ranges: UniverCfRange[] = [];
+    for (const token of tokens) {
+        const r = parseA1Range(token);
+        if (r) ranges.push(r);
+    }
+    return ranges;
+}
+
+// Translate one cfvo entry to Univer's IValueConfig.
+// exceljs cfvo: { type: 'min'|'max'|'percentile'|'percent'|'num'|'formula', value?: number|string }
+// Univer:       { type, value? }
+function translateCfvoToUniver(cfvo: { type?: string; value?: number | string }): { type: string; value?: number | string } {
+    const type = cfvo.type ?? 'num';
+    const out: { type: string; value?: number | string } = { type };
+    if (cfvo.value !== undefined && cfvo.value !== null) {
+        // exceljs sometimes surfaces value as a string (formula); we
+        // keep numeric percentile values as numbers, formula strings
+        // as strings.
+        if (type === 'formula') out.value = String(cfvo.value);
+        else if (typeof cfvo.value === 'string' && /^-?\d+(?:\.\d+)?$/.test(cfvo.value)) {
+            out.value = Number(cfvo.value);
+        } else out.value = cfvo.value;
+    }
+    return out;
+}
+
+// Inverse: Univer IValueConfig → exceljs cfvo entry.
+function translateCfvoToExceljs(uvo: { type: string; value?: number | string }): { type: string; value?: number | string } {
+    const out: { type: string; value?: number | string } = { type: uvo.type };
+    if (uvo.value !== undefined && uvo.value !== null) out.value = uvo.value;
+    return out;
+}
+
+// Generate a stable cfId. Univer expects each rule to carry one;
+// uniqueness only matters within a subUnit. Counter-based plus an
+// import-tag prefix so collisions with rules added later via the UI
+// are extremely unlikely.
+let _cfIdCounter = 0;
+function nextCfId(): string {
+    _cfIdCounter = (_cfIdCounter + 1) | 0;
+    return `cf-import-${Date.now().toString(36)}-${_cfIdCounter.toString(36)}`;
+}
+
+// 3Arrows / 3TrafficLights1 / etc. — Univer's iconMap lists icon
+// indices. Each named iconSet has a fixed length (3, 4, or 5).
+// Sources from Univer's source: `iconGroup` in
+// @univerjs/sheets-conditional-formatting/.../models/icon-map.
+const ICON_SET_LENGTH: Record<string, number> = {
+    '3Arrows': 3, '3ArrowsGray': 3,
+    '4Arrows': 4, '4ArrowsGray': 4,
+    '5Arrows': 5, '5ArrowsGray': 5,
+    '3Triangles': 3,
+    '3TrafficLights1': 3, '3TrafficLights2': 3,
+    '3Signs': 3,
+    '4RedToBlack': 4,
+    '4TrafficLights': 4,
+    '3Symbols': 3, '3Symbols2': 3,
+    '3Flags': 3,
+    '4Rating': 4,
+    '5Rating': 5, '5Quarters': 5, '5Boxes': 5,
+    '3Stars': 3,
+    '_5Felling': 5,
+};
+
+interface ExceljsCfRuleColorScale {
+    type: 'colorScale';
+    priority?: number;
+    cfvo: Array<{ type: string; value?: number | string }>;
+    color: Array<{ argb?: string }>;
+}
+interface ExceljsCfRuleDataBar {
+    type: 'dataBar';
+    priority?: number;
+    cfvo: Array<{ type: string; value?: number | string }>;
+    color: { argb?: string };
+    gradient?: boolean;
+}
+interface ExceljsCfRuleCellIs {
+    type: 'cellIs';
+    priority?: number;
+    operator?: string;
+    formulae?: string[];
+    style?: { fill?: { type?: string; bgColor?: { argb?: string } } };
+}
+interface ExceljsCfRuleTop10 {
+    type: 'top10';
+    priority?: number;
+    rank?: number;
+    bottom?: boolean;
+    percent?: boolean;
+    style?: { fill?: { type?: string; bgColor?: { argb?: string } } };
+}
+interface ExceljsCfRuleIconSet {
+    type: 'iconSet';
+    priority?: number;
+    iconSet?: string;
+    cfvo: Array<{ type: string; value?: number | string }>;
+}
+type ExceljsCfRule =
+    | ExceljsCfRuleColorScale
+    | ExceljsCfRuleDataBar
+    | ExceljsCfRuleCellIs
+    | ExceljsCfRuleTop10
+    | ExceljsCfRuleIconSet
+    | { type: string; priority?: number; [k: string]: unknown };
+
+interface ExceljsConditionalFormatting {
+    ref?: string;
+    rules?: ExceljsCfRule[];
+}
+
+// Translate one exceljs CF rule to Univer's IConditionFormattingRule.
+// Returns null for rule types we don't (yet) support; the caller drops
+// them and the round-trip test pin-down treats unsupported types as
+// out of scope.
+function translateExceljsCfRuleToUniver(rule: ExceljsCfRule, ranges: UniverCfRange[]): UniverCfRuleEntry | null {
+    if (!rule || !rule.type) return null;
+    const cfId = nextCfId();
+    const stopIfTrue = false;
+    switch (rule.type) {
+        case 'colorScale': {
+            const r = rule as ExceljsCfRuleColorScale;
+            if (!Array.isArray(r.cfvo) || !Array.isArray(r.color)) return null;
+            // Univer's colorScale shape: config: [{index, color, value}, ...]
+            const config: Array<{ index: number; color: string; value: { type: string; value?: number | string } }> = [];
+            for (let i = 0; i < r.cfvo.length; i++) {
+                const colorArgb = r.color[i]?.argb;
+                const hex = argbToHex(colorArgb) ?? '#000000';
+                config.push({
+                    index: i,
+                    color: hex,
+                    value: translateCfvoToUniver(r.cfvo[i]),
+                });
+            }
+            return {
+                cfId,
+                ranges,
+                stopIfTrue,
+                rule: {
+                    type: 'colorScale',
+                    config,
+                },
+            };
+        }
+        case 'dataBar': {
+            const r = rule as ExceljsCfRuleDataBar;
+            if (!Array.isArray(r.cfvo) || r.cfvo.length < 2) return null;
+            const colorArgb = r.color?.argb;
+            const hex = argbToHex(colorArgb) ?? '#638EC6';
+            return {
+                cfId,
+                ranges,
+                stopIfTrue,
+                rule: {
+                    type: 'dataBar',
+                    isShowValue: true,
+                    config: {
+                        min: translateCfvoToUniver(r.cfvo[0]),
+                        max: translateCfvoToUniver(r.cfvo[1]),
+                        // Excel's <dataBar> defaults gradient=true unless
+                        // `<dataBar gradient="0">`. exceljs surfaces the
+                        // flag inconsistently across versions; default
+                        // to true to match Excel's render.
+                        isGradient: r.gradient !== false,
+                        positiveColor: hex,
+                        nativeColor: hex,
+                    },
+                },
+            };
+        }
+        case 'cellIs': {
+            const r = rule as ExceljsCfRuleCellIs;
+            const op = r.operator ?? 'greaterThan';
+            const formula = (r.formulae && r.formulae[0]) ?? '0';
+            const numValue = /^-?\d+(?:\.\d+)?$/.test(formula) ? Number(formula) : formula;
+            const bgArgb = r.style?.fill?.bgColor?.argb;
+            const bgHex = argbToHex(bgArgb);
+            const style: Record<string, unknown> = {};
+            if (bgHex) style.bg = { rgb: bgHex };
+            return {
+                cfId,
+                ranges,
+                stopIfTrue,
+                rule: {
+                    type: 'highlightCell',
+                    subType: 'number',
+                    operator: op,
+                    value: numValue,
+                    style,
+                },
+            };
+        }
+        case 'top10': {
+            const r = rule as ExceljsCfRuleTop10;
+            const bgArgb = r.style?.fill?.bgColor?.argb;
+            const bgHex = argbToHex(bgArgb);
+            const style: Record<string, unknown> = {};
+            if (bgHex) style.bg = { rgb: bgHex };
+            return {
+                cfId,
+                ranges,
+                stopIfTrue,
+                rule: {
+                    type: 'highlightCell',
+                    subType: 'rank',
+                    isBottom: !!r.bottom,
+                    isPercent: !!r.percent,
+                    value: typeof r.rank === 'number' ? r.rank : 10,
+                    style,
+                },
+            };
+        }
+        case 'iconSet': {
+            const r = rule as ExceljsCfRuleIconSet;
+            const iconSet = r.iconSet ?? '3Arrows';
+            const length = ICON_SET_LENGTH[iconSet] ?? r.cfvo?.length ?? 3;
+            // Univer's IconSetCalculateUnit walks the config from
+            // index 0 forward, returning the first item whose
+            // value/operator condition the cell value satisfies. The
+            // standard layout in Univer's iconMap puts the HIGH icon
+            // at index 0 (e.g. 3Arrows = [up-green, right-gold,
+            // down-red]). To match Excel's iconSet semantics
+            // (lowest icon for the lowest band), we emit config in
+            // descending threshold order:
+            //   index 0 → highest band, operator >= last cfvo
+            //   index 1 → middle band,  operator >= middle cfvo
+            //   ...
+            //   index N-1 → catch-all, operator <= MAX_SAFE_INTEGER
+            //
+            // Source cfvo for the M15 fixture is ascending: [0, 33, 67].
+            // Mapping: cfvo[N-1]=67 → index 0 (up-green for >=67);
+            // cfvo[1]=33 → index 1 (right-gold for >=33); the lowest
+            // band gets the catch-all rule (down-red).
+            const cfvos = (r.cfvo ?? []).map(translateCfvoToUniver);
+            const config: Array<{
+                operator: string;
+                value: { type: string; value?: number | string };
+                iconType: string;
+                iconId: string;
+            }> = [];
+            for (let i = 0; i < length; i++) {
+                if (i < length - 1) {
+                    // Walk source cfvos in descending order: the highest
+                    // threshold goes to index 0, second-highest to
+                    // index 1, etc. cfvos.length should equal
+                    // `length`, but be defensive against malformed
+                    // sources by using a safe cfvo when missing.
+                    const cfvoIdx = cfvos.length - 1 - i;
+                    const v = cfvos[cfvoIdx >= 0 ? cfvoIdx : 0]
+                        ?? { type: 'percent', value: 0 };
+                    config.push({
+                        operator: 'greaterThanOrEqual',
+                        value: v,
+                        iconType: iconSet,
+                        iconId: String(i),
+                    });
+                } else {
+                    // Last entry is a catch-all that always matches
+                    // anything that didn't match a higher-priority
+                    // entry. Univer's IconSetCalculateUnit returns the
+                    // last entry unconditionally when index ===
+                    // length - 1, so the operator+value here are
+                    // formally inert; we still write a sensible value
+                    // for round-trip purity.
+                    config.push({
+                        operator: 'lessThanOrEqual',
+                        value: { type: 'num', value: Number.MAX_SAFE_INTEGER },
+                        iconType: iconSet,
+                        iconId: String(i),
+                    });
+                }
+            }
+            return {
+                cfId,
+                ranges,
+                stopIfTrue,
+                rule: {
+                    type: 'iconSet',
+                    isShowValue: true,
+                    config,
+                },
+            };
+        }
+        default:
+            // Out-of-scope rule types (text-based, time-period, unique,
+            // duplicate, formula, average) get dropped silently. Future
+            // milestones may extend this switch; the round-trip test
+            // pins the fixture's 5 supported types.
+            return null;
+    }
+}
+
+// Inverse: Univer rule → exceljs CF rule. Returns null for rule shapes
+// we don't recognize (e.g. CF rules added via the UI for highlightCell
+// subTypes other than `number` / `rank`).
+function translateUniverCfRuleToExceljs(entry: UniverCfRuleEntry, priority: number): {
+    rule: ExceljsCfRule | null;
+    sqref: string;
+} | null {
+    if (!entry || !entry.rule || !Array.isArray(entry.ranges) || entry.ranges.length === 0) return null;
+    const sqref = entry.ranges.map((r) => {
+        const tl = colLetters(r.startColumn) + (r.startRow + 1);
+        const br = colLetters(r.endColumn) + (r.endRow + 1);
+        return tl === br ? tl : `${tl}:${br}`;
+    }).join(' ');
+    const rule = entry.rule as Record<string, unknown>;
+    const type = rule.type as string;
+    switch (type) {
+        case 'colorScale': {
+            const config = rule.config as Array<{ color: string; value: { type: string; value?: number | string } }>;
+            if (!Array.isArray(config) || config.length === 0) return null;
+            const cfvo = config.map((e) => translateCfvoToExceljs(e.value));
+            const color = config.map((e) => ({ argb: hexToArgb(e.color) }));
+            return {
+                sqref,
+                rule: { type: 'colorScale', priority, cfvo, color } as ExceljsCfRuleColorScale,
+            };
+        }
+        case 'dataBar': {
+            const config = rule.config as { min: { type: string; value?: number | string }; max: { type: string; value?: number | string }; positiveColor: string };
+            if (!config) return null;
+            return {
+                sqref,
+                rule: {
+                    type: 'dataBar',
+                    priority,
+                    cfvo: [translateCfvoToExceljs(config.min), translateCfvoToExceljs(config.max)],
+                    color: { argb: hexToArgb(config.positiveColor) },
+                } as ExceljsCfRuleDataBar,
+            };
+        }
+        case 'highlightCell': {
+            const subType = rule.subType as string;
+            const style = rule.style as { bg?: { rgb?: string } } | undefined;
+            const bgArgb = hexToArgb(style?.bg?.rgb);
+            const dxfStyle = bgArgb
+                ? { fill: { type: 'pattern' as const, pattern: 'solid' as const, bgColor: { argb: bgArgb } } }
+                : undefined;
+            if (subType === 'number') {
+                const op = (rule.operator as string) ?? 'greaterThan';
+                const value = rule.value;
+                const formulae = value !== undefined && value !== null ? [String(value)] : ['0'];
+                return {
+                    sqref,
+                    rule: {
+                        type: 'cellIs',
+                        priority,
+                        operator: op,
+                        formulae,
+                        ...(dxfStyle ? { style: dxfStyle } : {}),
+                    } as ExceljsCfRuleCellIs,
+                };
+            }
+            if (subType === 'rank') {
+                const isBottom = !!rule.isBottom;
+                const value = rule.value;
+                const rank = typeof value === 'number' ? value : 10;
+                return {
+                    sqref,
+                    rule: {
+                        type: 'top10',
+                        priority,
+                        rank,
+                        bottom: isBottom,
+                        ...(rule.isPercent ? { percent: true } : {}),
+                        ...(dxfStyle ? { style: dxfStyle } : {}),
+                    } as ExceljsCfRuleTop10,
+                };
+            }
+            // Other highlightCell sub-types (text/timePeriod/formula/
+            // average/unique/duplicate) are out of scope for M15.
+            return null;
+        }
+        case 'iconSet': {
+            const config = rule.config as Array<{ iconType: string; iconId: string; value: { type: string; value?: number | string } }>;
+            if (!Array.isArray(config) || config.length === 0) return null;
+            const iconSet = config[0].iconType;
+            // Inverse mapping from Univer's descending-threshold layout
+            // back to Excel's ascending cfvo. The catch-all at index
+            // (length-1) is dropped from the cfvo array; the remaining
+            // entries are reversed to ascending order.
+            //
+            // Univer config (3Arrows): [
+            //   { iconId:0, value:{percent,67} },     // highest band
+            //   { iconId:1, value:{percent,33} },     // middle band
+            //   { iconId:2, value:{num, MAX_SAFE_INTEGER} }, // catch-all
+            // ]
+            // Excel cfvo (ascending): [
+            //   { type:percent, value:0 },             // band 0 (lowest)
+            //   { type:percent, value:33 },            // band 1
+            //   { type:percent, value:67 },            // band 2
+            // ]
+            const real = config.slice(0, -1);            // drop the catch-all
+            const ascending = real.slice().reverse();    // descend → ascend
+            const cfvo: Array<{ type: string; value?: number | string }> = [
+                // Excel's first cfvo is always the lowest band — we
+                // synthesize one for it (always 0% / min) since Univer
+                // doesn't model the lowest-band threshold directly.
+                { type: ascending[0]?.value.type ?? 'percent', value: 0 },
+                ...ascending.map((c) => translateCfvoToExceljs(c.value)),
+            ];
+            return {
+                sqref,
+                rule: {
+                    type: 'iconSet',
+                    priority,
+                    iconSet,
+                    cfvo,
+                } as ExceljsCfRuleIconSet,
+            };
+        }
+        default:
+            return null;
+    }
+}
+
 // OOXML tint applied in HSL luminance, per Microsoft's spec:
 //   tint > 0  →  L = L*(1-tint) + tint     (lighten toward white)
 //   tint < 0  →  L = L*(1+tint)            (darken toward black)
@@ -1304,6 +1774,12 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // visually heavier than the original.
     const synthStyleSidecar: Record<string, Record<string, string[]>> = {};
 
+    // Per-subUnit conditional-formatting rules (M15). Keyed by sheetId,
+    // each entry is an array of Univer-shaped IConditionFormattingRule
+    // objects. Serialized as the SHEET_CONDITIONAL_FORMATTING_PLUGIN
+    // resource so Univer's CF preset paints them on canvas.
+    const cfResource: Record<string, UniverCfRuleEntry[]> = {};
+
     function internStyle(style: Record<string, unknown> | null): string | undefined {
         if (!style) return undefined;
         const key = styleKey(style);
@@ -1460,6 +1936,28 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                 tableFilteredOutRows: [],
             };
         }
+
+        // M15: read conditional-formatting rules. exceljs surfaces
+        // every <conditionalFormatting> block under
+        // `ws.conditionalFormattings`. Each block has a `ref` plus a
+        // `rules` array; we flatten + translate per-rule into Univer's
+        // shape via translateExceljsCfRuleToUniver and accumulate into
+        // the per-subUnit resource.
+        const wsAny = ws as unknown as { conditionalFormattings?: ExceljsConditionalFormatting[] };
+        const cfList = Array.isArray(wsAny.conditionalFormattings) ? wsAny.conditionalFormattings : [];
+        if (cfList.length > 0) {
+            const ruleEntries: UniverCfRuleEntry[] = [];
+            for (const block of cfList) {
+                const ranges = cfRefToRanges(block.ref);
+                if (ranges.length === 0) continue;
+                const rules = Array.isArray(block.rules) ? block.rules : [];
+                for (const rule of rules) {
+                    const translated = translateExceljsCfRuleToUniver(rule, ranges);
+                    if (translated) ruleEntries.push(translated);
+                }
+            }
+            if (ruleEntries.length > 0) cfResource[sheetId] = ruleEntries;
+        }
     });
 
     if (sheetOrder.length === 0) {
@@ -1491,6 +1989,16 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         resources.push({
             name: 'NOTESHEET_TABLE_SCHEMA',
             data: JSON.stringify({ version: TABLE_RESOURCE_SCHEMA }),
+        });
+    }
+    if (Object.keys(cfResource).length > 0) {
+        // Univer's CF preset's parseJson does `JSON.parse` on this
+        // string and expects `{ [subUnitId]: IConditionFormattingRule[] }`.
+        // Emitting the resource even when empty would be harmless but
+        // we guard so the snapshot stays minimal.
+        resources.push({
+            name: CONDITIONAL_FORMATTING_RESOURCE,
+            data: JSON.stringify(cfResource),
         });
     }
     if (Object.keys(synthStyleSidecar).length > 0) {
@@ -1738,6 +2246,25 @@ function readSynthStylesSidecar(snapshot: UniverSnapshot): Record<string, Record
     }
 }
 
+// Read the CF resource (M15). Returns a `${sheetId}` → CF rule entries
+// map; the exporter walks each entry, translates Univer-shape rules
+// back to exceljs CF rule objects, and assigns the array to the
+// matching worksheet's `conditionalFormattings` field before
+// `writeBuffer()`.
+function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEntry[]> {
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    if (!Array.isArray(resources)) return {};
+    const entry = resources.find((r) => r?.name === CONDITIONAL_FORMATTING_RESOURCE);
+    if (!entry || typeof entry.data !== 'string') return {};
+    try {
+        const parsed = JSON.parse(entry.data);
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed as Record<string, UniverCfRuleEntry[]>;
+    } catch {
+        return {};
+    }
+}
+
 // Pull the workbook-level default font name out of the snapshot. Set on
 // import from the source xlsx's theme1.xml/minorFont; on export every cell
 // that doesn't already carry an explicit font.name inherits this so the
@@ -1755,6 +2282,7 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     const sheets = (snapshot as { sheets?: Record<string, SheetRecord> }).sheets ?? {};
     const tableResource = readTableResource(snapshot);
     const synthStylesBySheet = readSynthStylesSidecar(snapshot);
+    const cfBySheet = readCfResource(snapshot);
     const defaultFontName = readDefaultFontName(snapshot);
 
     for (const sheetId of sheetOrder) {
@@ -1877,6 +2405,33 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
             } catch (e) {
                 console.warn('[Notesheet] could not export table', t?.name, e);
             }
+        }
+
+        // M15: write conditional-formatting rules. Univer's snapshot
+        // groups rules by subUnitId (sheetId). We translate each rule
+        // back to exceljs's CF shape and group by sqref so all rules
+        // sharing a ref end up under one block. Priority is preserved
+        // by re-numbering 1..N in the order we walk the snapshot.
+        const cfEntries = cfBySheet[sheetId];
+        if (Array.isArray(cfEntries) && cfEntries.length > 0) {
+            const blocksByRef = new Map<string, ExceljsCfRule[]>();
+            let priority = 1;
+            for (const entry of cfEntries) {
+                const translated = translateUniverCfRuleToExceljs(entry, priority);
+                if (!translated || !translated.rule) continue;
+                const list = blocksByRef.get(translated.sqref) ?? [];
+                list.push(translated.rule);
+                blocksByRef.set(translated.sqref, list);
+                priority++;
+            }
+            const conditionalFormattings = Array.from(blocksByRef.entries()).map(([ref, rules]) => ({
+                ref,
+                rules,
+            }));
+            // exceljs assigns this directly onto ws; the CF blocks are
+            // serialized into <conditionalFormatting> elements at
+            // writeBuffer time.
+            (ws as unknown as { conditionalFormattings: typeof conditionalFormattings }).conditionalFormattings = conditionalFormattings;
         }
     }
 
