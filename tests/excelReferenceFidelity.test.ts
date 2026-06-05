@@ -577,10 +577,21 @@ describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', ()
         // descending depending on Univer's expected matching order.
         const ids = sr.config.map((c) => c.iconId).sort();
         expect(ids).toEqual(['0', '1', '2']);
-        // Source cfvo percents (0 / 33 / 67) must each be present in
-        // some config entry's value (regardless of order).
-        const percents = sr.config.map((c) => c.value.value).sort((a, b) => a - b);
-        expect(percents).toEqual([0, 33, 67]);
-        for (const item of sr.config) expect(item.value.type).toBe('percent');
+        // Univer's iconSet uses N-1 thresholds for an N-icon set:
+        // for 3Arrows the first two threshold cfvos (33, 67) carry
+        // over from the source; the third entry is the catch-all
+        // covering everything below the lowest threshold (Univer's
+        // IconSetCalculateUnit returns the last entry unconditionally
+        // when no higher-priority match fires). The catch-all uses
+        // num/MAX_SAFE_INTEGER as a placeholder.
+        const percentEntries = sr.config.filter((c) => c.value.type === 'percent');
+        expect(percentEntries).toHaveLength(2);
+        const percents = percentEntries.map((c) => c.value.value).sort((a, b) => a - b);
+        expect(percents).toEqual([33, 67]);
+        // Catch-all entry is the lowest-icon (red-down for 3Arrows,
+        // iconId="2") with operator lessThanOrEqual.
+        const catchAll = sr.config.find((c) => c.value.type === 'num');
+        expect(catchAll).toBeDefined();
+        expect(catchAll!.iconId).toBe('2');
     });
 });
