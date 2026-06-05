@@ -575,45 +575,12 @@ function richTextA1A2Region(canvas) {
 //     x=80..min(width, 80+400)=480, covering cols B..G (or B..F for
 //     the Classic fixture's 6-col table) — well past the active-cell
 //     selection.
-// Region covering one CF column band (rows 2-11 of the
-// ConditionalFormatting-Variants fixture, after the header row at row
-// 1). Five named columns: A, C, E, G, I. Univer's column header strip
-// occupies y≈0–18 at default zoom; the header row at row 1 sits at
-// y≈19–37; the data rows we care about (rows 2–11, i.e. snapshot rows
-// 1–10) span ~y=37 to ~y=37+10*19=227 at default row height 19px CSS
-// units.
-//
-// x positions: row-header column to the LEFT of A is ~46px wide; col A
-// starts at x≈46, default col width 73px. Columns A, C, E, G, I are at
-// snapshot indices 0, 2, 4, 6, 8 → x ≈ 46 + index*73.
-//
-// DPR-aware: scale by canvas.width / canvas.clientWidth per M13/E
-// Phase 4 lesson; CSS px multiplied by DPR ratio at sample time.
-function cfColumnRegion(canvas, col) {
-    const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
-    const colIndex = ({ A: 0, C: 2, E: 4, G: 6, I: 8 })[col];
-    const ROW_HEADER_W_CSS = 46;
-    const COL_W_CSS = 73;
-    const COL_HEADER_H_CSS = 18;
-    const ROW_H_CSS = 19;
-    const xCss = ROW_HEADER_W_CSS + colIndex * COL_W_CSS;
-    // Skip the header row (row 1, y≈19..37) — start sampling at y≈37
-    // so the colour signal is the CF fill, not the column-letter
-    // string. Sample down through 10 data rows.
-    const yCss = COL_HEADER_H_CSS + 1 * ROW_H_CSS;
-    const wCss = COL_W_CSS;
-    const hCss = 10 * ROW_H_CSS;
-    const x = Math.round(xCss * dpr);
-    const y = Math.round(yCss * dpr);
-    const w = Math.round(wCss * dpr);
-    const h = Math.round(hCss * dpr);
-    return {
-        x: Math.min(canvas.width - 1, x),
-        y: Math.min(canvas.height - 1, y),
-        w: Math.min(Math.max(canvas.width - x, 0), w),
-        h: Math.min(Math.max(canvas.height - y, 0), h),
-    };
-}
+// CF column regions for the M15 ConditionalFormatting-Variants fixture
+// are computed inline by `sampleCfColumns()` above (see lines 264–...);
+// the per-column geometry (row-header 46px + colIndex*73px, col widths,
+// row heights, DPR scaling) lives there. No standalone region helper
+// is needed because the regionKind 'cfAllColumns' bypasses the
+// single-region sampling pipeline entirely.
 
 function tableHeaderRowRegion(canvas) {
     // Univer's canvas has a backing store sized at devicePixelRatio

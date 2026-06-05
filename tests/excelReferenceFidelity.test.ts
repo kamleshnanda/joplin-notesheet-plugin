@@ -288,16 +288,6 @@ interface ParsedCfRule {
     dxfId?: number;
 }
 
-function parseSourceCfRules(zip: JSZip, sheetXmlPath: string, stylesXmlPath: string): ParsedCfRule[] {
-    const sheetEntry = zip.file(sheetXmlPath);
-    const stylesEntry = zip.file(stylesXmlPath);
-    if (!sheetEntry || !stylesEntry) throw new Error(`missing ${sheetXmlPath} or ${stylesXmlPath} in fixture`);
-    // Synchronous read via Node's zip helper — JSZip is async, but
-    // for tests we wrap the async call in beforeAll. We surface a
-    // sync-shape parsing function and the caller awaits separately.
-    throw new Error('parseSourceCfRules is the sync core; use parseSourceCfRulesAsync');
-}
-
 async function loadCfFixtureXml(filePath: string): Promise<{
     sheetXml: string;
     stylesXml: string;
