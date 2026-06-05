@@ -32,7 +32,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 | ✅ | M13/D — Rich-text within a single cell (multi-run bold / colour / italic), validated via the PGE harness | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
 | ✅ | M13/E — Theme-aware banding accuracy: TableStyle synthesis driven by the source `<a:clrScheme>`, with a reference-anchored fidelity test bed against operator-captured Excel renders | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
 | ❌ | M14 — SheetJS Community migration spike: investigated migrating `src/xlsx.ts` from `exceljs` to [`xlsx-js-style`](https://www.npmjs.com/package/xlsx-js-style) (the only SheetJS Community fork with cell-style support). **NO-GO** — the fork drops borders, alignment / rotation, and most font formatting from the OOXML indexed-cellXf path that every Microsoft-Excel-generated workbook uses; migrating would directly regress M12 / M13/C / M13/E features that already ship. Spike branch closed without merging; the decision document, capability matrix, and 14 golden-snapshot baselines are preserved at [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md). See "M14 — SheetJS evaluation outcome" below for the short version. | [#24 (closed)](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
-| ⏳ | M15 — Conditional formatting (color scale / data bar / cell-is / top-N / icon set). Implemented on `exceljs`. Earlier sequencing assumed SheetJS would read CF correctly upstream and make this cheaper; the M14 spike disproved that assumption (xlsx-js-style's `!cf` is also undefined on indexed-cellXf import). No upstream advantage to wait for. | planned |
+| ✅ | M15 — Conditional formatting full round-trip (color scale / data bar / cell-is / top-N / icon set) on `exceljs` + Univer's CF preset wired into the editor; reference-anchored fidelity test bed against the operator-captured Excel render | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
 | ⏳ | M16 — Snapshot → HTML for Joplin's PDF/HTML export menu. Independent of the `.xlsx` parser choice — operates on the in-memory snapshot. | planned |
 | ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions, currently `xlsx-charts-unsupported`). | planned |
 
@@ -170,9 +170,6 @@ accidentally changes.
   correctly per pixel-probe, but Univer 0.23 paints it with the
   header colour rather than the lighter accent strip Excel uses.
   Top-side strip renders correctly.
-- **Conditional formatting**: color scale / data bar / cell-is /
-  top-N / icon-set rules are dropped on import and not re-emitted on
-  export. Cell values themselves survive. → M15.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
