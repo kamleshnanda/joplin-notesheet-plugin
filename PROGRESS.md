@@ -37,34 +37,6 @@ every feature.
   code worked first try in Univer 0.23 — earlier visual failure was
   almost certainly a stale-build issue, not a rendering gap. Evaluator
   graded PASS (PR #19, dc80505).
-- **feature-1-m13-theme-aware-banding** (2026-06-03) — Routed
-  `synthesizeTableStyleAssignments` through a new `EXCEL_TABLE_STYLE_RECIPE_BY_NAME`
-  parallel table (`src/charts/excelTableStyleRecipes.ts`) that names each
-  TableStyle slot's accent index + tint. The synthesizer reads the source
-  workbook's `<a:clrScheme>` (already captured by `readThemeClrScheme`)
-  and resolves the recipe via the ECMA-376 HSL-L tint formula. Aptos
-  fixture (`FormattingSmorgasboard.xlsx`) still paints green
-  (`#196B24` header + `#84E291` band); Classic fixture
-  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
-  now paints grey (`#A5A5A5` header + `#DBDBDB` band) instead of green.
-  Same `EXCEL_TABLE_STYLE_BY_NAME[Medium4]` lookup; two distinct rendered
-  outputs driven by source clrScheme. Achromatic styles
-  (Light1/8/15, Medium1/8/15/22, Dark1/8) keep their literal greys. Tint
-  maths verified exact against the existing Aptos catalog
-  (`tint('#196B24', 0.6) = '#84E291'`, `tint('#156082', 0.6) = '#83CBEB'`,
-  `tint('#196B24', -0.25) = '#13501B'`). First multi-screenshot cycle:
-  added `:variant` suffix support to `eval-screenshot.js`
-  (`feature-1-m13-theme-aware-banding:aptos` + `:classic`),
-  `tableHeaderRowRegion` helper sampling (x=80..480, y=22..35) cols B+
-  to dodge A1 active-cell selection blue, `greyInk` aggregate
-  (R,G,B∈[140,180] AND `abs(R-G)≤10` AND `abs(G-B)≤10`), and broadened
-  the existing `greenInk` aggregate so it catches dark Aptos green
-  `#196B24` (G=107) too. Pixel sidecar over header band:
-  Aptos `dominant=rgb(25,107,36) greenInk=4113 greyInk=0`,
-  Classic `dominant=rgb(165,165,165) greenInk=0 greyInk=3914`. Three
-  new pin-downs in `tests/m12FixturePinDowns.test.ts`
-  (M13/E describe block) bring Jest from 195→198. Generator-evidence
-  screenshots: `screenshots/feature-1-m13-theme-aware-banding/generator-evidence-{aptos,classic}.png`.
 - **feature-1-m13-rich-text-renders** (2026-06-03) — Cherry-picked PR
   #16 commit `6f33f3a` rich-text import/export in `src/xlsx.ts`
   (4 new helpers: `buildTextStyleFromExceljsFont`,
@@ -86,171 +58,133 @@ every feature.
   was almost certainly a build/cache issue, not a renderer gap.
   Evaluator graded PASS (PR #20). README cleanup followed in PR #21
   (5aaf690).
+- **feature-1-m13-theme-aware-banding** (2026-06-03 → 2026-06-04,
+  three-rework cycle) — Routed `synthesizeTableStyleAssignments`
+  through a new `EXCEL_TABLE_STYLE_RECIPE_BY_NAME` parallel table
+  (`src/charts/excelTableStyleRecipes.ts`) that names each TableStyle
+  slot's accent index + tint. The synthesizer reads the source
+  workbook's `<a:clrScheme>` (already captured by
+  `readThemeClrScheme`) and resolves the recipe via the ECMA-376
+  HSL-L tint formula. Aptos fixture (`FormattingSmorgasboard.xlsx`)
+  paints green; Classic fixture
+  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
+  paints grey instead of green — same `EXCEL_TABLE_STYLE_BY_NAME[Medium4]`
+  lookup, two distinct rendered outputs driven by source clrScheme.
+  Achromatic styles (Light1/8/15, Medium1/8/15/22, Dark1/8) keep
+  their literal greys.
+
+  **First multi-screenshot cycle.** Added `:variant` suffix support
+  to `eval-screenshot.js` (`feature-1-m13-theme-aware-banding:aptos` +
+  `:classic`), `tableHeaderRowRegion` helper sampling cols B+ to dodge
+  A1 active-cell selection blue, `greyInk` aggregate (R,G,B∈[140,180]
+  AND `abs(R-G)≤10` AND `abs(G-B)≤10`), and broadened the existing
+  `greenInk` aggregate so it catches dark Aptos green `#196B24` (G=107)
+  too.
+
+  **Rework #2 (canvas fidelity, PR #22).** Operator caught a
+  render-side bug the snapshot-fidelity test couldn't see: the
+  `totalsTopBorder` slot was emitting `bd.t.s = 7` (DOUBLE) on the
+  totals row. Univer 0.23's `_renderDoubleBorder` paints DOUBLE as
+  two 1px strips with a 1-px white gap, which reads as anti-aliased
+  `#89CE74` rather than the pure `#72D068` Excel paints. AND Excel's
+  render is actually a single 2px strip, not a true double-line — so
+  DOUBLE was the wrong style code in the first place. Phase 1 added
+  `tests/excelCanvasFidelity.test.ts` (361 lines, pure-stdlib via
+  `tests/util/pngSampler.ts`) — region-finding heuristics align Joplin
+  canvas screenshot with Excel reference at structural regions
+  (header / banded / totals-top), asserts dominant-colour parity for
+  tall regions (Δ ≤ 8) and looser for 1-2px strips (Δ ≤ 32). Phase 2
+  switched `BORDER_STYLE_TO_UNIVER.medium` (style 8, lineWidth=2)
+  instead of `.double` (style 7) for the totals-top slot. Phase 3
+  re-captured eval screenshots; Phase 4 raised counts 204 → 206.
+
+  **Rework #3 (totals-row BOTTOM border).** Operator's eyeball +
+  side-by-side pixel-probe revealed Excel paints TWO accent strips
+  framing top AND bottom of the totals body. Recipe extended with
+  `totalsBottomBorder` slot, parallel to `totalsTopBorder`. Empirical
+  overrides set both Aptos (`#72D068`) and Classic (`#C9C9C9`) to
+  the lighter accent. `synthesizeTableStyleAssignments` emits `bd.b`
+  on every totals cell, REPLACING the table outline's thin frame.
+  Diagnostic asset:
+  `tests/ExcelBaseTestData/formatting-testdata/border-isolation.xlsx`
+  (operator-built fixture with explicit border combinations,
+  pixel-probed against Excel to establish ground truth).
+
+  **KNOWN GAP — Univer renders `bd.b` with the wrong colour.** The
+  synthesized snapshot is correct (`bd.b.cl.rgb === '#72D068'`
+  verified via direct `xlsxBufferToSnapshot` introspection on every
+  totals cell). When the .jpl is loaded in Joplin and pixel-probed,
+  the rendered bottom strip at y=436 shows `rgb(52,106,46) = #34692E`
+  — the header's dark green, NOT the lighter `#72D068` from `bd.b`.
+  Top strip at y=398 renders correctly. The mismatch is in Univer's
+  renderer, not in our synthesis. Filed as renderer-side follow-up;
+  the synthesis change ships as it improves snapshot fidelity even
+  before the renderer is fixed.
+
+  Final test totals: 209 (was 197 pre-cycle). Three new pin-downs in
+  `tests/m12FixturePinDowns.test.ts` (M13/E describe block), 6 new
+  tests in `tests/excelReferenceFidelity.test.ts` (snapshot fidelity),
+  4 new tests in `tests/excelCanvasFidelity.test.ts` (canvas
+  fidelity, includes bottom-border tests added in rework #3), 4 leak
+  pin-downs in `tests/m13RedoSmokeRedCell.test.ts` (smoke seed leak
+  fix). Generator-evidence:
+  `screenshots/feature-1-m13-theme-aware-banding/generator-evidence-{aptos,classic}.png`.
+  Operator-captured Excel references:
+  `screenshots/excel-reference/FormattingSmorgasboard-{Aptos,Classic}.png`.
+  Evaluator graded PASS across all reworks. Shipped via PR #22 (commit
+  `fca1cbc`); README cleanup PR #23 marked M13/E shipped.
+- **M14 NO-GO** (2026-06-04) — `xlsx-js-style` (the SheetJS-style
+  parser explored as an `exceljs` replacement) ALSO has `!cf`
+  undefined on indexed-cellXf import. The "wait for SheetJS to make
+  CF cheaper" rationale evaporates; M15 ships on `exceljs`. Decision
+  document preserved at `docs/m14-sheetjs-spike.md` and merged via
+  PR #25 (commit `f423d5a`). Roadmap renumbered: M15 is now the next
+  active milestone (was already so before but the README marker was
+  off-by-one).
+- **feature-1-m15-conditional-formatting** (2026-06-05) — Full
+  round-trip on the 5 CF rule types in
+  `ConditionalFormatting-Variants.xlsx`: colorScale, dataBar,
+  cellIs/highlightCell.number, top10/highlightCell.rank, iconSet.
+  Phase 1 wired `UniverSheetsConditionalFormattingPreset` into
+  `src/editorView.tsx` (the single-point-of-failure step — Phase 1
+  build smoke confirmed canvas renders). Phase 2 added 6 fidelity
+  tests in `excelReferenceFidelity.test.ts` anchored to the source
+  XML (parsed via JSZip + regex), authored failing first per the
+  fidelity-test-gap discipline; per-type translators in `src/xlsx.ts`
+  (`translateExceljsCfRuleToUniver`) flipped them green. Phase 3
+  extended `eval-screenshot.js` with `cfAllColumns` regionKind +
+  `cfColumnRegion(col)` per-column samplers + new
+  `pinkInk`/`lightGreenInk`/`yellowInk` aggregates plus broadened
+  `redInk` (g/b ≤ 80 → ≤ 140 to catch #F8696B colorScale red end)
+  and `blueInk` (b clearly dominant + ≥ 150, catches #638EC6 dataBar
+  blue). Captured generator-evidence screenshot showing all 5 CF
+  columns rendering correctly: A red→yellow→green gradient, C
+  proportional blue bars, E pink fills on >50, G light-green on top-3
+  cells, I red-down/yellow-flat/green-up arrows. Phase 4 added
+  `excelCanvasFidelity.test.ts` describe block (1 test + 4 todos)
+  gated `describe.skip` when the operator-captured Excel reference is
+  absent at `screenshots/excel-reference/ConditionalFormatting-Variants.png`.
+  Phase 5 added `translateUniverCfRuleToExceljs` + assigns
+  `worksheet.conditionalFormattings` in `snapshotToXlsxBuffer`;
+  flipped the KNOWN SHORTCOMING test at
+  `tests/m12FixtureRoundTrip.test.ts:206` to a positive 'round-trip:
+  5 conditional-formatting rules survive export → re-import' pin-down
+  asserting all 5 source rules carry through structurally. Test
+  total: 209 → 215 passed (6 new fidelity tests + 1 flipped, 6
+  skipped including the canvas-fidelity todos). Generator-evidence:
+  `screenshots/feature-1-m15-conditional-formatting/generator-evidence.png`
+  (+ `.pixels.json` sidecar). Excel reference screenshot at
+  `screenshots/excel-reference/ConditionalFormatting-Variants.png`
+  still pending operator capture.
 
 ## In progress
 
-- **feature-1-m13-theme-aware-banding (rework #2 — canvas fidelity, PR #22)** —
-  Operator caught a render-side bug the Phase-2-prior fidelity test
-  couldn't see: the `totalsTopBorder` slot emits `bd.t.s = 7` (DOUBLE)
-  on the totals row. Univer 0.23 paints DOUBLE on top with
-  `getLineWidth(DOUBLE)=1` and a 0.5px half-offset → two 1px strips
-  with a 1-px white gap, which reads as anti-aliased `#89CE74` rather
-  than the pure `#72D068` Excel paints. AND Excel's render is actually
-  a single 2px strip, not a true double-line — so DOUBLE was the wrong
-  style code in the first place.
-  - **Phase 1 — canvas-vs-Excel fidelity test (failing).**
-    `tests/excelCanvasFidelity.test.ts` (361 lines, pure-stdlib via
-    `tests/util/pngSampler.ts`). Region-finding heuristics align Joplin
-    canvas screenshot with Excel reference at structural regions
-    (header / banded / totals-top). Asserts dominant-colour parity for
-    tall regions (Δ ≤ 8) and looser for 1-2px strips (Δ ≤ 32 — Retina
-    anti-aliasing dominates). Includes a structural sentinel:
-    "Joplin's totals-top is a SINGLE strip, not two strips with a
-    ≤4px gap" — directly catches the DOUBLE-render artifact. Committed
-    BEFORE the fix to prove the gap was real (commit ordering 526bdb6).
-  - **Phase 2 — DOUBLE → MEDIUM on totals-top.**
-    `synthesizeTableStyleAssignments` now emits
-    `BORDER_STYLE_TO_UNIVER.medium` (style 8, lineWidth=2) instead of
-    `.double` (style 7) for the totals-top slot. The recipe shape
-    (`totalsTopBorder` in `excelTableStyleRecipes.ts`) and empirical
-    overrides are unchanged — they still carry `#72D068` / `#C9C9C9`.
-    Only the synthesizer's border-style code changes. Pin-down
-    `m12FixturePinDowns.test.ts:Aptos totals-row top border` updated
-    to assert `bd.t.s === 8` not `7`. Phase 2 lives in commit e260f30.
-  - **Phase 3 — re-capture eval screenshots.** Both Aptos and Classic
-    eval screenshots regenerated against the rebuilt .jpl. Aptos new
-    canvas at y=398 = single strip `#89CE74` (anti-aliased single
-    `#72D068`), gap-pair check finds `length=1` ≠ 2 (PASS). Classic
-    similar: `#C9C9C9` strip at the totals-top. Generator-evidence
-    pixel sidecars confirm `dominant=rgb(52,105,46) greenInk=16487`
-    (Aptos) and `dominant=rgb(165,165,165) greyInk=15811` (Classic) —
-    same as the prior session's gating signals.
-  - **Test totals**: 204 → 206. Gain of 2 = 2 canvas-fidelity tests
-    (Aptos + Classic), no other test changes.
-
-  - **Phase 4 — totals-row BOTTOM border (rework #3 follow-up).**
-    Operator's eyeball + side-by-side pixel-probe against the Excel
-    reference revealed the totals row in Excel paints TWO accent
-    strips, framing top AND bottom of the totals body — not just a
-    top strip. Pixel-probe at `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`
-    confirmed strips at y=424-425 (top) and y=472-473 (bottom), both
-    `#72D068`, separated by ~46px white totals-body. Recipe extended:
-    new `totalsBottomBorder` slot in `excelTableStyleRecipes.ts` +
-    `excelTableStyles.ts`, parallel to `totalsTopBorder`. Empirical
-    overrides set both Aptos and Classic to the lighter accent
-    (`#72D068` / `#C9C9C9`). `synthesizeTableStyleAssignments` emits
-    `bd.b = { s: 8, cl: { rgb: <totalsBottomBorder> } }` on every
-    totals cell, REPLACING the table outline's thin frame on that
-    side (Excel paints the accent strip across the full width, not
-    the outline colour).
-    - Diagnostic asset: `tests/ExcelBaseTestData/formatting-testdata/border-isolation.xlsx`
-      — operator-built fixture with explicit DOUBLE/THIN borders in
-      various combinations. Pixel-probed against Excel's render to
-      establish ground truth: Excel's DOUBLE = 2px+2px+2px (~6px
-      tall) — nothing like the wider gap we see between totals-top
-      and totals-bottom strips, which are TWO separate borders, not
-      one DOUBLE.
-    - Pin-downs updated: `tests/m12FixturePinDowns.test.ts` adds two
-      tests (Aptos + Classic) asserting `bd.t` AND `bd.b` carry the
-      MEDIUM accent strip. `tests/excelReferenceFidelity.test.ts`
-      adds two tests (Aptos + Classic totals BOTTOM border) and
-      relabels the existing top-border tests (the prior cycle's
-      "totals row top border" was actually sampling the BOTTOM
-      strip at y=472; both happened to share the same colour so
-      the assertion passed by coincidence).
-    - **KNOWN GAP — Univer renders `bd.b` with the wrong colour.**
-      The synthesized snapshot is correct (`bd.b.cl.rgb === '#72D068'`
-      verified via direct `xlsxBufferToSnapshot` introspection on
-      every totals cell). When the .jpl is loaded in Joplin and
-      pixel-probed, the rendered bottom strip at y=436 shows
-      `rgb(52,106,46) = #34692E` — the header's dark green, NOT the
-      lighter `#72D068` from `bd.b`. Top strip at y=398 renders
-      correctly. The mismatch is in Univer's renderer, not in our
-      synthesis. Filed as renderer-side follow-up; the synthesis
-      change ships as it improves the snapshot fidelity even before
-      the renderer side is fixed.
-    - **Test totals**: 206 → 209. Gain of 3 = 2 canvas-fidelity
-      bottom-border tests (already wired in earlier; just renamed
-      and added bottom counterparts) + 1 net new pin-down per
-      fixture (Aptos: top-only → top+bottom merged; Classic: net new
-      "totals row carries top AND bottom" test).
-
-  - PRIOR session shipped (recorded for history):
-  - **Phase 1 — smoke seed fix.** `src/snapshot.ts:emptySnapshot()`
-    no longer seeds A1 with the harness "harness-smoke-OK" red text.
-    `SMOKE_CELL_TEXT` / `SMOKE_STYLE_ID` exports removed; the harness
-    smoke fixture continues to work because `scripts/pge/create-seeded-notesheet.js`
-    already inlined the seed shape itself. `tests/m13RedoSmokeRedCell.test.ts`
-    rewritten as a leak pin-down (4 tests) — asserts emptySnapshot
-    has no A1 entry and no `pge-smoke-red` style.
-  - **Phase 2 — reference-anchored fidelity gate.** Added
-    `tests/util/pngSampler.ts` (pure-stdlib `zlib` PNG decoder, NOT
-    a runtime dep) and `tests/excelReferenceFidelity.test.ts` (6 new
-    tests). Each test samples the dominant fill of a region in the
-    operator-captured `screenshots/excel-reference/*.png` and asserts
-    our `xlsxBufferToSnapshot` output matches within Δ ≤ 8 per
-    channel. Five of six failed pre-Phase-3 (proves the test gap was
-    real); all six pass post-Phase-3.
-  - **Phase 3 — recipe re-derivation.** Investigation of the
-    transformation algorithm: HSL-L tint, HSV scaling, satMod+lumMod,
-    RGB mix toward grey — none reproduce all four target RGBs from
-    a single accent. Excel's built-in TableStyle definitions live in
-    Office's installed assets (not in `xl/styles.xml` of the workbook)
-    and the actual transformation isn't documented in OOXML. Took the
-    operator's allowed empirical-lookup escape hatch:
-    `src/charts/excelTableStyleRecipes.ts` now ships
-    `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`, keyed by `(styleName,
-    accentHex)`, with measured RGBs sampled from the references. The
-    HSL-L tint formula remains as fallback for unmeasured accents.
-    Added a `totalsTopBorder` slot to the recipe shape (PR #22's
-    shape didn't model the totals-row top double-line border at all)
-    and wired it into `synthesizeTableStyleAssignments` to emit a
-    `BorderStyleTypes.DOUBLE = 7` border on the totals row's top side.
-    `tests/m12FixturePinDowns.test.ts:M13/E pin-down` updated to
-    assert the new (Excel-correct) values + cite the fidelity test
-    as the canonical source.
-  - **Phase 4 — re-capture eval screenshots.** Both Aptos and Classic
-    eval screenshots regenerated. Aptos pixel sidecar:
-    `dominant=rgb(52,105,46) greenInk=16487 greyInk=0` — visibly
-    matches Excel `#34692E`. Classic: `dominant=rgb(165,165,165)
-    greenInk=0 greyInk=15811` — visibly matches Excel `#A5A5A5`. The
-    operator-eyeballed visual reference for both fixtures is in
-    `screenshots/excel-reference/`. Harness fix: `tableHeaderRowRegion`
-    is now DPR-aware (`canvas.width / canvas.clientWidth` ratio) so
-    the y-offset scales correctly on Retina displays where the canvas
-    is 2x the CSS box.
-  - **Test totals**: 197 → 204. Gain of 7 = 6 fidelity tests + 1
-    totals-top-border pin-down + 4 leak pin-downs - 4 (replaced) -
-    0 dropped pin-downs net.
+(Empty — M15 done; awaiting evaluator verdict.)
 
 ## Next
 
-- **feature-1-m13-theme-aware-banding** — When a workbook ships its
-  own non-Aptos `<a:clrScheme>`, the in-Joplin render of every named-
-  style table (`TableStyleLight*`, `TableStyleMedium*`,
-  `TableStyleDark*`) must derive per-cell `bg` / `cl` / `borderColor`
-  from the source clrScheme rather than the hardcoded Aptos catalog
-  in `src/charts/excelTableStyles.ts`. Two project-owned fixtures
-  pin the two halves: `FormattingSmorgasboard.xlsx` (Aptos, accent3
-  `#196B24` green — regression sentinel) and
-  `FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`
-  (Classic, accent3 `#A5A5A5` grey — failure-mode sentinel). Both
-  use `TableStyleMedium4`; the same catalog entry must paint green
-  for one and grey for the other. **First multi-screenshot cycle:**
-  the harness needs a `:variant` suffix on `FEATURE_ID`
-  (`feature-1-m13-theme-aware-banding:aptos` /
-  `feature-1-m13-theme-aware-banding:classic`) plus new entries in
-  `REGION_BY_FEATURE` / `TITLE_PREFIX_BY_FEATURE`, a new
-  `tableHeaderRowRegion` helper, and a new `greyInk` aggregate in
-  `samplePixelsAt`. Don't rename or remove the prior cycles' single-
-  key entries. Jest target: ≥197 (M13/D's 195 baseline + ≥2 new
-  pin-downs for header colour). M12 invariants
-  (`SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN` shape,
-  `SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN` shape, applyFont=1
-  invariant on synth-only header cells, table-name round-trip) must
-  stay green. README "Known shortcomings — Theme-aware banding"
-  edit is out-of-scope (defer to follow-up like PR #21 did for
-  M13/C and M13/D). See `BUILD_PLAN.md` for the full spec.
+(Empty for now. M16 / M17 are post-M15 and will be specced after
+M15 ships.)
 
 ## Notes
 
@@ -399,6 +333,11 @@ every feature.
   `R∈[140,180]`, `G∈[140,180]`, `B∈[140,180]` with `abs(R−G) ≤ 10`
   AND `abs(G−B) ≤ 10` (the equality between channels is what
   distinguishes grey from a tinted hue at similar luminance).
+  **For M15**, add `pinkInk` (`R≥220 AND G∈[180,220] AND
+  B∈[180,220]`), `lightGreenInk` (`R∈[180,220] AND G≥220 AND
+  B∈[180,220]`), and `yellowInk` (`R≥200 AND G≥200 AND B≤120`)
+  using the same template. The CF columns each have a different
+  signature colour band; the gates are per-column.
 - **The Univer cell-selection blue border at `rgb(44,83,241)` will
   saturate any region that includes A1 + cell-border y-band.** When
   a cell is the active selection (typical state on a freshly opened
@@ -638,3 +577,117 @@ every feature.
   hardcode pixel offsets that work on both Retina and standard
   displays. The simplest invariant: write the offsets in CSS px and
   multiply by `(canvas.width / canvas.clientWidth)` at sample time.
+- **Two-layer fidelity test pattern is now the project default for
+  "match Excel" features.** Snapshot-data fidelity
+  (`tests/excelReferenceFidelity.test.ts`) anchored to the Excel
+  reference PNG via `tests/util/pngSampler.ts:dominantColor` —
+  catches import-side bugs. Canvas-vs-Excel fidelity
+  (`tests/excelCanvasFidelity.test.ts`) anchored to the same
+  reference PNG, samples Joplin's `eval-*.png` capture — catches
+  render-side bugs. Both anchored UPSTREAM of our code, never
+  against our own emit. M13/E rework #2 + #3 is the precedent;
+  M15 extends both layers (5 tests per layer for the 5 CF
+  columns).
+- **Operator captures the Excel reference screenshot for a new
+  fixture as part of the cycle.** M13/E precedent: when a new
+  fixture is introduced (Aptos and Classic Smorgasboard PNGs were
+  captured during the M13/E cycle, not before), the generator
+  proceeds with own evidence and snapshot-fidelity work that
+  doesn't need the reference, then the reference lands and the
+  canvas-fidelity layer can be unskipped. M15's
+  `screenshots/excel-reference/ConditionalFormatting-Variants.png`
+  follows the same pattern. The canvas-fidelity tests should
+  use `test.skip` (or the M13/E "read latest by mtime, fail
+  clearly if missing" pattern) when the reference is absent.
+- **M15: Univer CF resource shape — `{ [subUnitId]:
+  IConditionFormattingRule[] }`** stringified as the snapshot's
+  `SHEET_CONDITIONAL_FORMATTING_PLUGIN` resource. Each rule has
+  `{cfId, ranges, stopIfTrue, rule: <type-specific>}`. The CF
+  preset's `parseJson` does `JSON.parse(json)` and walks subunits;
+  ranges use Univer's `IRange` shape `{startRow, endRow,
+  startColumn, endColumn}` (zero-based). Multi-rule import works
+  via flattening exceljs's `worksheet.conditionalFormattings`
+  (which is `Array<{ref, rules: Array<...>}>`) into the per-subunit
+  flat array. The CF preset registers via `UniverInstanceType.UNIVER_SHEET`
+  business — no per-instance hook setup required.
+- **`@univerjs/sheets-conditional-formatting`'s CJS bundle pulls
+  `lodash-es`** (ESM-only), which jest-runtime can't parse without
+  a transformer override. Tests that need
+  `SHEET_CONDITIONAL_FORMATTING_PLUGIN` hard-code the string
+  literal locally. Runtime preset (`createUniver` in
+  `src/editorView.tsx`) reads the const from the package directly
+  (webpack happily bundles the ESM dep). If Univer ever renames the
+  constant, the runtime gets the new value but our hard-coded
+  string stays the old; the snapshot/runtime mismatch trips loudly.
+  Future cycle could add a Jest transformer override
+  (`transformIgnorePatterns: ['node_modules/(?!lodash-es)']`) to
+  let tests import the const directly — out of scope for M15.
+- **iconSet shape mismatch: Univer descending + catch-all vs
+  Excel ascending.** Univer's `IconSetCalculateUnit` walks the
+  config from index 0 forward, returning the first item whose
+  value/operator matches; the standard layout puts the HIGH icon
+  at index 0 (e.g. `3Arrows = [up-green, right-gold, down-red]`).
+  To match Excel's iconSet semantics where cfvo[0] = lowest band /
+  cfvo[N-1] = highest, the import-side translator emits config in
+  descending threshold order and uses MAX_SAFE_INTEGER for the
+  catch-all entry that handles the lowest band. The export-side
+  inverse drops the catch-all and reverses to ascending — Excel
+  cfvo[0] is synthesized as `percent=0` since Univer's catch-all
+  doesn't carry the lowest-band threshold.
+- **CF colour aggregates** (`pinkInk` / `lightGreenInk` /
+  `yellowInk`) added to `samplePixelsAt` plus a parallel
+  per-column variant in `sampleCfColumns`. The thresholds match
+  the operator-ask spec exactly:
+    pinkInk:        R≥220 AND G∈[180,220] AND B∈[180,220] (#FFC7CE family)
+    lightGreenInk:  R∈[180,220] AND G≥220 AND B∈[180,220] (#C6EFCE family)
+    yellowInk:      R≥200 AND G≥200 AND B≤120 (gold arrow / yellow flat icon)
+  Two existing aggregates also broadened (monotonic — no prior
+  gate regresses):
+    redInk:   g/b ≤ 80 → ≤ 140 (catches #F8696B = (248,105,107))
+    blueInk:  r/g ≤ 80 → 'b clearly dominant by ≥30 over r AND g, AND b ≥ 150'
+              (catches #638EC6 = (99,142,198))
+- **`cfAllColumns` regionKind** routes through `sampleCfColumns()`
+  instead of `samplePixelsAt(regionFn)`. The sidecar carries a
+  top-level `cfColumns` object keyed by column letter (A/C/E/G/I)
+  with per-column dominant + ink-aggregate sub-summaries; the
+  legacy top-level fields (dominant / sampled / redInk / etc.)
+  are filled from an aggregate sample over the whole A2:I11 band
+  for backward compat. Future single-fixture multi-region cycles
+  can mirror this pattern — name a dedicated `cfXxxYyy` regionKind
+  and add a parallel sampler.
+- **CF + table-style synthesizer interaction.** The fixture
+  doesn't ship a table, so CF-on-top-of-table-style precedence is
+  hypothetical for the M15 spec. Verified the
+  `FormattingSmorgasboard-NonAptosClassicTheme...` fixture (which
+  has both a table AND CF rules) imports without regression — the
+  M13/E test suite stays green and Aptos/Classic header colours
+  stay correct. The `cfBound` synth-styles sidecar tagging fix is
+  out of scope for M15; if a future fixture exercises both
+  surfaces and CF colour gets masked by synthesizer fill, mark
+  CF-bound cells in `synthStyleSidecar` so the synthesizer skips
+  them.
+- **iconSet glyphs render correctly** via the preset's bundled
+  SVG icon font. No missing-glyph squares observed for `3Arrows`
+  on the M15 fixture. The `@univerjs/preset-sheets-conditional-formatting/lib/index.css`
+  CSS import is what pulls the fonts; deferring it would have
+  rendered as `?`/`□` placeholders. Other iconSets (4Arrows,
+  3TrafficLights1, etc.) probably work via the same import but
+  aren't under test in M15.
+- **The CF round-trip is fully closed via exceljs.** No CF parts
+  are dropped on import or export — the `<conditionalFormatting>`
+  blocks in the re-emitted xml carry every source rule's type /
+  ref / cfvo / colour / operator / rank / iconSet. exceljs
+  preserves the dxf `bgColor.argb` for cellIs and top10 styles via
+  its `style.fill.bgColor` field. `dataBar` blocks gain extra
+  exceljs metadata on round-trip (x14Id, minLength, maxLength,
+  axisPosition, etc.) — those are exceljs's defaults and don't
+  break Excel's render.
+- **Initial title-prefix mismatch caught at eval-screenshot
+  time** — `findLatestNoteByTitle` requires the note title to
+  start with the prefix INCLUDING the trailing space. Initial
+  test note title `"PGE M15 CF eval"` (no trailing space) didn't
+  match `"PGE M15 CF eval "` (with space). The fix is to use
+  `--title "PGE M15 CF eval $(date -u +...)"` so the timestamp
+  appended after the space supplies the matching prefix. Future
+  cycles should remember: `import-fixture.sh --title "<PREFIX> ..."`
+  must echo the title-prefix verbatim followed by a separator.
