@@ -29,12 +29,11 @@ async function main() {
         // Find the page that hosts a UserWebviewIndex frame (the main
         // editor page); the "score by url" heuristic in eval-screenshot
         // picks the wrong page if you only check titles.
-        let page = null;
         let frame = null;
         for (let i = 0; i < 30 && !frame; i++) {
             for (const p of pages) {
                 const candidate = p.frames().find(f => /UserWebviewIndex\.html/.test(f.url()));
-                if (candidate) { page = p; frame = candidate; break; }
+                if (candidate) { frame = candidate; break; }
             }
             if (!frame) await pages[0].waitForTimeout(200);
         }
