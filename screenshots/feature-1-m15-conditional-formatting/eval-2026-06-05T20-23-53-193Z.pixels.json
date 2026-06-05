@@ -1,0 +1,265 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-23-53-193Z.png",
+  "region": "CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)",
+  "regionKind": "cfAllColumns",
+  "dominant": "rgb(255,199,206)",
+  "count": 43814,
+  "sampled": 199149,
+  "top": [
+    [
+      "rgb(255,199,206)",
+      43814
+    ],
+    [
+      "rgb(198,239,206)",
+      14706
+    ],
+    [
+      "rgb(248,105,107)",
+      10968
+    ],
+    [
+      "rgb(250,134,113)",
+      10856
+    ],
+    [
+      "rgb(168,210,127)",
+      10827
+    ],
+    [
+      "rgb(254,221,129)",
+      10797
+    ],
+    [
+      "rgb(251,163,118)",
+      10785
+    ],
+    [
+      "rgb(253,192,124)",
+      10780
+    ]
+  ],
+  "regionX": 92,
+  "regionY": 74,
+  "regionWidth": 1314,
+  "regionHeight": 380,
+  "inkRows": 380,
+  "inkRowSpread": 1,
+  "redInk": 21944,
+  "blueInk": 12070,
+  "greenInk": 46211,
+  "greyInk": 35,
+  "pinkInk": 43991,
+  "lightGreenInk": 14706,
+  "yellowInk": 14,
+  "cfColumns": {
+    "A": {
+      "dominant": "rgb(248,105,107)",
+      "count": 5547,
+      "sampled": 54900,
+      "top": [
+        [
+          "rgb(248,105,107)",
+          5547
+        ],
+        [
+          "rgb(250,134,113)",
+          5547
+        ],
+        [
+          "rgb(251,163,118)",
+          5547
+        ],
+        [
+          "rgb(253,192,124)",
+          5547
+        ],
+        [
+          "rgb(254,221,129)",
+          5547
+        ],
+        [
+          "rgb(238,230,131)",
+          5547
+        ],
+        [
+          "rgb(203,220,129)",
+          5547
+        ],
+        [
+          "rgb(168,210,127)",
+          5547
+        ]
+      ],
+      "regionX": 92,
+      "regionY": 74,
+      "regionWidth": 146,
+      "regionHeight": 380,
+      "inkRows": 380,
+      "inkRowSpread": 1,
+      "redInk": 11094,
+      "blueInk": 0,
+      "greenInk": 16057,
+      "greyInk": 0,
+      "pinkInk": 5,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    },
+    "C": {
+      "dominant": "rgb(214,216,219)",
+      "count": 1810,
+      "sampled": 2562,
+      "top": [
+        [
+          "rgb(214,216,219)",
+          1810
+        ],
+        [
+          "rgb(248,105,107)",
+          76
+        ],
+        [
+          "rgb(250,134,113)",
+          76
+        ],
+        [
+          "rgb(251,163,118)",
+          76
+        ],
+        [
+          "rgb(253,192,124)",
+          76
+        ],
+        [
+          "rgb(254,221,129)",
+          76
+        ],
+        [
+          "rgb(238,230,131)",
+          76
+        ],
+        [
+          "rgb(203,220,129)",
+          76
+        ]
+      ],
+      "regionX": 384,
+      "regionY": 74,
+      "regionWidth": 146,
+      "regionHeight": 380,
+      "inkRows": 380,
+      "inkRowSpread": 1,
+      "redInk": 152,
+      "blueInk": 0,
+      "greenInk": 220,
+      "greyInk": 0,
+      "pinkInk": 0,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    },
+    "E": {
+      "dominant": "rgb(214,216,219)",
+      "count": 1830,
+      "sampled": 1830,
+      "top": [
+        [
+          "rgb(214,216,219)",
+          1830
+        ]
+      ],
+      "regionX": 676,
+      "regionY": 74,
+      "regionWidth": 146,
+      "regionHeight": 380,
+      "inkRows": 380,
+      "inkRowSpread": 1,
+      "redInk": 0,
+      "blueInk": 0,
+      "greenInk": 0,
+      "greyInk": 0,
+      "pinkInk": 0,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    },
+    "G": {
+      "dominant": "rgb(255,199,206)",
+      "count": 20678,
+      "sampled": 21997,
+      "top": [
+        [
+          "rgb(255,199,206)",
+          20678
+        ],
+        [
+          "rgb(214,216,219)",
+          876
+        ],
+        [
+          "rgb(243,190,196)",
+          16
+        ],
+        [
+          "rgb(69,54,56)",
+          14
+        ],
+        [
+          "rgb(125,98,101)",
+          11
+        ],
+        [
+          "rgb(251,196,203)",
+          11
+        ],
+        [
+          "rgb(206,161,166)",
+          10
+        ],
+        [
+          "rgb(234,183,189)",
+          9
+        ]
+      ],
+      "regionX": 968,
+      "regionY": 74,
+      "regionWidth": 146,
+      "regionHeight": 380,
+      "inkRows": 154,
+      "inkRowSpread": 0.4052631578947368,
+      "redInk": 0,
+      "blueInk": 0,
+      "greenInk": 0,
+      "greyInk": 0,
+      "pinkInk": 20790,
+      "lightGreenInk": 0,
+      "yellowInk": 0
+    },
+    "I": {
+      "dominant": "rgb(198,239,206)",
+      "count": 14706,
+      "sampled": 16038,
+      "top": [
+        [
+          "rgb(198,239,206)",
+          14706
+        ],
+        [
+          "rgb(214,216,219)",
+          1332
+        ]
+      ],
+      "regionX": 1260,
+      "regionY": 74,
+      "regionWidth": 146,
+      "regionHeight": 380,
+      "inkRows": 380,
+      "inkRowSpread": 1,
+      "redInk": 0,
+      "blueInk": 0,
+      "greenInk": 14706,
+      "greyInk": 0,
+      "pinkInk": 0,
+      "lightGreenInk": 14706,
+      "yellowInk": 0
+    }
+  }
+}
