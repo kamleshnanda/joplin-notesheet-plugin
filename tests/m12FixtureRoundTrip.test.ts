@@ -203,17 +203,94 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
         expect(typeof snapshotCell(snap, 0, 1, 6).v).toBe('number');
     });
 
-    test('KNOWN SHORTCOMING — conditional formatting rules are not preserved on round-trip (→ M14+)', async () => {
-        // M12 explicitly OOS for conditional formatting per src/xlsx.ts
-        // top-of-file comment. The snapshot drops the rules, and the
-        // exported xlsx has zero <conditionalFormatting> blocks.
+    test('round-trip: 5 conditional-formatting rules survive export → re-import (M15)', async () => {
+        // Flipped from KNOWN SHORTCOMING in M15. The CF rules now
+        // round-trip via:
+        //   1. Import populates SHEET_CONDITIONAL_FORMATTING_PLUGIN
+        //      resource with 5 Univer-shaped rules.
+        //   2. Export reads the resource and writes
+        //      worksheet.conditionalFormattings (5 blocks).
+        //   3. Re-import via a fresh exceljs.Workbook reads the same
+        //      5 blocks and the snapshot's CF resource is rebuilt.
         const snap = await importFixture('ConditionalFormatting-Variants.xlsx');
-        const rt = await roundTrip(snap);
-        const sheetXml = await rt.rawXmlForSheet(1);
-        expect(sheetXml).not.toMatch(/<conditionalFormatting/);
-        // Also verify the snapshot itself doesn't carry CF rules.
-        const cfResource = (snap.resources ?? []).find((r) => /cf|conditional/i.test(r.name));
-        expect(cfResource).toBeUndefined();
+
+        // Snapshot now carries the CF resource.
+        const cfResource = (snap.resources ?? []).find((r) => r.name === 'SHEET_CONDITIONAL_FORMATTING_PLUGIN');
+        expect(cfResource).toBeDefined();
+        const cfData = JSON.parse(cfResource!.data) as Record<string, Array<{
+            ranges: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
+            rule: { type: string; subType?: string };
+        }>>;
+        const sheetIds = Object.keys(cfData);
+        expect(sheetIds).toHaveLength(1);
+        const importedRules = cfData[sheetIds[0]];
+        expect(importedRules).toHaveLength(5);
+
+        // Round-trip: export and re-load via a clean exceljs Workbook
+        // (the M12 round-trip helper invokes the parser path). Read
+        // CF rules straight off the exceljs worksheet; we don't need
+        // the snapshot here.
+        const buffer = await snapshotToXlsxBuffer(snap as never);
+        const reWb = new ExcelJS.Workbook();
+        await reWb.xlsx.load(buffer as ArrayBuffer);
+        const reWs = reWb.worksheets[0];
+        const reCf = (reWs as unknown as {
+            conditionalFormattings?: Array<{ ref: string; rules: Array<Record<string, unknown>> }>;
+        }).conditionalFormattings ?? [];
+        expect(reCf).toHaveLength(5);
+
+        // Per-rule structural pins. Exceljs preserves type / ref /
+        // operator / rank / cfvo / colour exactly. Priorities renumber
+        // to 1..5 in the order we wrote them.
+        const findBlock = (ref: string) => reCf.find((b) => b.ref === ref);
+
+        const aBlock = findBlock('A2:A11');
+        expect(aBlock).toBeDefined();
+        const aRule = aBlock!.rules[0] as { type: string; cfvo: Array<{ type: string; value?: number }>; color: Array<{ argb?: string }> };
+        expect(aRule.type).toBe('colorScale');
+        expect(aRule.cfvo).toHaveLength(3);
+        expect(aRule.cfvo[0].type).toBe('min');
+        expect(aRule.cfvo[1].type).toBe('percentile');
+        expect(aRule.cfvo[1].value).toBe(50);
+        expect(aRule.cfvo[2].type).toBe('max');
+        expect(aRule.color.map((c) => (c.argb ?? '').toUpperCase())).toEqual([
+            'FFF8696B', 'FFFFEB84', 'FF63BE7B',
+        ]);
+
+        const cBlock = findBlock('C2:C11');
+        expect(cBlock).toBeDefined();
+        const cRule = cBlock!.rules[0] as { type: string; cfvo: Array<{ type: string }>; color: { argb?: string } };
+        expect(cRule.type).toBe('dataBar');
+        expect(cRule.cfvo[0].type).toBe('min');
+        expect(cRule.cfvo[1].type).toBe('max');
+        expect((cRule.color.argb ?? '').toUpperCase()).toBe('FF638EC6');
+
+        const eBlock = findBlock('E2:E11');
+        expect(eBlock).toBeDefined();
+        const eRule = eBlock!.rules[0] as { type: string; operator: string; formulae: string[]; style: { fill?: { bgColor?: { argb?: string } } } };
+        expect(eRule.type).toBe('cellIs');
+        expect(eRule.operator).toBe('greaterThan');
+        expect(eRule.formulae).toEqual(['50']);
+        expect((eRule.style.fill?.bgColor?.argb ?? '').toUpperCase()).toBe('FFFFC7CE');
+
+        const gBlock = findBlock('G2:G11');
+        expect(gBlock).toBeDefined();
+        const gRule = gBlock!.rules[0] as { type: string; rank?: number; bottom?: boolean; style: { fill?: { bgColor?: { argb?: string } } } };
+        expect(gRule.type).toBe('top10');
+        expect(gRule.rank).toBe(3);
+        expect(gRule.bottom).toBeFalsy();
+        expect((gRule.style.fill?.bgColor?.argb ?? '').toUpperCase()).toBe('FFC6EFCE');
+
+        const iBlock = findBlock('I2:I11');
+        expect(iBlock).toBeDefined();
+        const iRule = iBlock!.rules[0] as { type: string; iconSet?: string; cfvo: Array<{ type: string; value?: number }> };
+        expect(iRule.type).toBe('iconSet');
+        expect(iRule.iconSet).toBe('3Arrows');
+        expect(iRule.cfvo).toHaveLength(3);
+        // Source cfvo: percent 0/33/67 — Univer drops the lowest band
+        // threshold and re-synthesizes it as percent=0 on export.
+        expect(iRule.cfvo.map((c) => c.value ?? 0).sort((a, b) => a - b)).toEqual([0, 33, 67]);
+        for (const c of iRule.cfvo) expect(c.type).toBe('percent');
     });
 });
 

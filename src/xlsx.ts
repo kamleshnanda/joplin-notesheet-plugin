@@ -2246,6 +2246,25 @@ function readSynthStylesSidecar(snapshot: UniverSnapshot): Record<string, Record
     }
 }
 
+// Read the CF resource (M15). Returns a `${sheetId}` → CF rule entries
+// map; the exporter walks each entry, translates Univer-shape rules
+// back to exceljs CF rule objects, and assigns the array to the
+// matching worksheet's `conditionalFormattings` field before
+// `writeBuffer()`.
+function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEntry[]> {
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    if (!Array.isArray(resources)) return {};
+    const entry = resources.find((r) => r?.name === CONDITIONAL_FORMATTING_RESOURCE);
+    if (!entry || typeof entry.data !== 'string') return {};
+    try {
+        const parsed = JSON.parse(entry.data);
+        if (!parsed || typeof parsed !== 'object') return {};
+        return parsed as Record<string, UniverCfRuleEntry[]>;
+    } catch {
+        return {};
+    }
+}
+
 // Pull the workbook-level default font name out of the snapshot. Set on
 // import from the source xlsx's theme1.xml/minorFont; on export every cell
 // that doesn't already carry an explicit font.name inherits this so the
@@ -2263,6 +2282,7 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     const sheets = (snapshot as { sheets?: Record<string, SheetRecord> }).sheets ?? {};
     const tableResource = readTableResource(snapshot);
     const synthStylesBySheet = readSynthStylesSidecar(snapshot);
+    const cfBySheet = readCfResource(snapshot);
     const defaultFontName = readDefaultFontName(snapshot);
 
     for (const sheetId of sheetOrder) {
@@ -2385,6 +2405,33 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
             } catch (e) {
                 console.warn('[Notesheet] could not export table', t?.name, e);
             }
+        }
+
+        // M15: write conditional-formatting rules. Univer's snapshot
+        // groups rules by subUnitId (sheetId). We translate each rule
+        // back to exceljs's CF shape and group by sqref so all rules
+        // sharing a ref end up under one block. Priority is preserved
+        // by re-numbering 1..N in the order we walk the snapshot.
+        const cfEntries = cfBySheet[sheetId];
+        if (Array.isArray(cfEntries) && cfEntries.length > 0) {
+            const blocksByRef = new Map<string, ExceljsCfRule[]>();
+            let priority = 1;
+            for (const entry of cfEntries) {
+                const translated = translateUniverCfRuleToExceljs(entry, priority);
+                if (!translated || !translated.rule) continue;
+                const list = blocksByRef.get(translated.sqref) ?? [];
+                list.push(translated.rule);
+                blocksByRef.set(translated.sqref, list);
+                priority++;
+            }
+            const conditionalFormattings = Array.from(blocksByRef.entries()).map(([ref, rules]) => ({
+                ref,
+                rules,
+            }));
+            // exceljs assigns this directly onto ws; the CF blocks are
+            // serialized into <conditionalFormatting> elements at
+            // writeBuffer time.
+            (ws as unknown as { conditionalFormattings: typeof conditionalFormattings }).conditionalFormattings = conditionalFormattings;
         }
     }
 
