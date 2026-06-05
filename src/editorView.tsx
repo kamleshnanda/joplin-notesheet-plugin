@@ -13,6 +13,13 @@ import '@univerjs/preset-sheets-filter/lib/index.css';
 import '@univerjs/preset-sheets-table/lib/index.css';
 import '@univerjs/preset-sheets-drawing/lib/index.css';
 import '@univerjs/preset-sheets-hyper-link/lib/index.css';
+// Conditional Formatting (M15). The preset bundles the CF rendering
+// engine (colorScale, dataBar, cellIs/highlightCell, top10/rank,
+// iconSet) plus the "Manage Conditional Format Rules" panel users
+// reach via the toolbar's Home → Conditional Formatting menu. Without
+// this CSS import the panel chrome would render unstyled and the
+// iconSet glyph font would be missing.
+import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
 
 import {
     createUniver,
@@ -29,6 +36,7 @@ import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
 import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
+import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';
 
 import { withFlatTableTheme } from './univerTableTheme';
 import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
@@ -37,6 +45,7 @@ import sheetsFilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
 import sheetsTableEnUS from '@univerjs/preset-sheets-table/locales/en-US';
 import sheetsDrawingEnUS from '@univerjs/preset-sheets-drawing/locales/en-US';
 import sheetsHyperLinkEnUS from '@univerjs/preset-sheets-hyper-link/locales/en-US';
+import sheetsCfEnUS from '@univerjs/preset-sheets-conditional-formatting/locales/en-US';
 
 import { ColumnChartIcon } from '@univerjs/icons';
 
@@ -518,7 +527,7 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     const { univer, univerAPI } = createUniver({
         locale: LocaleType.EN_US,
         locales: {
-            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, sheetsTableEnUS, sheetsDrawingEnUS, sheetsHyperLinkEnUS, {
+            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, sheetsTableEnUS, sheetsDrawingEnUS, sheetsHyperLinkEnUS, sheetsCfEnUS, {
                 'sheets-sort': {
                     dialog: {
                         'sort-reminder': 'Sort Warning',
@@ -584,6 +593,18 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             // registers the link with RefRangeService — making the URL
             // clickable in the editor automatically.
             UniverSheetsHyperLinkPreset(),
+            // Conditional Formatting (M15). Reads CF rules from the
+            // snapshot's `SHEET_CONDITIONAL_FORMATTING_PLUGIN` resource
+            // and paints them on the canvas in render order: cell fills
+            // (cellIs / top10 / highlightCell), then dataBars, then
+            // colorScale gradients, then iconSet glyphs. The CF render
+            // layer paints OVER per-cell `bg` from the M12 table-style
+            // synthesizer; if precedence ever inverts (synthesizer fill
+            // masks CF colour), mark CF-bound cells in the synth-styles
+            // sidecar so the synthesizer skips them. Users add/edit/
+            // delete rules via the "Manage Conditional Format Rules"
+            // panel reachable from the toolbar.
+            UniverSheetsConditionalFormattingPreset(),
         ],
     });
 
