@@ -10,7 +10,7 @@
       "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-53-50-933Z.pixels.json",
       "screenshots/excel-reference/ConditionalFormatting-Variants.png"
     ],
-    "evaluator_verdict": null,
-    "last_attempted_at": "2026-06-05T20:55:00Z"
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-05T21:00:00Z"
   }
 }
