@@ -6,9 +6,11 @@
       "screenshots/feature-1-m15-conditional-formatting/generator-evidence.pixels.json",
       "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-23-53-193Z.png",
       "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-23-53-193Z.pixels.json",
+      "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-53-50-933Z.png",
+      "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-53-50-933Z.pixels.json",
       "screenshots/excel-reference/ConditionalFormatting-Variants.png"
     ],
     "evaluator_verdict": null,
-    "last_attempted_at": "2026-06-05T20:30:00Z"
+    "last_attempted_at": "2026-06-05T20:55:00Z"
   }
 }

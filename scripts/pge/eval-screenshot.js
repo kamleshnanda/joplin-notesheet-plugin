@@ -261,16 +261,72 @@ async function waitForUniverRender(frame) {
 // the M15 cycle's `cfAllColumns` region kind — instead of one
 // (regionFn) → one (summary) shape, this produces a `cfColumns`
 // object keyed by column letter.
+//
+// Geometry discovery (post-M15 fix): the original implementation
+// hardcoded `COL_W_CSS = 73` (Univer's default column width). The
+// operator captured the M15 reference screenshot with all CF columns
+// expanded to content width so the long header labels fit, which made
+// the per-column sampling regions drift sideways and bucket pink/
+// light-green ink into the wrong columns. We now read the LIVE
+// per-column widths and per-row heights from the Univer FUniver facade
+// (`window.__notesheetUniverAPI`, exposed by `bootUniver` in
+// `src/editorView.tsx` for diagnostic use). When the facade isn't
+// reachable (e.g. plugin failed to load, ancient build) we fall back
+// to the previous default-width math so the sampler degrades
+// gracefully — but the sidecar's `geometrySource` field flags which
+// path was taken.
 async function sampleCfColumns(frame, maxColors = 8) {
     return frame.evaluate(({ maxColors }) => {
         const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
         if (!canvas) return { error: 'no main canvas' };
         const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
         const ROW_HEADER_W_CSS = 46;
-        const COL_W_CSS = 73;
         const COL_HEADER_H_CSS = 18;
-        const ROW_H_CSS = 19;
+        const DEFAULT_COL_W_CSS = 73;
+        const DEFAULT_ROW_H_CSS = 19;
         const COLS = { A: 0, C: 2, E: 4, G: 6, I: 8 };
+        const MAX_COL = 8; // we sample through col I (index 8)
+        const MAX_ROW = 11; // through row 11 (index 10) for CF aggregate
+
+        // Try to discover actual column widths / row heights via the
+        // FUniver facade exposed by editorView.tsx. The facade returns
+        // numeric CSS pixel sizes that already account for any user
+        // (or fixture) column resize.
+        let geometrySource = 'default-fallback';
+        const colWidths = new Array(MAX_COL + 1).fill(DEFAULT_COL_W_CSS);
+        const rowHeights = new Array(MAX_ROW + 1).fill(DEFAULT_ROW_H_CSS);
+        try {
+            const api = (window).__notesheetUniverAPI;
+            const wb = api && (api.getActiveWorkbook ? api.getActiveWorkbook() : null);
+            const ws = wb && (wb.getActiveSheet ? wb.getActiveSheet() : null);
+            if (ws && typeof ws.getColumnWidth === 'function' && typeof ws.getRowHeight === 'function') {
+                for (let c = 0; c <= MAX_COL; c++) {
+                    const w = Number(ws.getColumnWidth(c));
+                    if (Number.isFinite(w) && w > 0) colWidths[c] = w;
+                }
+                for (let r = 0; r <= MAX_ROW; r++) {
+                    const h = Number(ws.getRowHeight(r));
+                    if (Number.isFinite(h) && h > 0) rowHeights[r] = h;
+                }
+                geometrySource = 'fUniver';
+            }
+        } catch (e) {
+            // Facade not reachable — fall through to defaults below.
+            geometrySource = 'default-fallback:' + (e && e.message ? e.message : 'unknown');
+        }
+
+        // Cumulative x-origins per column index (CSS px from canvas left).
+        const colXCss = new Array(MAX_COL + 2).fill(0);
+        colXCss[0] = ROW_HEADER_W_CSS;
+        for (let c = 0; c <= MAX_COL; c++) {
+            colXCss[c + 1] = colXCss[c] + colWidths[c];
+        }
+        // Cumulative y-origins per row index (CSS px from canvas top).
+        const rowYCss = new Array(MAX_ROW + 2).fill(0);
+        rowYCss[0] = COL_HEADER_H_CSS;
+        for (let r = 0; r <= MAX_ROW; r++) {
+            rowYCss[r + 1] = rowYCss[r] + rowHeights[r];
+        }
 
         function sampleRegion(rx, ry, rw, rh) {
             const off = document.createElement('canvas');
@@ -339,38 +395,56 @@ async function sampleCfColumns(frame, maxColors = 8) {
         }
 
         const cfColumns = {};
+        // Per-column sampling: each CF column gets its own region whose
+        // x-origin/width comes from the discovered colWidths array, and
+        // whose y-band covers data rows 1..10 (zero-based) — the rows
+        // that carry CF output in the fixture. We carve a 6px inset on
+        // both x edges so we land safely inside the cell rather than
+        // straddling the gridline; with content-widened columns the
+        // inset is negligible against the column body, but on default
+        // narrow columns it's still safe (>= 60px effective width).
+        const yCssCol = rowYCss[1];                // top of row 2 (data row 1)
+        const yCssEnd = rowYCss[Math.min(11, MAX_ROW + 1)]; // bottom of row 11
+        const hCssCol = Math.max(0, yCssEnd - yCssCol);
         for (const col of Object.keys(COLS)) {
             const colIndex = COLS[col];
-            const xCss = ROW_HEADER_W_CSS + colIndex * COL_W_CSS;
-            const yCss = COL_HEADER_H_CSS + 1 * ROW_H_CSS;
-            const wCss = COL_W_CSS;
-            const hCss = 10 * ROW_H_CSS;
+            const xLeft = colXCss[colIndex];
+            const xRight = colXCss[colIndex + 1];
+            const xInset = 6;
+            const xCss = xLeft + xInset;
+            const wCss = Math.max(0, xRight - xLeft - 2 * xInset);
             const x = Math.round(xCss * dpr);
-            const y = Math.round(yCss * dpr);
+            const y = Math.round(yCssCol * dpr);
             const w = Math.round(wCss * dpr);
-            const h = Math.round(hCss * dpr);
-            const cw = Math.min(canvas.width - 1, x);
-            const ch = Math.min(canvas.height - 1, y);
-            const useW = Math.min(Math.max(canvas.width - x, 0), w);
-            const useH = Math.min(Math.max(canvas.height - y, 0), h);
-            cfColumns[col] = sampleRegion(cw, ch, useW, useH);
+            const h = Math.round(hCssCol * dpr);
+            const useX = Math.min(canvas.width - 1, x);
+            const useY = Math.min(canvas.height - 1, y);
+            const useW = Math.min(Math.max(canvas.width - useX, 0), w);
+            const useH = Math.min(Math.max(canvas.height - useY, 0), h);
+            cfColumns[col] = sampleRegion(useX, useY, useW, useH);
         }
 
         // Aggregate: a whole-band sample covering A2:I11 for the
         // top-level `dominant` and `top` histogram (legacy compat).
-        const xCss = ROW_HEADER_W_CSS;
-        const yCss = COL_HEADER_H_CSS + 1 * ROW_H_CSS;
-        const wCss = 9 * COL_W_CSS;
-        const hCss = 10 * ROW_H_CSS;
-        const x = Math.round(xCss * dpr);
-        const y = Math.round(yCss * dpr);
-        const w = Math.round(wCss * dpr);
-        const h = Math.round(hCss * dpr);
-        const aggW = Math.min(Math.max(canvas.width - x, 0), w);
-        const aggH = Math.min(Math.max(canvas.height - y, 0), h);
-        const agg = sampleRegion(x, y, aggW, aggH);
+        const aggXCss = ROW_HEADER_W_CSS;
+        const aggYCss = rowYCss[1];
+        const aggWCss = Math.max(0, colXCss[Math.min(9, MAX_COL + 1)] - ROW_HEADER_W_CSS);
+        const aggHCss = hCssCol;
+        const aggX = Math.round(aggXCss * dpr);
+        const aggY = Math.round(aggYCss * dpr);
+        const aggWPx = Math.round(aggWCss * dpr);
+        const aggHPx = Math.round(aggHCss * dpr);
+        const useAggW = Math.min(Math.max(canvas.width - aggX, 0), aggWPx);
+        const useAggH = Math.min(Math.max(canvas.height - aggY, 0), aggHPx);
+        const agg = sampleRegion(aggX, aggY, useAggW, useAggH);
 
-        return { ...agg, cfColumns };
+        return {
+            ...agg,
+            cfColumns,
+            geometrySource,
+            colWidthsCss: colWidths,
+            rowHeightsCss: rowHeights,
+        };
     }, { maxColors });
 }
 
@@ -796,6 +870,9 @@ async function main() {
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
             console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`);
             if (pixelSummary.cfColumns) {
+                if (pixelSummary.geometrySource) {
+                    console.error(`eval-screenshot:   geometrySource=${pixelSummary.geometrySource} colWidthsCss=${JSON.stringify(pixelSummary.colWidthsCss)}`);
+                }
                 for (const col of Object.keys(pixelSummary.cfColumns)) {
                     const c = pixelSummary.cfColumns[col];
                     console.error(`eval-screenshot:   cfColumn[${col}]: dominant=${c.dominant} sampled=${c.sampled} redInk=${c.redInk} blueInk=${c.blueInk} greenInk=${c.greenInk} pinkInk=${c.pinkInk} lightGreenInk=${c.lightGreenInk} yellowInk=${c.yellowInk}`);

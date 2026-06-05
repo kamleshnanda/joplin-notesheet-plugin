@@ -653,6 +653,25 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     activeUniver = univer;
     activeApi = univerAPI;
 
+    // Expose the Univer FUniver facade on `window` so the PGE harness's
+    // `eval-screenshot.js` (which evaluates JS inside the
+    // UserWebviewIndex frame via Playwright `frame.evaluate(...)`) can
+    // discover real column widths / row heights at sampling time. The
+    // pixel sampler used to hardcode default column widths (73 CSS px)
+    // and drifted sideways on any fixture where the operator widened
+    // columns to fit content. Reading the live geometry from the
+    // workbook is the only reliable fix; structural canvas scanning
+    // (e.g. detecting column-header borders by pixel) is brittle on
+    // Univer 0.23 because the borders are anti-aliased and faint.
+    //
+    // Read-only: the harness only calls getter facade methods. Production
+    // users have no exposure beyond an extra global property pointer.
+    try {
+        (window as unknown as { __notesheetUniverAPI?: unknown }).__notesheetUniverAPI = univerAPI;
+    } catch {
+        // window may be inaccessible in some test runners; harmless.
+    }
+
     // Register the chart component once per Univer instance. componentKey
     // 'NotesheetChart' is what addFloatDomToRange looks up.
     try {

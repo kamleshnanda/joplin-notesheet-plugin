@@ -179,7 +179,9 @@ every feature.
 
 ## In progress
 
-(Empty — M15 done; awaiting evaluator verdict.)
+(Empty — M15 done; awaiting evaluator verdict. Harness sampler bug
+fix shipped 2026-06-05 — see `## Notes` entry "M15 harness sampler:
+content-discovering geometry via FUniver".)
 
 ## Next
 
@@ -691,3 +693,70 @@ M15 ships.)
   appended after the space supplies the matching prefix. Future
   cycles should remember: `import-fixture.sh --title "<PREFIX> ..."`
   must echo the title-prefix verbatim followed by a separator.
+- **M15 harness sampler: content-discovering geometry via FUniver
+  (Option A).** The first M15 cycle hardcoded
+  `COL_W_CSS = 73` in `eval-screenshot.js:sampleCfColumns` and
+  computed each CF column's x-origin as
+  `ROW_HEADER_W_CSS + colIndex * COL_W_CSS`. When the operator
+  widened columns to fit content (the long header labels "Color
+  Scale (3-stop)" / "Highlight (>50 = Red)" / etc.), the sampler's
+  per-column regions drifted sideways and bucket-leaked across
+  columns: `cfColumns.C.blueInk = 0`, `cfColumns.E.pinkInk = 0`,
+  `cfColumns.G.lightGreenInk = 0` while `cfColumns.G.pinkInk =
+  20790` (col E's pink leaked into col G's region) and
+  `cfColumns.I.lightGreenInk = 14706` (col G's green leaked into
+  col I's region).
+
+  Fix: `src/editorView.tsx:bootUniver()` exposes the FUniver facade
+  on `window.__notesheetUniverAPI` (read-only, diagnostic; harmless
+  in production — just an extra global property pointer). The
+  sampler now reads live per-column widths and per-row heights via
+  `ws.getColumnWidth(c)` / `ws.getRowHeight(r)` and computes
+  cumulative x/y origins from those. The pixel sidecar carries a
+  new `geometrySource` field — `fUniver` when the facade was
+  reachable, `default-fallback` (with reason) when not, so future
+  evaluators can tell which path was taken at a glance.
+
+  Other geometry options considered:
+    - **Option B** (scan canvas column-header strip for borders):
+      doable but brittle — the column-header gridline is anti-aliased
+      and faint at DPR=2.
+    - **Option C** (OCR column letters): too brittle for harness use.
+    - **Option D** (sample whole CF area, bucket by colour signature
+      only): drops per-column resolution; would weaken the spec.
+
+  Trade-off vs Option B: Option A requires a live Univer instance.
+  If the plugin fails to load, `geometrySource=default-fallback`
+  kicks in and the sampler degrades to the (broken) hardcoded math.
+  That's acceptable because if the plugin can't load, the screenshot
+  itself would also fail to capture CF rendering — the sampler not
+  working is the least of the problems.
+
+- **`scripts/pge/widen-columns.js` — utility to align live Joplin
+  column widths to the canvas-fidelity test reference geometry.**
+  The harness sampler is now width-agnostic, but
+  `tests/excelCanvasFidelity.test.ts` (the M15 canvas-vs-Excel
+  parity tests) still hardcodes device-pixel x-bands for col G (
+  `1290..1480`) and col I (`1635..1655`). Those bands assume all 9
+  columns A..I at uniform CSS width 95. After any session that
+  changes column widths (operator interaction, snapshot save, etc.)
+  re-run `node scripts/pge/widen-columns.js` to reset all 9
+  columns to 95 CSS px before invoking `eval-screenshot.sh`. A
+  follow-up cleanup could re-tune the canvas-fidelity test
+  coordinates to use FUniver-discovered widths the same way the
+  sampler does — out of scope for the harness fix cycle.
+
+- **`scripts/pge/move-selection.js` — utility to dismiss A1 active
+  cell selection so the screenshot doesn't show the edit cursor over
+  cell content.** Univer's active-cell selection paints a `|` cursor
+  over the cell's text-render position, which on a narrow-width A1
+  visually obscures the header text (you see only `i` when the cell
+  contains "Color Scale (3-stop)"). The actual cell value is
+  unaffected — verified via `getValue()` — but the screenshot looks
+  wrong. Calling `ws.getRange('N1').activate()` moves the selection
+  to a far-off blank cell. Future evaluators should run this BEFORE
+  `eval-screenshot.sh` if active-cell selection ends up landing
+  somewhere that pollutes the visual gate. The existing
+  `tableHeaderRowRegion` mitigates this for M13/E by sampling
+  past col A; the M15 fixture has multi-column visual evidence
+  including col A so we need to actually move the selection.
