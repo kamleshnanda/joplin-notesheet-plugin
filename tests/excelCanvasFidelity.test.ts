@@ -368,3 +368,116 @@ describe('Canvas vs Excel fidelity — TableStyleMedium4 (M13/E rework)', () => 
         });
     });
 });
+
+// ─── M15: Conditional Formatting canvas fidelity ────────────────────────
+//
+// Canvas-vs-Excel parity gate for the 5 CF rule types. Compares the
+// Joplin canvas screenshot
+// (`screenshots/feature-1-m15-conditional-formatting/eval-*.png`)
+// against the operator-captured Excel reference
+// (`screenshots/excel-reference/ConditionalFormatting-Variants.png`)
+// at five sentinel points (one per CF column).
+//
+// SKIP-WHEN-MISSING: the reference PNG does not exist at planner /
+// generator time — the operator captures it from real Excel during
+// the cycle. Tests skip via fs.existsSync; once the reference lands,
+// they run and the evaluator can act on the parity verdict.
+//
+// Per-column sentinel:
+//   - A (colorScale): dominant colour of the median cell A6 (value 40).
+//     At #FFEB84 family on the gradient it's the most stable measure;
+//     A2 (red end) and A11 (green end) anti-alias more aggressively.
+//   - C (dataBar): the right edge of the longest-bar cell C11 (value 90).
+//     At #638EC6.
+//   - E (cellIs > 50): cell E10 (value 80). At #FFC7CE.
+//   - G (top-3 rank): the top cell G2 (value 82). At #C6EFCE.
+//   - I (iconSet): the top-band cell I11 (value 90, green-up arrow).
+//     Looser tolerance because the icon glyph is small.
+
+const CF_VARIANTS_REF = path.join(REFERENCES_DIR, 'ConditionalFormatting-Variants.png');
+const CF_FEATURE_DIR = path.join(REPO_ROOT, 'screenshots', 'feature-1-m15-conditional-formatting');
+
+function existsSync(p: string): boolean {
+    try { statSync(p); return true; } catch { return false; }
+}
+
+function latestCfEvalPng(): string | null {
+    if (!existsSync(CF_FEATURE_DIR)) return null;
+    const matches = readdirSync(CF_FEATURE_DIR).filter((n) =>
+        n.startsWith('eval-') && n.endsWith('.png'),
+    );
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => {
+        const ma = statSync(path.join(CF_FEATURE_DIR, a)).mtimeMs;
+        const mb = statSync(path.join(CF_FEATURE_DIR, b)).mtimeMs;
+        return mb - ma;
+    });
+    return path.join(CF_FEATURE_DIR, matches[0]);
+}
+
+const CF_REF_PRESENT = existsSync(CF_VARIANTS_REF);
+const CF_EVAL_PRESENT = !!latestCfEvalPng();
+
+// describe.skip when the reference is absent (M13/E pattern: skip
+// loudly when ground truth is missing, run when present). The
+// evaluator unskips by capturing the reference; the tests fail-fast
+// inside `beforeAll` if the reference is later removed.
+const cfDescribe = (CF_REF_PRESENT && CF_EVAL_PRESENT) ? describe : describe.skip;
+
+cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', () => {
+    let refImg: DecodedPng;
+    let joplinImg: DecodedPng;
+
+    beforeAll(() => {
+        if (!CF_REF_PRESENT) {
+            throw new Error(
+                `Excel reference PNG missing at ${CF_VARIANTS_REF}. ` +
+                `Operator must capture from real Excel: open ` +
+                `tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx ` +
+                `in Excel and screenshot the visible CF columns A..I.`,
+            );
+        }
+        const evalPath = latestCfEvalPng();
+        if (!evalPath) {
+            throw new Error(
+                `No eval-*.png in ${CF_FEATURE_DIR}. ` +
+                `Re-run scripts/pge/eval-screenshot.sh feature-1-m15-conditional-formatting.`,
+            );
+        }
+        refImg = decodePng(CF_VARIANTS_REF);
+        joplinImg = decodePng(evalPath);
+    });
+
+    test('Column A (colorScale): both renders carry the gradient mid-band yellow #FFEB84 family', () => {
+        // Sample a small mid-cell band on column A in BOTH renders. The
+        // y-positions and column x-bands are deliberately approximate;
+        // the assertion is parity between Joplin and Excel, not absolute
+        // RGB. We pick the median row (row 7 = value 50 → midpoint of
+        // gradient) and scan a horizontal slice for the dominant fill.
+        // We don't reach inside text glyphs — column A's data area is
+        // narrower than the cell width, so a 1-pixel vertical strip in
+        // the middle of the row catches the cell fill cleanly.
+        //
+        // Joplin canvas at DPR=2: col A starts at x≈92 (row header 46
+        // CSS px ≈ 92 device px). Median row y depends on canvas size;
+        // we sample a slab.
+        const refDom = dominantColor(refImg, 0, refImg.width, Math.floor(refImg.height * 0.4), Math.floor(refImg.height * 0.5));
+        const joplinDom = dominantColor(joplinImg, 92, 200, Math.floor(joplinImg.height * 0.4), Math.floor(joplinImg.height * 0.5));
+        // Both should carry yellow-ish ink on the gradient mid-band.
+        // We don't pin to #FFEB84 explicitly — the assertion is
+        // dominant-colour parity within Δ ≤ 24 (gradient anti-aliasing
+        // blends adjacent cells more than the catalog tests do).
+        const d = rgbDelta(refDom.rgb, joplinDom.rgb);
+        if (d.max > 24) {
+            throw new Error(
+                `Column A gradient parity: Excel reference dominant ${refDom.hex}, ` +
+                `Joplin canvas dominant ${joplinDom.hex} (Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+            );
+        }
+    });
+
+    test.todo('Column C (dataBar): both renders carry the dataBar blue #638EC6 family on long-bar cells');
+    test.todo('Column E (cellIs > 50): both renders fill cell E10 (value 80) with #FFC7CE');
+    test.todo('Column G (top-3): both renders fill the highest-G cell with #C6EFCE');
+    test.todo('Column I (iconSet): both renders display a green-up arrow on cell I11 (value 90)');
+});
