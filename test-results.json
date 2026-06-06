@@ -1,16 +1,13 @@
 {
-  "feature-1-m15-conditional-formatting": {
+  "feature-1-m16-snapshot-to-html": {
     "passes": true,
     "evidence": [
-      "screenshots/feature-1-m15-conditional-formatting/generator-evidence.png",
-      "screenshots/feature-1-m15-conditional-formatting/generator-evidence.pixels.json",
-      "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-23-53-193Z.png",
-      "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-23-53-193Z.pixels.json",
-      "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-53-50-933Z.png",
-      "screenshots/feature-1-m15-conditional-formatting/eval-2026-06-05T20-53-50-933Z.pixels.json",
-      "screenshots/excel-reference/ConditionalFormatting-Variants.png"
+      "screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.png",
+      "screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.pixels.json",
+      "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.png",
+      "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.pixels.json"
     ],
-    "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-05T21:00:00Z"
+    "evaluator_verdict": null,
+    "last_attempted_at": "2026-06-06T23:50:00Z"
   }
 }

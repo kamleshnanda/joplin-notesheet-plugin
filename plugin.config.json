@@ -1,6 +1,7 @@
 {
 	"extraScripts": [
 		"contentScript.ts",
-		"editorView.tsx"
+		"editorView.tsx",
+		"contentScripts/notesheetRenderer.ts"
 	]
 }

@@ -87,6 +87,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-m13-theme-aware-banding:aptos': 'PGE M13E aptos eval ',
     'feature-1-m13-theme-aware-banding:classic': 'PGE M13E classic eval ',
     'feature-1-m15-conditional-formatting': 'PGE M15 CF eval ',
+    'feature-1-m16-snapshot-to-html': 'PGE M16 HTML eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -100,6 +101,14 @@ const REGION_BY_FEATURE = {
     'feature-1-m13-theme-aware-banding:aptos': 'tableHeaderRow',
     'feature-1-m13-theme-aware-banding:classic': 'tableHeaderRow',
     'feature-1-m15-conditional-formatting': 'cfAllColumns',
+    // M16 introduces a new region kind: the markdown-rendered preview
+    // pane (Joplin's `iframe.noteTextViewer`). Unlike all prior cycles
+    // which targeted the Univer canvas inside `UserWebviewIndex.html`,
+    // M16's render lands in Joplin's main shell preview pane. The
+    // sampler path below picks the editor page, drives Joplin into
+    // "preview pane visible + Custom Editor disabled" state via menu
+    // clicks, and screenshots the iframe element directly.
+    'feature-1-m16-snapshot-to-html': 'previewPane',
 };
 
 function discoverApiPort() {
@@ -656,6 +665,232 @@ function richTextA1A2Region(canvas) {
 // is needed because the regionKind 'cfAllColumns' bypasses the
 // single-region sampling pipeline entirely.
 
+// ───────── Preview pane (M16) ─────────────────────────────────────
+//
+// M16's render target is Joplin's markdown-rendered preview pane, NOT
+// the Univer canvas. The preview pane lives as `iframe.noteTextViewer`
+// in the main shell page (the same `index.html` page that hosts the
+// editor / sidebar / note list). Its frame URL is `joplin-content://
+// note-viewer/...`, but Playwright's `frame.url()` returns empty for
+// that protocol — we identify the preview frame by its document title
+// (`Note viewer`).
+//
+// Joplin's default state for a Notesheet note is "Custom Editor active"
+// (the Univer editor takes over the editor pane; no preview iframe is
+// rendered). For M16 the harness must drive Joplin into:
+//   1. Custom Editor disabled (View > Toggle editor plugin)
+//   2. Markdown editor (not TinyMCE rich-text) — toggle if needed
+//   3. Layout state where the preview iframe is visible (preview-only
+//      OR split — both work).
+//
+// We use AppleScript to click `View > <menu item>` because Joplin's
+// menu accelerators are routed through the Electron main process and
+// Playwright's `keyboard.press()` over CDP doesn't reach them
+// (empirically — same lesson as M13/C's `prep-joplin-panes.js`).
+
+function clickJoplinMenuItem(menuName, itemName) {
+    // Pass the AppleScript via stdin (-) — JSON.stringify wrapping into
+    // a shell argument was unreliable across nested-quote shapes.
+    const safeMenu = String(menuName).replace(/"/g, '\\"');
+    const safeItem = String(itemName).replace(/"/g, '\\"');
+    const script = `tell application "Joplin" to activate
+delay 0.2
+tell application "System Events"
+    tell process "Joplin"
+        try
+            click menu item "${safeItem}" of menu "${safeMenu}" of menu bar 1
+            return "ok"
+        on error errMsg
+            return "err: " & errMsg
+        end try
+    end tell
+end tell`;
+    try {
+        const { execFileSync } = require('child_process');
+        const out = execFileSync('osascript', ['-e', script], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+        }).toString().trim();
+        return out;
+    } catch (e) {
+        return `osascript-error: ${e.message}`;
+    }
+}
+
+// Probe the renderer DOM for which editor is currently visible:
+//   - `customEditor` — Univer iframe (plugin user-webview) takes over
+//   - `tinymce` — rich-text editor (.tox-edit-area__iframe present)
+//   - `markdown` — CodeMirror present (.cm-editor visible)
+// Returns details on the preview iframe too (visible? width?).
+async function probeEditorState(page) {
+    return page.evaluate(() => {
+        const out = {};
+        const customEditorIframe = document.querySelector('iframe.plugin-user-webview, iframe[id*="notesheetEditor"]');
+        out.customEditorVisible = !!(customEditorIframe && customEditorIframe.offsetParent !== null);
+        const tinyIframe = document.querySelector('iframe.tox-edit-area__iframe');
+        out.tinymceVisible = !!(tinyIframe && tinyIframe.offsetParent !== null);
+        const cm = document.querySelector('.cm-editor, .CodeMirror');
+        out.markdownVisible = !!(cm && cm.offsetParent !== null);
+        const previewIframe = document.querySelector('iframe.noteTextViewer');
+        out.previewVisible = !!(previewIframe && previewIframe.offsetParent !== null);
+        out.previewWidth = previewIframe ? previewIframe.getBoundingClientRect().width : 0;
+        out.previewHeight = previewIframe ? previewIframe.getBoundingClientRect().height : 0;
+        return out;
+    });
+}
+
+// State-aware drive: ensure the markdown preview pane is visible AND
+// the Custom Editor (Univer) is NOT taking over the editor pane.
+// Idempotent — checks state before each toggle, re-probes after.
+//
+// Steps (each conditional on current state):
+//   1. If Custom Editor is visible: View > Toggle editor plugin
+//      (switches to Joplin's built-in editor; defaults to TinyMCE).
+//   2. If TinyMCE is visible: View > Toggle editors
+//      (switches to Markdown editor + preview).
+//   3. If preview iframe is hidden (layout = editor-only): cycle
+//      View > Toggle editor layout up to 3 times until preview is
+//      visible. The cycle is editor-only → split → preview-only →
+//      back to editor-only; one or two presses lands somewhere with
+//      preview visible.
+async function ensurePreviewPaneVisible(page) {
+    let state = await probeEditorState(page);
+    console.error(`eval-screenshot: editor state = ${JSON.stringify(state)}`);
+    if (state.customEditorVisible) {
+        console.error('eval-screenshot: View > Toggle editor plugin (Custom Editor → built-in)');
+        clickJoplinMenuItem('View', 'Toggle editor plugin');
+        await page.waitForTimeout(800);
+        state = await probeEditorState(page);
+        console.error(`eval-screenshot:   after toggle plugin = ${JSON.stringify(state)}`);
+    }
+    if (state.tinymceVisible && !state.markdownVisible) {
+        console.error('eval-screenshot: View > Toggle editors (TinyMCE → Markdown)');
+        clickJoplinMenuItem('View', 'Toggle editors');
+        await page.waitForTimeout(800);
+        state = await probeEditorState(page);
+        console.error(`eval-screenshot:   after toggle editors = ${JSON.stringify(state)}`);
+    }
+    // Cycle layout up to 3 times trying to land on a state where the
+    // preview iframe is visible AND has a sensible width (>= 200px).
+    // Joplin's layout cycle is editor-only / split / preview-only.
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (state.previewVisible && state.previewWidth >= 200) break;
+        console.error(`eval-screenshot: View > Toggle editor layout (preview not visible: w=${state.previewWidth})`);
+        clickJoplinMenuItem('View', 'Toggle editor layout');
+        await page.waitForTimeout(800);
+        state = await probeEditorState(page);
+        console.error(`eval-screenshot:   layout attempt ${attempt + 1} = ${JSON.stringify(state)}`);
+    }
+    return state;
+}
+
+// Find the markdown-rendered preview frame by its document title.
+// Joplin renders the preview into an iframe with src
+// `joplin-content://note-viewer/...`; Playwright's `frame.url()`
+// returns empty for that custom protocol, so we identify the frame by
+// `document.title === 'Note viewer'`.
+async function pickPreviewFrame(page) {
+    for (let attempt = 0; attempt < 30; attempt++) {
+        for (const f of page.frames()) {
+            try {
+                const t = await f.evaluate(() => document.title);
+                if (t === 'Note viewer') return f;
+            } catch {
+                // frame may be navigating; skip
+            }
+        }
+        await page.waitForTimeout(200);
+    }
+    return null;
+}
+
+// Sample the rendered HTML preview for ink-band aggregates. We render
+// the iframe's `<body>` to an offscreen canvas via SVG-foreignObject,
+// but that requires loading external resources. Simpler: read the
+// computed `background-color` of every `<td>` and bucket the colours.
+// The ink aggregates (greenInk / pinkInk / lightGreenInk / etc.) are
+// computed by parsing each CSS colour value and applying the same
+// thresholds the canvas sampler uses. That keeps the sidecar shape
+// consistent with prior cycles' shape so the evaluator's gate
+// expressions don't have to special-case M16.
+async function samplePreviewPaneInk(frame, maxColors = 8) {
+    return frame.evaluate(({ maxColors }) => {
+        function parseRgb(str) {
+            // Accepts `rgb(R, G, B)`, `rgba(R, G, B, A)`, or `#RRGGBB`.
+            if (!str) return null;
+            const s = String(str).trim();
+            const m1 = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
+            if (m1) return { r: Number(m1[1]), g: Number(m1[2]), b: Number(m1[3]) };
+            const m2 = /^#([0-9a-fA-F]{6})$/.exec(s);
+            if (m2) {
+                const v = m2[1];
+                return {
+                    r: parseInt(v.slice(0, 2), 16),
+                    g: parseInt(v.slice(2, 4), 16),
+                    b: parseInt(v.slice(4, 6), 16),
+                };
+            }
+            return null;
+        }
+        const tds = Array.from(document.querySelectorAll('td'));
+        const hist = new Map();
+        let sampled = 0;
+        let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
+        let pinkInk = 0, lightGreenInk = 0, yellowInk = 0;
+        for (const td of tds) {
+            const cs = window.getComputedStyle(td);
+            const bg = parseRgb(cs.backgroundColor);
+            if (!bg) continue;
+            // Skip rgba(0,0,0,0) (transparent default — no fill).
+            if (cs.backgroundColor && /\b0\s*\)$/.test(cs.backgroundColor)) {
+                if (cs.backgroundColor.startsWith('rgba')) continue;
+            }
+            const { r, g, b } = bg;
+            // Skip near-white (effectively no fill) and pure black.
+            if (r > 240 && g > 240 && b > 240) continue;
+            sampled++;
+            if (r >= 200 && g <= 140 && b <= 140) redInk++;
+            if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
+            if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
+            if (
+                r >= 140 && r <= 180
+                && g >= 140 && g <= 180
+                && b >= 140 && b <= 180
+                && Math.abs(r - g) <= 10
+                && Math.abs(g - b) <= 10
+            ) greyInk++;
+            if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
+            if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
+            if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
+            const key = `rgb(${r},${g},${b})`;
+            hist.set(key, (hist.get(key) || 0) + 1);
+        }
+        const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
+        const [dominant, count] = top[0] || [null, 0];
+        // Page-level signals: are there any tables? Sheet headings?
+        const tableCount = document.querySelectorAll('table').length;
+        const sheetHeadings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+            .map((h) => (h.textContent || '').trim())
+            .filter((s) => !!s);
+        // Did the raw fenced JSON make it to the rendered output? If
+        // the renderer regressed (or didn't run), we'd see a `<pre><code>`
+        // block containing the JSON instead of an HTML table.
+        const rawJsonLeak = document.body.innerHTML.includes('"sheetOrder"')
+            || document.body.innerHTML.includes('"workbook-');
+        return {
+            dominant, count, sampled, top,
+            redInk, blueInk, greenInk, greyInk,
+            pinkInk, lightGreenInk, yellowInk,
+            // Preview-pane specific signals.
+            tableCount,
+            sheetHeadings,
+            rawJsonLeak,
+            // For schema parity with the canvas sampler.
+            inkRows: 0,
+            inkRowSpread: 0,
+        };
+    }, { maxColors });
+}
+
 function tableHeaderRowRegion(canvas) {
     // Univer's canvas has a backing store sized at devicePixelRatio
     // multiples of its CSS box. On a Retina display the canvas is 2x
@@ -775,14 +1010,23 @@ async function main() {
         // This is a robust stop-gap for the M13 failure mode: it
         // forces "the canvas exists AND has been sized" before we
         // screenshot, instead of a fixed sleep.
+        //
+        // M16 branch: when the regionKind is `previewPane`, we don't
+        // attach to UserWebviewIndex — the render target is the main
+        // shell page's `iframe.noteTextViewer` (a markdown-it preview
+        // pane). The flow drives Joplin into preview-visible state,
+        // locates the preview frame, and samples its DOM.
         let pixelSummary = null;
         let captureWebview = null;
         let captureCanvas = null;
+        let previewLocator = null;
         // Resolve the region kind: variant-suffixed key first, then the
         // plain feature id, then the row-0 default.
         const regionKind = REGION_BY_FEATURE[FEATURE_ID] || REGION_BY_FEATURE[BASE_FEATURE_ID] || 'rowZero';
         // For 'cfAllColumns' regionKind we use the dedicated multi-region
         // sampler `sampleCfColumns` below — no single-region regionFn.
+        // For 'previewPane' regionKind we use a separate sampler entirely
+        // (samplePreviewPaneInk) and don't read from the canvas.
         const regionFn = regionKind === 'rotatedRow'
             ? rotatedRowRegion
             : regionKind === 'richTextA1A2'
@@ -790,7 +1034,32 @@ async function main() {
                 : regionKind === 'tableHeaderRow'
                     ? tableHeaderRowRegion
                     : rowZeroRegion;
-        if (didOpenNote) {
+        if (didOpenNote && regionKind === 'previewPane') {
+            // M16 path: drive Joplin into preview-visible state, find
+            // the preview frame, sample CSS-computed background colours
+            // of every <td> for the ink aggregates.
+            const editorState = await ensurePreviewPaneVisible(page);
+            if (!editorState.previewVisible) {
+                console.error('eval-screenshot: preview pane did NOT become visible after toggles; screenshot will fall back to whole page.');
+            } else {
+                const previewFrame = await pickPreviewFrame(page);
+                if (!previewFrame) {
+                    console.error('eval-screenshot: preview frame (Note viewer) not found in page.frames(); screenshot will fall back to whole page.');
+                } else {
+                    // Wait for the preview frame's <body> to populate.
+                    // The preview is rendered async after the editor
+                    // switches; without this gate we can sample before
+                    // the .notesheet-export div lands.
+                    try {
+                        await previewFrame.waitForSelector('table, .notesheet-export, pre', { timeout: 8_000, state: 'attached' });
+                    } catch {
+                        console.error('eval-screenshot: preview frame did not show <table> within 8s; sampling anyway.');
+                    }
+                    pixelSummary = await samplePreviewPaneInk(previewFrame);
+                    previewLocator = page.locator('iframe.noteTextViewer').first();
+                }
+            }
+        } else if (didOpenNote) {
             captureWebview = await pickNotesheetWebview(page);
             if (!captureWebview) {
                 console.error('eval-screenshot: UserWebviewIndex frame did not appear; the opened note may not be a Notesheet, or the plugin failed to load.');
@@ -831,12 +1100,14 @@ async function main() {
             }
         }
 
-        // 5. Screenshot. If a Notesheet canvas is in scope, screenshot
-        // the canvas element directly — it's what the user sees and
-        // it sidesteps Joplin's window-pane cropping (the editor pane
-        // is often narrower than the canvas needs). Otherwise fall
-        // back to the whole page (smoke / verification mode).
-        if (captureWebview && captureCanvas) {
+        // 5. Screenshot. Per region kind:
+        //   - previewPane: screenshot the preview iframe element directly.
+        //   - canvas-mode (rowZero / rotatedRow / etc.): screenshot the
+        //     Univer canvas element.
+        //   - fallback: whole page.
+        if (regionKind === 'previewPane' && previewLocator) {
+            await previewLocator.screenshot({ path: out });
+        } else if (captureWebview && captureCanvas) {
             await captureWebview.locator(captureCanvas).first().screenshot({ path: out });
         } else {
             await page.screenshot({ path: out, fullPage: false });
@@ -860,7 +1131,9 @@ async function main() {
                         ? 'table header band (x 80–480, y 22–35; cols B+ of A1:_ table header row, excludes A1 active-cell selection border)'
                         : regionKind === 'cfAllColumns'
                             ? 'CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)'
-                            : 'row-0 (top 80px slab of main canvas)';
+                            : regionKind === 'previewPane'
+                                ? 'preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)'
+                                : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(sidecar, JSON.stringify({
                 source: out,
                 region: regionLabel,
@@ -869,6 +1142,9 @@ async function main() {
             }, null, 2));
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
             console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`);
+            if (regionKind === 'previewPane') {
+                console.error(`eval-screenshot:   tableCount=${pixelSummary.tableCount} sheetHeadings=${JSON.stringify(pixelSummary.sheetHeadings)} rawJsonLeak=${pixelSummary.rawJsonLeak} pinkInk=${pixelSummary.pinkInk} lightGreenInk=${pixelSummary.lightGreenInk}`);
+            }
             if (pixelSummary.cfColumns) {
                 if (pixelSummary.geometrySource) {
                     console.error(`eval-screenshot:   geometrySource=${pixelSummary.geometrySource} colWidthsCss=${JSON.stringify(pixelSummary.colWidthsCss)}`);

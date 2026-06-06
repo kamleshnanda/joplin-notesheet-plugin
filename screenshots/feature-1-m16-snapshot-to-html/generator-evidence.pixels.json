@@ -1,0 +1,32 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.png",
+  "region": "preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)",
+  "regionKind": "previewPane",
+  "dominant": "rgb(202,239,203)",
+  "count": 28,
+  "sampled": 35,
+  "top": [
+    [
+      "rgb(202,239,203)",
+      28
+    ],
+    [
+      "rgb(52,105,46)",
+      7
+    ]
+  ],
+  "redInk": 0,
+  "blueInk": 0,
+  "greenInk": 35,
+  "greyInk": 0,
+  "pinkInk": 0,
+  "lightGreenInk": 28,
+  "yellowInk": 0,
+  "tableCount": 1,
+  "sheetHeadings": [
+    "Sheet1"
+  ],
+  "rawJsonLeak": false,
+  "inkRows": 0,
+  "inkRowSpread": 0
+}

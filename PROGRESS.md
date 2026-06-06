@@ -141,6 +141,71 @@ every feature.
   PR #25 (commit `f423d5a`). Roadmap renumbered: M15 is now the next
   active milestone (was already so before but the README marker was
   off-by-one).
+- **feature-1-m16-snapshot-to-html** (2026-06-06) — Ships the
+  snapshot → HTML renderer as a Joplin
+  `ContentScriptType.MarkdownItPlugin` content script. New entry at
+  `src/contentScripts/notesheetRenderer.ts`; registered in
+  `src/index.ts` alongside the existing editor; bundled via the
+  existing `buildExtraScripts` webpack target (commonjs2 — see
+  `plugin.config.json` extraScripts list). The renderer overrides
+  markdown-it's fence handler: when the fence info is `notesheet v=1`
+  it parses the JSON snapshot, walks `sheetOrder` / `sheets[id]` /
+  `styles` / `mergeData`, and emits `<table>` per sheet with inline-
+  styled `<td>`s (bg / fg / bold / italic / underline / horizontal +
+  vertical alignment / per-side borders). Non-notesheet fences fall
+  through to markdown-it's default — verified with a Jest test that
+  feeds `javascript` / `python` / empty info. CF rules are evaluated
+  inside the renderer itself (Univer's CF preset only paints at
+  canvas-render time): cellIs, top10, colorScale all work; dataBar +
+  iconSet are punted with documentation in OPERATOR_ASK and
+  BUILD_PLAN's Out-of-scope list. Merged cells emit colspan/rowspan
+  on the anchor and skip the interior cells (verified by counting
+  tds in the merge-row).
+
+  **13 new Jest tests** in `tests/m16NotesheetMarkdownRender.test.ts`
+  (criterion 1 base shape × 7, criterion 2 multi-sheet × 1,
+  criterion 3 FormattingSmorgasboard × 1, criterion 4 CF × 1, plus 3
+  edge cases — non-notesheet fence falls through, malformed JSON
+  returns null, unsupported version returns null, HTML-escapes
+  cell values to defang `<script>` injection). Multi-sheet test
+  builds a 3-sheet workbook in-memory via exceljs because the
+  shipped `MultiSheet.xlsx` fixture has chart drawings that crash
+  exceljs's reconcile (a pre-existing M12 known shortcoming). Test
+  total: 220 → 233 (13 new, none regressed).
+
+  **Harness extension: `previewPane` regionKind.** New code path
+  in `scripts/pge/eval-screenshot.js`. Drives Joplin into preview-
+  visible state via three menu clicks (View > Toggle editor plugin
+  if Custom Editor active, View > Toggle editors if TinyMCE active,
+  View > Toggle editor layout up to 3× until preview iframe is
+  visible). Identifies the preview frame by `document.title ===
+  'Note viewer'` (Playwright's `frame.url()` returns empty for
+  Joplin's `joplin-content://note-viewer/` protocol). Samples the
+  preview iframe's DOM via `samplePreviewPaneInk()`: parses
+  CSS-computed `background-color` of every `<td>`, runs them
+  through the same threshold expressions the canvas sampler uses
+  (greenInk / pinkInk / lightGreenInk / etc.), and adds three
+  preview-pane-specific signals to the sidecar: `tableCount`,
+  `sheetHeadings`, `rawJsonLeak`. The latter is the M13-style gate
+  — if `rawJsonLeak: true`, the renderer didn't run and the user
+  saw a JSON blob in their export.
+
+  AppleScript invocation hardened: switched from
+  `execSync('osascript -e ${JSON.stringify(script)}')` to
+  `execFileSync('osascript', ['-e', script])` because nested-quote
+  escaping in the shell-arg form intermittently produced syntax
+  errors (`Expected "given", "in", "of", expression...` at line
+  37:38). The argv form passes the script verbatim and is
+  syntactically reliable.
+
+  Generator-evidence:
+  `screenshots/feature-1-m16-snapshot-to-html/eval-*.png`
+  (FormattingSmorgasboard fixture rendered: green table header,
+  CAEFCB banded rows, no raw JSON, all column headers visible) +
+  `.pixels.json` sidecar (`dominant=rgb(202,239,203)` =
+  `#CAEFCB`, `greenInk=35`, `lightGreenInk=28`, `tableCount=1`,
+  `rawJsonLeak=false`). Read via the Read tool.
+
 - **feature-1-m15-conditional-formatting** (2026-06-05) — Full
   round-trip on the 5 CF rule types in
   `ConditionalFormatting-Variants.xlsx`: colorScale, dataBar,
@@ -175,18 +240,17 @@ every feature.
   `screenshots/feature-1-m15-conditional-formatting/generator-evidence.png`
   (+ `.pixels.json` sidecar). Excel reference screenshot at
   `screenshots/excel-reference/ConditionalFormatting-Variants.png`
-  still pending operator capture.
+  delivered by operator; evaluator graded PASS. Shipped via PR #26
+  (commit `88297a1`); README cleanup PR #27 (commit `19b0a6c`)
+  marked M15 shipped.
 
 ## In progress
 
-(Empty — M15 done; awaiting evaluator verdict. Harness sampler bug
-fix shipped 2026-06-05 — see `## Notes` entry "M15 harness sampler:
-content-discovering geometry via FUniver".)
+(empty)
 
 ## Next
 
-(Empty for now. M16 / M17 are post-M15 and will be specced after
-M15 ships.)
+(Empty for now. M17 SheetJS-related items are post-M16.)
 
 ## Notes
 
@@ -589,7 +653,11 @@ M15 ships.)
   render-side bugs. Both anchored UPSTREAM of our code, never
   against our own emit. M13/E rework #2 + #3 is the precedent;
   M15 extends both layers (5 tests per layer for the 5 CF
-  columns).
+  columns). **M16 does NOT use the canvas-fidelity layer** — the
+  M16 render target is HTML in Joplin's preview pane, not the
+  Univer canvas, so canvas-vs-Excel pixel parity is not the gate.
+  M16's test layer is "HTML content vs source-fixture content"
+  (Jest-only; see BUILD_PLAN.md acceptance criteria 1–4).
 - **Operator captures the Excel reference screenshot for a new
   fixture as part of the cycle.** M13/E precedent: when a new
   fixture is introduced (Aptos and Classic Smorgasboard PNGs were
@@ -760,3 +828,198 @@ M15 ships.)
   `tableHeaderRowRegion` mitigates this for M13/E by sampling
   past col A; the M15 fixture has multi-column visual evidence
   including col A so we need to actually move the selection.
+
+- **M16 introduces a new content-script entry shape.** Per
+  `api/JoplinContentScripts.d.ts`, `ContentScriptType.MarkdownItPlugin`
+  scripts export `default function(context)` that returns
+  `{ plugin: (markdownIt, pluginOptions) => {...}, assets: {...} }`.
+  The plugin function adds a fenced-code-block override for tag
+  `notesheet`. Joplin runs the script in a sandboxed renderer
+  worker, so the script bundle MUST be self-contained — bundle
+  `extractSnapshot()` (from `src/snapshot.ts`) into the entry,
+  do NOT pull `src/xlsx.ts` (heavy: exceljs, JSZip; renderer
+  doesn't need import/export logic). The new entry goes into
+  `plugin.config.json` extraScripts list — webpack's existing
+  `buildExtraScripts` config (`webpack.config.js:345`) builds it
+  as a `commonjs2` bundle by default, which is what content scripts
+  expect. Do NOT add the new entry to `browserExtraScripts` (that
+  set switches the output to IIFE for browser-bound webview scripts
+  — the markdown-it content script is renderer-side, not webview).
+  Generator should verify the produced bundle exports
+  `module.exports = function(context) { ... }` (commonjs2 shape)
+  before flipping the row.
+- **M16 harness target shifts from Univer canvas to preview pane.**
+  Until M15 every eval-screenshot targeted the Univer canvas inside
+  `UserWebviewIndex.html`. M16's render lands in Joplin's main shell
+  preview pane (a `note-viewer-iframe` or similar — generator
+  verifies via DevTools at session start; selectors aren't a Joplin
+  plugin-API contract so they may shift across Joplin versions).
+  Add a `previewPane` regionKind to `eval-screenshot.js`'s
+  `REGION_BY_FEATURE` table and a sampler path that picks the
+  Joplin shell page (NOT the editor page) and screenshots the
+  preview iframe body. The CDP page-picker scoring needs adjusting
+  for this mode — the existing scoring favours the editor page
+  (Univer-host) for Notesheet notes; M16 wants the SHELL page
+  (preview-host). Use a feature-aware override on the page picker:
+  if `REGION_BY_FEATURE[FEATURE_ID] === 'previewPane'`, score the
+  shell page higher. The fix lands as part of the M16 cycle.
+- **M16 window prep: editor + preview both visible.**
+  `prep-joplin-window.sh` (M13/C) covers sidebar + note-list +
+  fill-window. M16 additionally needs the preview pane visible —
+  Joplin's default state after sidebar/note-list toggle is
+  editor-only. Cmd+L on macOS toggles the editor / split / preview-
+  only triad; the script needs state-aware toggling per the M13/C
+  precedent. Detection signal: is `iframe.note-viewer-iframe`
+  visible and `> 100px wide` in the renderer DOM. If not, send the
+  Cmd+L AppleScript stroke and re-check.
+- **M16 CF evaluator is duplicated logic vs the Univer CF preset.**
+  Univer's CF preset (M15) evaluates rules at canvas-render time;
+  the M16 renderer evaluates them again at HTML-render time — the
+  static HTML pipeline doesn't run Univer. This duplication is
+  unavoidable without restructuring snapshot → render through a
+  headless Univer engine, which is itself a multi-cycle project.
+  M16 ships its own evaluator for cellIs, top10, and colorScale
+  only (dataBar + iconSet punted). The evaluator code lives inside
+  the content-script bundle; if a later cycle wants to factor out
+  into a shared module, that's its own refactor.
+- **M16 fence handler MUST tolerate non-Notesheet fenced blocks.**
+  The renderer is invoked for EVERY note in Joplin's preview
+  pipeline. The first thing the override does is check the fence
+  info string for `notesheet v=1`; if it doesn't match, fall
+  through to markdown-it's default fence handler. Don't break
+  generic-code-block rendering for non-Notesheet notes. Test
+  surface for this is implicit in criterion 1 (the test feeds a
+  notesheet body and asserts table render); add an explicit
+  "non-notesheet fenced block falls through" assertion if there's
+  budget.
+- **M16 test gap discipline.** Per
+  `feedback_pge_fidelity_test_gap.md`: pin "the bold cell carries
+  `font-weight: bold`", NOT "the renderer emits `<td class='b'>`".
+  Pin "the header `<td>` style contains `background-color: #34692E`",
+  NOT "the renderer emits a particular wrapper-span shape." HTML
+  emit format is implementation detail; the cell-by-cell rendered
+  CONTENT is the contract. The HTML format CAN change without test
+  failure as long as the rendered values + colours match. Source
+  fixture content (cell values from the snapshot, M13/E-validated
+  colour values from the snapshot's already-pinned styles) is the
+  upstream anchor.
+
+- **Preview pane DOM target — `iframe.noteTextViewer`** (Joplin
+  current build, verified 2026-06-06). Lives inside the main shell
+  page (`Resources/app.asar/index.html`) — NOT inside the
+  `UserWebviewIndex.html` frame the prior cycles targeted. Its iframe
+  src is `joplin-content://note-viewer/...`, but Playwright's
+  `frame.url()` returns empty string for that custom protocol —
+  identify the frame by `document.title === 'Note viewer'`. The
+  iframe element on the main page is `iframe.noteTextViewer`; use
+  `page.locator('iframe.noteTextViewer').screenshot()` to capture
+  the rendered HTML directly. Pre-existing Custom Editor (Univer)
+  state DEFAULT-takes-over the editor pane for Notesheet notes;
+  the harness has to invoke `View > Toggle editor plugin` to make
+  the preview pane appear. After that, depending on operator state
+  the layout may be editor-only / split / preview-only — cycle
+  `View > Toggle editor layout` up to 3 times until preview is
+  visible.
+
+- **Joplin layout-state machine has 5 distinct states for an
+  open Notesheet note.** Verified via DOM inspection 2026-06-06:
+  (1) Custom Editor active (Univer iframe = `iframe.plugin-user-
+  webview` visible; no preview pane). (2) Built-in editor active,
+  TinyMCE rich-text mode (`iframe.tox-edit-area__iframe` visible).
+  (3) Markdown editor active, layout = editor-only (`.cm-editor`
+  visible; preview iframe hidden). (4) Markdown editor active,
+  layout = split (`.cm-editor` and `iframe.noteTextViewer` BOTH
+  visible at ~half width). (5) Markdown editor active, layout =
+  preview-only (`iframe.noteTextViewer` visible at full editor-
+  pane width; `.cm-editor` hidden). For M16 evidence, states 4 +
+  5 both work — the preview iframe is what gets screenshotted.
+  `ensurePreviewPaneVisible()` in `eval-screenshot.js` is the
+  state-aware driver; reads current state, applies one or two
+  toggles to land in 4 or 5, never blindly toggles. Idempotent:
+  re-running on an already-correct state is a no-op.
+
+- **AppleScript via `execFileSync('osascript', ['-e', script])`,
+  not `execSync('osascript -e ${JSON.stringify(script)}')`.**
+  Switched in M16. The shell-arg form was lossy on nested-quote
+  shapes — `JSON.stringify` of a multi-line AppleScript with
+  embedded `"` produced a string that the shell unwrapped wrong,
+  yielding `Expected "given", "in", "of", expression...` syntax
+  errors at line 37:38. argv form passes the script verbatim with
+  no shell-tokenization step.
+
+- **Preview-pane sampler reads CSS computed colours, NOT canvas
+  pixels.** M16's gate target is HTML, not pixel-perfect render —
+  `samplePreviewPaneInk()` walks every `<td>` in the preview
+  iframe's DOM, reads `getComputedStyle(td).backgroundColor`,
+  parses the `rgb(R, G, B)` string, and applies the same threshold
+  expressions the canvas sampler uses (greenInk / pinkInk /
+  lightGreenInk / etc.). That keeps the sidecar shape consistent
+  across regionKinds, so the evaluator's gate expressions don't
+  have to special-case M16. Three preview-pane-specific signals
+  added: `tableCount`, `sheetHeadings`, `rawJsonLeak`. The latter
+  is the M13-style failure-mode gate — if the renderer didn't run
+  (or the registration failed), the user sees a `<pre><code>`
+  block containing the JSON; `rawJsonLeak: true` catches that.
+
+- **Webpack content-script bundle shape verified for M16.** The
+  built `dist/contentScripts/notesheetRenderer.js` is wrapped in
+  a single IIFE that ends with `module.exports = t` where `t` is
+  an object with keys `default`, `renderFenceToken`,
+  `renderNotesheetSnapshot` — exactly what `commonjs2`
+  `libraryTarget` produces and what Joplin's content-script
+  loader expects to require. Bundle size ~8.4 KB (very compact —
+  no exceljs / JSZip / Univer pulled in; just stdlib + the
+  renderer's CF evaluator). Don't add the entry to
+  `browserExtraScripts` — that's for browser-bound IIFE bundles
+  loaded via `addScript` (the editor view), not for renderer-side
+  markdown-it plugins. The webpack `extraScripts` map subdir-name
+  prefix correctly: `contentScripts/notesheetRenderer.ts` →
+  `dist/contentScripts/notesheetRenderer.js`. The path passed to
+  `joplin.contentScripts.register` must match this layout
+  (`./contentScripts/notesheetRenderer.js`).
+
+- **Renderer is read-only on the snapshot.** The M16 renderer
+  walks `snapshot.sheetOrder` / `sheets[id].cellData` /
+  `sheets[id].mergeData` / `styles[id]` / `resources[]` but never
+  modifies any of it. CF rule evaluation produces a separate
+  `Map<string, string>` of per-cell fill overrides; the snapshot
+  itself is untouched. Any future content script should follow
+  the same discipline — content scripts run for every note in
+  the preview pipeline, and side-effecting from one would mean
+  side-effecting on every note, including notes the plugin
+  doesn't own.
+
+- **CF colorScale interpolation by anchors.** The M15 import
+  shape gives us `[{index, color, value: cfvo}]`. Each `cfvo`
+  resolves to a numeric position in the rule's value range
+  (min/max/percentile/percent/num — formula falls through to
+  null and the anchor is dropped). With ≥2 valid anchors,
+  `evalColorScale` sorts by position, finds the segment the cell
+  value lies in, and lerps RGB linearly between the segment's
+  two anchors. `lerpRgb('#F8696B', '#FFEB84', 0.5)` produces a
+  reasonable orange — verified visually by sampling
+  ConditionalFormatting-Variants.xlsx column A, where values
+  0..90 step through red → orange → yellow → green-ish.
+
+- **Renderer falls through gracefully for malformed input.**
+  Three failure modes return `null` from `renderFenceToken`:
+  (a) fence info doesn't start with `notesheet`; (b) version
+  isn't `1`; (c) fence body isn't valid JSON. Markdown-it then
+  invokes the default fence handler which renders the raw JSON.
+  This is the safe degradation — better to show the user the
+  source than to inject a placeholder string they might
+  misinterpret as the actual content. The M16 Jest tests pin
+  all three failure modes.
+
+- **Multi-sheet test fixture choice — in-memory, not
+  MultiSheet.xlsx.** The shipped `MultiSheet.xlsx` fixture under
+  `tests/ExcelBaseTestData/formatting-testdata/` carries chart
+  drawings that crash exceljs's reconcile loop (raised as a
+  known shortcoming in M12; pinned in
+  `tests/m12ImportRecovery.test.ts`). M16's multi-sheet test
+  cannot import that fixture without first adopting a chart-
+  supporting importer (out of scope). We build a 3-sheet
+  workbook in-memory via `new ExcelJS.Workbook(); wb.addWorksheet(...)`
+  — same pattern other tests in the suite use. The test exercises
+  the same renderer code path that a fixture-imported multi-sheet
+  snapshot would.
