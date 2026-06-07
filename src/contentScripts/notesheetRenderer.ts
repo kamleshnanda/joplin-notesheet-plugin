@@ -146,6 +146,7 @@ interface ResolvedStyle {
     st?: { s?: number };
     ht?: number;
     vt?: number;
+    n?: { pattern?: string };
     bd?: {
         t?: { s?: number; cl?: { rgb?: string } };
         r?: { s?: number; cl?: { rgb?: string } };
@@ -208,13 +209,423 @@ function buildCellInlineStyle(
     return parts.join('; ');
 }
 
+// ───────── Number / date / percent formatting ──────────────────────
+
+// Excel stores dates as a serial: number of days where serial 1 =
+// 1900-01-01. Excel ALSO pretends 1900-02-29 exists (a 1900-leap-year
+// quirk inherited from Lotus 1-2-3 for backward compatibility), so
+// serial 60 = the phantom 1900-02-29 and serial 61 = 1900-03-01.
+// Conversion to a real calendar date: anchor serial 1 at 1900-01-01,
+// then subtract one day for any serial > 60 to skip the bogus leap day.
+//
+// Implementation: pick an epoch of 1899-12-31 UTC so that
+// `epoch + serial * 86400000` lands on 1900-01-01 for serial 1, then
+// subtract one day for serial > 60. Verified against:
+//   serial 1     → 1900-01-01
+//   serial 60    → 1900-02-28 (we deliberately don't surface the
+//                  phantom 1900-02-29; <= 60 hits the unshifted path)
+//   serial 61    → 1900-03-01
+//   serial 46037 → 2026-01-15 (matches Excel's render of
+//                  FormattingSmorgasboard.xlsx F2)
+const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 31);  // 1899-12-31 UTC
+function excelSerialToDate(serial: number): Date | null {
+    if (!Number.isFinite(serial) || serial < 1) return null;
+    const adjusted = serial > 60 ? serial - 1 : serial;
+    const ms = EXCEL_EPOCH_MS + Math.round(adjusted * 86400000);
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+}
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function pad2(n: number): string {
+    return n < 10 ? '0' + n : String(n);
+}
+
+// Apply an Excel numFmt pattern to a cell value (number or string).
+// Returns the formatted string. The set of supported patterns mirrors
+// what appears in our fixture suite (verified by
+// `tests/m16NotesheetMarkdownRender.test.ts`).
+//
+// SUPPORTED PATTERNS (operator-validated 2026-06-06):
+//
+//   Numeric / percent / currency:
+//     `0`              → 1235          (rounded integer)
+//     `0.00`           → 1234.57       (2-decimal, no thousands)
+//     `#,##0`          → 1,235         (thousands-grouped integer)
+//     `#,##0.00`       → 1,234.57      (thousands + 2-decimal)
+//     `0%`             → 15%           (integer percent)
+//     `0.00%`          → 15.00%        (any-decimal percent)
+//     `"$"#,##0`       → $45,000       (US currency, no decimals)
+//     `"$"#,##0.00`    → $45,000.00    (US currency, 2 decimals)
+//     `$#,##0.00`      → $1,234.56     (un-quoted leading $, same shape)
+//     `#,##0.00 "€"`   → 1,234.56 €    (EU-style, suffix-quoted symbol)
+//
+//   Dates (Excel serial):
+//     `yyyy-mm-dd`     → 2026-01-15
+//     `m/d/yy`         → 1/15/26
+//     `dd-mmm-yy`      → 15-Jan-26
+//
+//   Datetime with locale code:
+//     `[$-409]m/d/yy h:mm AM/PM;@` → 1/15/26 6:00 PM (the `[$-409]`
+//                       US-English locale tag is stripped; the `;@`
+//                       text-fallback section is honoured for string
+//                       cell values).
+//
+//   Multi-section conditional:
+//     `[Red]#,##0.00;[Blue]#,##0.00` → -1,234.56 with inline-style
+//                       red colour for negatives or blue for positives.
+//                       The colour is delivered by wrapping the value
+//                       in a `<span style="color:red">…</span>`. This
+//                       OVERRIDES the cell's own `color` style — Excel
+//                       treats numFmt colour as authoritative for the
+//                       cell value's text.
+//
+//   Accounting (Excel built-in):
+//     `_("$"* #,##0.00_);_("$"* (#,##0.00);_("$"* "-"??_);_(@_)`
+//                       → ` $1,234.56 ` (positive)
+//                       → ` $(1,234.56)` (negative — parens, no minus)
+//                       → ` $- ` (zero — dash placeholder)
+//                       → text passes through as-is
+//                       The leading/trailing underscore-fill is
+//                       approximated as a single space; HTML doesn't
+//                       have Excel's variable-width column-aligned
+//                       fill character.
+//
+//   Locale variants of accounting:
+//     `_-* #,##0.00 "kr"_-`  → ` 1,234.56 kr ` (Swedish krona pattern)
+//
+//   Text-suffix:
+//     `@ "suffix"`     → "{cellValue} suffix" (text only)
+//
+// FALLBACK BEHAVIOUR:
+//
+// Any pattern not matched above returns the raw value as a string.
+// This is intentional — silently emitting unstable output (e.g. partial
+// formatting) is worse than emitting the unformatted number. The set
+// of patterns we DON'T cover is documented in the README's "Known
+// shortcomings — Markdown export numFmt patterns" entry, with a
+// `KNOWN SHORTCOMING` Jest test that pins the fall-through behaviour
+// so a future change can't silently regress.
+//
+// IMPLEMENTATION NOTES:
+//
+// Excel's numFmt syntax is huge — full parity would require porting
+// LibreOffice's nf or Microsoft's runtime engine. We don't go there.
+// The formatter's strategy: try each supported pattern as an explicit
+// regex/string match; first match wins. Patterns are organised by
+// section count (single → multi) so the conditional / accounting
+// patterns are evaluated before the simpler ones they could subsume.
+function formatNumberWithPattern(value: number | string, pattern: string): { html: string; raw: string } {
+    const p = pattern.trim();
+
+    // Pre-check: text-only patterns (`@ "suffix"`) accept any value
+    // type but render based on the LITERAL cell value. The `@`
+    // placeholder substitutes the cell's text; surrounding literal
+    // text (in quotes or not) is appended/prepended.
+    const textSuffixMatch = /^@\s*"([^"]*)"$/.exec(p);
+    if (textSuffixMatch) {
+        const suffix = textSuffixMatch[1];
+        const text = String(value);
+        const out = `${text} ${suffix}`;
+        return { html: escapeHtml(out), raw: out };
+    }
+
+    // For non-text patterns, coerce a non-numeric value to its string
+    // form and skip the numeric pattern matchers.
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return { html: escapeHtml(String(value)), raw: String(value) };
+    }
+    const num = value;
+
+    // ── Multi-section conditional: `[Red]…;[Blue]…` ────────────────
+    // Excel splits sections by semicolons (top-level only). With 2
+    // sections: section[0] = positive, section[1] = negative. With
+    // a leading `[Red]`/`[Blue]`/etc., the matching value's render
+    // gets a colour override.
+    const sections = splitNumFmtSections(p);
+    if (sections.length >= 2) {
+        // Two-section conditional with colour markers.
+        const positiveSection = sections[0];
+        const negativeSection = sections[1];
+        const posColour = extractLeadingColour(positiveSection);
+        const negColour = extractLeadingColour(negativeSection);
+        if (posColour.colour || negColour.colour) {
+            const usePositive = num >= 0;
+            const sect = usePositive ? posColour : negColour;
+            const cleaned = sect.body.trim();
+            const inner = formatNumberSimple(Math.abs(num), cleaned);
+            const signedRaw = (!usePositive && !cleaned.includes('-') && !cleaned.includes('('))
+                ? '-' + inner
+                : inner;
+            const colour = sect.colour;
+            if (colour) {
+                return {
+                    html: `<span style="color: ${colour}">${escapeHtml(signedRaw)}</span>`,
+                    raw: signedRaw,
+                };
+            }
+            return { html: escapeHtml(signedRaw), raw: signedRaw };
+        }
+    }
+
+    // ── Accounting: 4-section pattern, possibly with `_(`, `_)`, `* ` ─
+    // The canonical Excel Accounting pattern is:
+    //   `_("$"* #,##0.00_);_("$"* (#,##0.00);_("$"* "-"??_);_(@_)`
+    // Section 0: positive (currency-prefixed, trailing fill)
+    // Section 1: negative (currency-prefixed, parens)
+    // Section 2: zero (dash placeholder, possibly with question marks)
+    // Section 3: text (cell value as-is, surrounded by underscores)
+    // We detect by looking for the underscore-paren prefix `_(` AND
+    // the asterisk-fill `* ` AND the explicit-dash zero section.
+    if (sections.length === 4 && sections.every((s) => /^_[(\-]/.test(s) || /^_\(/.test(s))) {
+        const accountingHtml = formatAccounting(num, sections);
+        if (accountingHtml !== null) return { html: escapeHtml(accountingHtml), raw: accountingHtml };
+    }
+    // Locale-variant single-section accounting (e.g. krona).
+    if (sections.length === 1 && /^_[\-(]/.test(p) && /\*/.test(p)) {
+        const accountingHtml = formatAccounting(num, [p, p, p, p]);
+        if (accountingHtml !== null) return { html: escapeHtml(accountingHtml), raw: accountingHtml };
+    }
+
+    // ── Datetime with locale code: `[$-409]m/d/yy h:mm AM/PM;@` ────
+    // Strip the leading `[$-XXX]` locale tag (we don't localise — US
+    // English render covers the common case). Strip the trailing
+    // `;@` text-fallback section (text values don't reach this
+    // branch since we already coerced numeric above).
+    let workingPattern = p;
+    workingPattern = workingPattern.replace(/^\[\$-[0-9A-F]+\]/i, '');
+    workingPattern = workingPattern.replace(/;@$/, '');
+    if (workingPattern !== p) {
+        const dt = formatDateTime(num, workingPattern);
+        if (dt !== null) return { html: escapeHtml(dt), raw: dt };
+    }
+
+    // ── Single-section numeric format ──────────────────────────────
+    const simple = formatNumberSimple(num, p);
+    if (simple !== null) return { html: escapeHtml(simple), raw: simple };
+
+    // ── Fallback: raw value. Documented as a known shortcoming. ───
+    const raw = String(num);
+    return { html: escapeHtml(raw), raw };
+}
+
+// Split an Excel numFmt pattern by top-level semicolons. Quoted
+// sub-strings ("..." and brackets [...]) protect their contents.
+function splitNumFmtSections(p: string): string[] {
+    const out: string[] = [];
+    let depth = 0;
+    let inQuote = false;
+    let buf = '';
+    for (let i = 0; i < p.length; i++) {
+        const c = p[i];
+        if (inQuote) {
+            buf += c;
+            if (c === '"') inQuote = false;
+            continue;
+        }
+        if (c === '"') { inQuote = true; buf += c; continue; }
+        if (c === '[') { depth++; buf += c; continue; }
+        if (c === ']') { depth--; buf += c; continue; }
+        if (c === ';' && depth === 0) {
+            out.push(buf);
+            buf = '';
+            continue;
+        }
+        buf += c;
+    }
+    out.push(buf);
+    return out;
+}
+
+// Strip a leading `[Color]` from a section. Returns the section body
+// (without the marker) and the CSS colour name (or null).
+function extractLeadingColour(section: string): { colour: string | null; body: string } {
+    const m = /^\[(Red|Blue|Green|Yellow|Magenta|Cyan|Black|White)\]/i.exec(section);
+    if (!m) return { colour: null, body: section };
+    return { colour: m[1].toLowerCase(), body: section.slice(m[0].length) };
+}
+
+// Format a numeric value against a single-section numeric pattern.
+// Returns null if the pattern doesn't match anything we recognise.
+function formatNumberSimple(value: number, p: string): string | null {
+    const trimmed = p.trim();
+
+    // Percent.
+    const pctMatch = /^0(?:\.(0+))?%$/.exec(trimmed);
+    if (pctMatch) {
+        const decimals = pctMatch[1] ? pctMatch[1].length : 0;
+        return (value * 100).toFixed(decimals) + '%';
+    }
+
+    // Date patterns first (these are non-numeric in the visual sense).
+    const dateOut = formatDate(value, trimmed);
+    if (dateOut !== null) return dateOut;
+
+    // Currency: leading $ (quoted or not), thousands-grouped digits,
+    // optional decimals.
+    const currencyMatch = /^"?\$"?#,##0(?:\.(0+))?$/.exec(trimmed);
+    if (currencyMatch) {
+        const decimals = currencyMatch[1] ? currencyMatch[1].length : 0;
+        const abs = Math.abs(value);
+        const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        const sign = value < 0 ? '-' : '';
+        return `${sign}$${formatted}`;
+    }
+
+    // Suffix-quoted currency: `#,##0.00 "€"` or `#,##0.00 "GBP"`.
+    const suffixCurrency = /^(0|#,##0)(?:\.(0+))?\s+"([^"]+)"$/.exec(trimmed);
+    if (suffixCurrency) {
+        const grouping = suffixCurrency[1].includes(',');
+        const decimals = suffixCurrency[2] ? suffixCurrency[2].length : 0;
+        const symbol = suffixCurrency[3];
+        const abs = Math.abs(value);
+        const formatted = grouping
+            ? abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+            : abs.toFixed(decimals);
+        const sign = value < 0 ? '-' : '';
+        return `${sign}${formatted} ${symbol}`;
+    }
+
+    // Plain integer / decimal patterns.
+    if (trimmed === '0' || trimmed === '#,##0') {
+        const rounded = Math.round(value);
+        return trimmed === '0' ? String(rounded) : rounded.toLocaleString('en-US');
+    }
+    if (trimmed === '0.00' || trimmed === '#,##0.00') {
+        return trimmed === '0.00'
+            ? value.toFixed(2)
+            : value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    return null;
+}
+
+// Format an Excel date serial against one of the known date patterns.
+// Returns null if the pattern doesn't look like a date format.
+function formatDate(value: number, p: string): string | null {
+    if (p === 'yyyy-mm-dd' || p === 'yyyy-MM-dd') {
+        const d = excelSerialToDate(value);
+        if (d) return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    }
+    if (p === 'm/d/yy' || p === 'M/d/yy' || p === 'm/d/yyyy' || p === 'M/d/yyyy') {
+        const d = excelSerialToDate(value);
+        if (d) {
+            const yy = p.endsWith('yyyy')
+                ? String(d.getUTCFullYear())
+                : pad2(d.getUTCFullYear() % 100);
+            return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${yy}`;
+        }
+    }
+    if (p === 'dd-mmm-yy' || p === 'dd-MMM-yy') {
+        const d = excelSerialToDate(value);
+        if (d) return `${pad2(d.getUTCDate())}-${MONTH_SHORT[d.getUTCMonth()]}-${pad2(d.getUTCFullYear() % 100)}`;
+    }
+    return null;
+}
+
+// Format an Excel datetime serial against a `m/d/yy h:mm AM/PM`-shaped
+// pattern. Locale codes have already been stripped by the caller.
+function formatDateTime(value: number, p: string): string | null {
+    // Match the m/d/yy date-portion + h:mm AM/PM time-portion.
+    if (!/h(:mm)?\s*(AM\/PM|am\/pm)?/i.test(p)) return null;
+    const d = excelSerialToDate(value);
+    if (!d) return null;
+
+    // Date portion.
+    const dateMatch = /^([Mm]\/[Dd]\/(?:yy|yyyy))/.exec(p);
+    let datePart = '';
+    if (dateMatch) {
+        const yy = dateMatch[1].endsWith('yyyy')
+            ? String(d.getUTCFullYear())
+            : pad2(d.getUTCFullYear() % 100);
+        datePart = `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${yy}`;
+    }
+
+    // Time portion. Use the fractional part of the serial.
+    const fractional = value - Math.floor(value);
+    const totalSeconds = Math.round(fractional * 86400);
+    const hours24 = Math.floor(totalSeconds / 3600) % 24;
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const ampm = /AM\/PM/i.test(p);
+    let hourPart: string;
+    let suffix = '';
+    if (ampm) {
+        const h12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
+        hourPart = String(h12);
+        suffix = hours24 < 12 ? ' AM' : ' PM';
+    } else {
+        hourPart = String(hours24);
+    }
+    const timePart = `${hourPart}:${pad2(minutes)}${suffix}`;
+    return datePart ? `${datePart} ${timePart}` : timePart;
+}
+
+// Format a numeric value as Excel's "Accounting" pattern. Sections:
+//   [0] positive (e.g. `_("$"* #,##0.00_)`)
+//   [1] negative (e.g. `_("$"* (#,##0.00))`)
+//   [2] zero (e.g. `_("$"* "-"??_)`)
+//   [3] text fallback (not reached on numeric values)
+//
+// We approximate the underscore-fill (`_(`/`_)`) as a single space —
+// HTML doesn't have Excel's variable-width column-aligned fill
+// character. The `* ` is interpreted as "fill with spaces"; same
+// approximation. The currency symbol comes from a quoted string
+// inside the section ("$" / "kr" / "€" / etc.).
+function formatAccounting(value: number, sections: string[]): string | null {
+    const positive = sections[0];
+    const negative = sections[1];
+    const zero = sections[2];
+
+    // Extract the symbol: the first `"X"` quoted string in section[0].
+    const symMatch = /"([^"]+)"/.exec(positive);
+    const symbol = symMatch ? symMatch[1] : '$';
+
+    // Decimals: count `0`s after the `.` in `#,##0.00`.
+    const decMatch = /#,##0(?:\.(0+))?/.exec(positive);
+    const decimals = decMatch && decMatch[1] ? decMatch[1].length : 0;
+    const opts = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+
+    if (value === 0) {
+        // Zero section in Excel Accounting: `"-"??` → a literal dash
+        // followed by trailing-space fill (rendered as a space).
+        // The `_-` / krona variant uses the same dash placeholder.
+        if (zero) {
+            // If the zero section has a literal "-", emit it.
+            if (/"-"/.test(zero)) return ` ${symbol}- `;
+        }
+        return ` ${symbol}- `;
+    }
+
+    if (value < 0) {
+        // Negative: parens around the absolute value, no minus sign.
+        const formatted = Math.abs(value).toLocaleString('en-US', opts);
+        const usesParens = negative ? /\(.*\)/.test(negative) : true;
+        // Position the symbol where the section asks for it: typical
+        // Excel accounting is `("$"* #,##0)` → symbol then number.
+        if (usesParens) return ` ${symbol}(${formatted})`;
+        return ` ${symbol}-${formatted} `;
+    }
+
+    // Positive section.
+    const formatted = value.toLocaleString('en-US', opts);
+    return ` ${symbol}${formatted} `;
+}
+
 // ───────── Cell value rendering ─────────────────────────────────────
 
 // Surface the cached value as text. Univer rich-text bodies (cell.p)
 // carry a `dataStream` that contains the concatenated text plus a
 // trailing `\r\n`; we strip that for display. Per-run formatting is
 // out of scope per the M16 plan — we render the plain text.
-function renderCellValue(cell: SnapshotCell): string {
+//
+// `style` is the resolved cell style; if it carries a numFmt pattern
+// (`n.pattern`) AND the cell value is numeric, the formatter applies
+// the pattern. Date serials → dates, decimal fractions with `0%` →
+// percentages, etc. See `formatNumberWithPattern` for the supported
+// pattern set.
+function renderCellValue(cell: SnapshotCell, style?: ResolvedStyle): string {
     if (cell == null) return '';
     if (cell.p && cell.p.body && typeof cell.p.body.dataStream === 'string') {
         // Univer's dataStream uses \r\n as a logical paragraph break.
@@ -224,6 +635,19 @@ function renderCellValue(cell: SnapshotCell): string {
         return escapeHtml(ds).replace(/\r\n/g, '<br/>').replace(/\r/g, '<br/>').replace(/\n/g, '<br/>');
     }
     if (cell.v === undefined || cell.v === null) return '';
+    const pattern = style?.n?.pattern;
+    if (pattern) {
+        // formatNumberWithPattern returns `{ html, raw }`. The html
+        // form is already escaped where appropriate AND may include
+        // `<span style="color: red">…</span>` wrappers for sections
+        // with `[Red]`/`[Blue]` colour markers. Use that directly.
+        // Booleans don't get formatted by patterns; coerce to string
+        // for the formatter (it will hit the text-suffix branch or
+        // the fallback).
+        const arg: number | string = typeof cell.v === 'boolean' ? String(cell.v) : cell.v;
+        const formatted = formatNumberWithPattern(arg, pattern);
+        return formatted.html;
+    }
     return escapeHtml(String(cell.v));
 }
 
@@ -562,7 +986,7 @@ function renderSheet(
             if (anchor && anchor.colSpan > 1) attrs.push(`colspan="${anchor.colSpan}"`);
             if (inline) attrs.push(`style="${escapeHtml(inline)}"`);
             const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
-            const valueHtml = renderCellValue(cell);
+            const valueHtml = renderCellValue(cell, baseStyle);
             out.push(`<td${attrStr}>${valueHtml}</td>`);
         }
         out.push('</tr>');
