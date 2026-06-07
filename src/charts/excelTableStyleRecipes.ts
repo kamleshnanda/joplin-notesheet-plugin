@@ -269,24 +269,35 @@ export const EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES: Record<
     Record<string, ExcelTableStyleEmpiricalOverride>
 > = {
     TableStyleMedium4: {
-        // Aptos accent3. Measured 2026-06-03 from
-        // screenshots/excel-reference/FormattingSmorgasboard-Aptos.png.
-        // Both top and bottom of the totals row carry the same accent-
-        // tinted strip — verified by pixel probe at y=424-425 (bottom of
-        // last data row / top of totals) and y=472-473 (bottom of
-        // totals / table outline). Both are #72D068.
+        // Aptos accent3. Re-measured 2026-06-07 from
+        // screenshots/excel-reference/FormattingSmorgasboard-Aptos-wide.png
+        // (1962×1070 wide capture; clean column body at x∈{380,588,780,
+        // 950,1120,1300,1500} verified all-consistent).
+        //
+        // Totals TOP is the HEADER colour (#34692E) painted as a
+        // double-line pair (two 2px strips with a 2px white gap):
+        //   y=826-827 #34692E / y=828-829 #FFFFFF / y=830-831 #34692E
+        // Totals BOTTOM is the lighter accent (#72D068), single 2px:
+        //   y=908-909 #72D068
+        // Inter-row strips at every banded-row boundary (rows 2..9) are
+        // also #72D068, single 2px each (verified at 8 distinct
+        // boundaries on the wide reference).
         '#196B24': {
             headerBg: '#34692E',
             bandedRowEvenBg: '#CAEFCB',
-            totalsTopBorder: '#72D068',
+            totalsTopBorder: '#34692E',
             totalsBottomBorder: '#72D068',
         },
-        // Classic accent3. Measured 2026-06-03 from
-        // screenshots/excel-reference/FormattingSmorgasboard-Classic.png.
+        // Classic accent3. Re-measured 2026-06-07 from
+        // screenshots/excel-reference/FormattingSmorgasboard-Classic.png
+        // (1378×618 capture; probed at 10 x-positions all consistent).
+        // Same shape as Aptos: totals-top is HEADER colour double-line,
+        // totals-bottom is the lighter accent single 2px, inter-row
+        // strips at every banded-row boundary in the lighter accent.
         '#A5A5A5': {
             headerBg: '#A5A5A5',
             bandedRowEvenBg: '#EDEDED',
-            totalsTopBorder: '#C9C9C9',
+            totalsTopBorder: '#A5A5A5',
             totalsBottomBorder: '#C9C9C9',
         },
     },

@@ -42,18 +42,20 @@
 // they should re-derive these constants and update the test.
 //
 //   Aptos (1780 × 658):
-//     header band  : x=200..1500, y=132..148  → dominant #34692E
-//     banded data 1: x=200..1500, y=188..228  → dominant #CAEFCB
-//     totals top border (double line): two strips at y=616 and y=520
-//        actually the double-line border appears between data row
-//        and totals row at y=472 and y=520 (separating banded → white).
-//        Easier sentinel: y=472..472 (single horizontal pixel row of
-//        the border) → dominant #72D068.
+//     header band       : x=200..1500, y=132..148  → dominant #34692E
+//     banded data 1     : x=200..1500, y=188..228  → dominant #CAEFCB
+//     totals top double : pair at y=566-567 / 568-569 white / 570-571
+//                          → both strips dominant #34692E (header colour)
+//     totals bottom     : single 2px at y=616-617 → dominant #72D068
+//                          (lighter accent, also the inter-row strip
+//                          colour)
 //
 //   Classic (1378 × 618):
-//     header band  : x=200..1200, y=130..162  → dominant #A5A5A5
-//     banded data 1: x=200..1200, y=172..208  → dominant #EDEDED
-//     totals top border: y=168 → dominant #C9C9C9
+//     header band       : x=200..1200, y=130..162  → dominant #A5A5A5
+//     banded data 1     : x=200..1200, y=172..208  → dominant #EDEDED
+//     totals top double : pair at y=500-501 / 502-503 white / 504-505
+//                          → both strips dominant #A5A5A5 (header colour)
+//     totals bottom     : single 2px at y=548-549 → dominant #C9C9C9
 //
 // TOLERANCE
 //
@@ -181,36 +183,58 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
             expectRgbWithin(bg, bandSample.hex, TOLERANCE, 'Aptos banded row even bg');
         });
 
-        test('totals row TOP border matches Excel render at #72D068 (Δ ≤ 8)', () => {
+        test('totals row TOP border matches Excel render at #34692E DOUBLE-line (Δ ≤ 8, s=7)', () => {
             const ref = decodePng(APTOS_PNG);
-            // Excel paints two distinct strips on the totals row in
-            // FormattingSmorgasboard-Aptos.png:
-            //   - top strip at y=424-425 (just below row 9's banded fill)
-            //   - bottom strip at y=472-473 (just above the white area
-            //     below the table)
-            // Both at #72D068. Earlier this test sampled y=472 and
-            // labelled it "top" — it's the BOTTOM strip; the assertion
-            // happened to pass because both sides share a colour.
-            const borderSample = dominantColor(ref, 200, 1500, 424, 425);
-            expect(borderSample.hex).toBe('#72D068');
+            // Excel paints a DOUBLE-LINE pair at the totals-top in the
+            // HEADER colour. Pixel-probe: y=566-567 #34692E / y=568-569
+            // #FFFFFF / y=570-571 #34692E. Sample both strips and assert
+            // they're the header colour.
+            const topStripA = dominantColor(ref, 200, 1500, 566, 567);
+            const topStripB = dominantColor(ref, 200, 1500, 570, 571);
+            expect(topStripA.hex).toBe('#34692E');
+            expect(topStripB.hex).toBe('#34692E');
 
             // ProjectTracker spans A1:G10 with totalsRowCount=1; the
             // totals row is row 9 in the snapshot (0-based).
             const top = snapBorderTop(snap, 9, 0);
             expect(top).toBeDefined();
-            expectRgbWithin(top!.rgb, borderSample.hex, TOLERANCE, 'Aptos totals top border colour');
+            expectRgbWithin(top!.rgb, '#34692E', TOLERANCE, 'Aptos totals top border colour');
+            // Style: BorderStyleTypes.DOUBLE (s=7).
+            expect(top!.style).toBe(7);
         });
 
-        test('totals row BOTTOM border matches Excel render at #72D068 (Δ ≤ 8)', () => {
+        test('totals row BOTTOM border matches Excel render at #72D068 (Δ ≤ 8, s=8)', () => {
             const ref = decodePng(APTOS_PNG);
-            // Bottom strip at y=472-473 — the second of the two #72D068
-            // strips that frame the totals-row body (~46 px apart).
-            const borderSample = dominantColor(ref, 200, 1500, 472, 473);
+            // Single 2px strip at y=616-617 — the lighter accent
+            // separator at the bottom of the totals body.
+            const borderSample = dominantColor(ref, 200, 1500, 616, 617);
             expect(borderSample.hex).toBe('#72D068');
 
             const bottom = snapBorderBottom(snap, 9, 0);
             expect(bottom).toBeDefined();
             expectRgbWithin(bottom!.rgb, borderSample.hex, TOLERANCE, 'Aptos totals bottom border colour');
+            // Style: BorderStyleTypes.MEDIUM (s=8).
+            expect(bottom!.style).toBe(8);
+        });
+
+        test('every banded data row carries an inter-row strip on bd.t at #72D068 (lighter accent)', () => {
+            const ref = decodePng(APTOS_PNG);
+            // Reference sentinel: pixel-probe y=180-181 (between header
+            // and row 1) and y=232-233 (between row 1 and row 2) both
+            // dominant #72D068.
+            const stripAboveRow1 = dominantColor(ref, 200, 1500, 180, 181);
+            expect(stripAboveRow1.hex).toBe('#72D068');
+            const stripAboveRow2 = dominantColor(ref, 200, 1500, 232, 233);
+            expect(stripAboveRow2.hex).toBe('#72D068');
+
+            // Snapshot side: every data row 1..8 carries bd.t in the
+            // lighter accent.
+            for (let r = 1; r <= 8; r++) {
+                const t = snapBorderTop(snap, r, 1);
+                expect(t).toBeDefined();
+                expectRgbWithin(t!.rgb, '#72D068', TOLERANCE, `Aptos row ${r} inter-row strip colour`);
+                expect(t!.style).toBe(8); // MEDIUM
+            }
         });
     });
 
@@ -236,28 +260,52 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
             expectRgbWithin(bg, bandSample.hex, TOLERANCE, 'Classic banded row even bg');
         });
 
-        test('totals row TOP border matches Excel render at #C9C9C9 (Δ ≤ 8)', () => {
+        test('totals row TOP border matches Excel render at #A5A5A5 DOUBLE-line (Δ ≤ 8, s=7)', () => {
             const ref = decodePng(CLASSIC_PNG);
-            // Top strip at y=422-423 (just below row 9's banded fill).
-            const borderSample = dominantColor(ref, 200, 1200, 422, 423);
-            expect(borderSample.hex).toBe('#C9C9C9');
+            // DOUBLE-LINE pair: y=504-505 #A5A5A5 / y=506-507 #FFFFFF /
+            // y=508-509 #A5A5A5. (CF data bars in this fixture paint at
+            // y=499-503 in some columns, so the totals-top double-line
+            // sits below those — verified by full-row histogram.)
+            const topStripA = dominantColor(ref, 200, 1200, 504, 505);
+            const topStripB = dominantColor(ref, 200, 1200, 508, 509);
+            expect(topStripA.hex).toBe('#A5A5A5');
+            expect(topStripB.hex).toBe('#A5A5A5');
 
             // ProductCatalog spans A1:F10; totals at row 9.
             const top = snapBorderTop(snap, 9, 0);
             expect(top).toBeDefined();
-            expectRgbWithin(top!.rgb, borderSample.hex, TOLERANCE, 'Classic totals top border colour');
+            expectRgbWithin(top!.rgb, '#A5A5A5', TOLERANCE, 'Classic totals top border colour');
+            expect(top!.style).toBe(7); // DOUBLE
         });
 
-        test('totals row BOTTOM border matches Excel render at #C9C9C9 (Δ ≤ 8)', () => {
+        test('totals row BOTTOM border matches Excel render at #C9C9C9 (Δ ≤ 8, s=8)', () => {
             const ref = decodePng(CLASSIC_PNG);
-            // Bottom strip at y=464-465 — the second of the two #C9C9C9
-            // strips that frame the totals-row body.
-            const borderSample = dominantColor(ref, 200, 1200, 464, 465);
+            // Single 2px strip at y=548-549.
+            const borderSample = dominantColor(ref, 200, 1200, 548, 549);
             expect(borderSample.hex).toBe('#C9C9C9');
 
             const bottom = snapBorderBottom(snap, 9, 0);
             expect(bottom).toBeDefined();
             expectRgbWithin(bottom!.rgb, borderSample.hex, TOLERANCE, 'Classic totals bottom border colour');
+            expect(bottom!.style).toBe(8); // MEDIUM
+        });
+
+        test('every banded data row carries an inter-row strip on bd.t at #C9C9C9 (lighter accent)', () => {
+            const ref = decodePng(CLASSIC_PNG);
+            // Reference sentinel from the narrow Classic capture: 2px
+            // strip at y=168-169 (header → row 1 boundary) and y=254-255
+            // (row 2 → row 3 boundary), both #C9C9C9.
+            const stripAboveRow1 = dominantColor(ref, 200, 1200, 168, 169);
+            expect(stripAboveRow1.hex).toBe('#C9C9C9');
+            const stripAboveRow3 = dominantColor(ref, 200, 1200, 254, 255);
+            expect(stripAboveRow3.hex).toBe('#C9C9C9');
+
+            for (let r = 1; r <= 8; r++) {
+                const t = snapBorderTop(snap, r, 1);
+                expect(t).toBeDefined();
+                expectRgbWithin(t!.rgb, '#C9C9C9', TOLERANCE, `Classic row ${r} inter-row strip colour`);
+                expect(t!.style).toBe(8);
+            }
         });
     });
 });

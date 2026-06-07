@@ -244,13 +244,20 @@ describe('M12 — banded-style synthesis', () => {
         const headerRightBd = headerRightStyle.bd as Record<string, { s: number; cl: { rgb: string } }>;
         expect(headerRightBd.r.cl.rgb).toBe(BORDER_RGB);
 
-        // Data rows: outer left/right edges have borders, inner rows do NOT
-        // get top/bottom (banding fill is the separator). Last data row gets
-        // a bottom border.
+        // Data rows: outer left/right edges have outline borders. Each data
+        // row also carries a `bd.t` inter-row strip in the TableStyle's
+        // lighter accent (Excel paints a 2px strip at every banded-row
+        // boundary for Medium TableStyles — see M13/E follow-up). Last data
+        // row gets a bottom border.
         const dataLeftStyle = styleAt(2, 0)!; // middle data row, left edge
         const dataLeftBd = dataLeftStyle.bd as Record<string, { s: number; cl: { rgb: string } }> | undefined;
         expect(dataLeftBd?.l?.cl.rgb).toBe(BORDER_RGB);
-        expect(dataLeftBd?.t).toBeUndefined();
+        // Inter-row strip: bd.t is present on every data row, MEDIUM (s=8),
+        // colour from the recipe's totalsBottomBorder slot (accent1 +0.4
+        // tint for the formula path → lighter family of BORDER_RGB).
+        expect(dataLeftBd?.t).toBeDefined();
+        expect(dataLeftBd!.t.s).toBe(8);
+        expect(dataLeftBd!.t.cl.rgb).toMatch(/^#[0-9A-F]{6}$/i);
         expect(dataLeftBd?.b).toBeUndefined();
 
         // Last data row (row 3 = dataStartRow=1 + 2 data rows after first)
