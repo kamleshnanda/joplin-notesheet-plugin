@@ -110,16 +110,28 @@ every feature.
   (operator-built fixture with explicit border combinations,
   pixel-probed against Excel to establish ground truth).
 
-  **KNOWN GAP — Univer renders `bd.b` with the wrong colour.** The
-  synthesized snapshot is correct (`bd.b.cl.rgb === '#72D068'`
-  verified via direct `xlsxBufferToSnapshot` introspection on every
-  totals cell). When the .jpl is loaded in Joplin and pixel-probed,
-  the rendered bottom strip at y=436 shows `rgb(52,106,46) = #34692E`
-  — the header's dark green, NOT the lighter `#72D068` from `bd.b`.
-  Top strip at y=398 renders correctly. The mismatch is in Univer's
-  renderer, not in our synthesis. Filed as renderer-side follow-up;
-  the synthesis change ships as it improves snapshot fidelity even
-  before the renderer is fixed.
+  **RESOLVED 2026-06-07 — was a known gap during the M13/E rework
+  but no longer reproduces on current main.** PR #22 shipped with
+  a documented gap: the snapshot's `bd.b.cl.rgb === '#72D068'` was
+  correct (verified via direct `xlsxBufferToSnapshot` introspection
+  on every totals cell), but the canvas pixel-probe at y=436 showed
+  `rgb(52,106,46) = #34692E` — the header's dark green — rather
+  than the lighter accent. During M16 prep (2026-06-07), a fresh
+  re-capture of the Aptos eval at
+  `screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-07T05-20-38-627Z.png`
+  showed BOTH totals strips rendering at y=398 and y=436 in
+  `rgb(137,206,116)` (anti-aliased of `#72D068`). Bug appears to
+  have resolved itself through snapshot-shape changes between M13/E
+  (PR #22) and M16 — most likely cause is the M15 CF rework's
+  changes to `synthesizeTableStyleAssignments`. Univer version
+  unchanged (`@univerjs/engine-render@0.23.0` locked).
+  Bonus finding from the investigation (informs future work): an
+  isolation probe (cell with `bd.b = #72D068` above + cell with
+  `bd.t = #34692E` below) showed Univer paints the LOWER cell's
+  `bd.t` colour at the shared edge — i.e., when both `bd.b` (upper)
+  and `bd.t` (lower) are declared at a shared edge, the lower
+  wins. This is the right rule to follow for any future inter-row
+  strip work.
 
   Final test totals: 209 (was 197 pre-cycle). Three new pin-downs in
   `tests/m12FixturePinDowns.test.ts` (M13/E describe block), 6 new

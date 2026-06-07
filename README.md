@@ -164,12 +164,17 @@ accidentally changes.
   (Aptos `TableStyleMedium4` accent3 and Classic `TableStyleMedium4`
   accent3). Workbooks whose `(styleName, accentHex)` pair isn't in
   the override map fall through to an HSL-L tint formula that
-  approximates the right hue but can drift by ~Δ18 RGB units. **Open
-  Univer renderer gap (filed for follow-up):** the snapshot now
-  carries the totals row's bottom-border accent strip (`bd.b`)
-  correctly per pixel-probe, but Univer 0.23 paints it with the
-  header colour rather than the lighter accent strip Excel uses.
-  Top-side strip renders correctly.
+  approximates the right hue but can drift by ~Δ18 RGB units. The
+  M13/E rework (PR #22) shipped with a known Univer renderer gap
+  where the totals row's bottom-border accent strip rendered in the
+  header colour rather than the lighter accent strip Excel uses; a
+  re-capture during the M16 cycle (2026-06-07) confirmed both top
+  and bottom totals strips now render correctly in `#72D068` — the
+  gap appears to have resolved through downstream snapshot-shape
+  changes between M13/E and M16. Pinned by
+  `tests/excelCanvasFidelity.test.ts` and the
+  `screenshots/feature-1-m13-theme-aware-banding/eval-aptos-*.png`
+  evidence.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
