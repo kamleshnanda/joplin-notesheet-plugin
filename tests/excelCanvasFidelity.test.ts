@@ -146,7 +146,20 @@ const ASSERT_TOLERANCE = 24;
 // `#89CE74`, ΔR=23).
 const STRIP_TOLERANCE = 32;
 
-/** Pick the latest `eval-<variant>-*.png` from FEATURE_DIR by mtime. */
+/**
+ * Pick the latest `eval-<variant>-*.png` from FEATURE_DIR.
+ *
+ * Filenames are ISO-timestamped (`eval-aptos-2026-06-07T06-27-03-263Z.png`),
+ * so a lexicographic sort produces the same chronological order as a
+ * mtime sort — but lexicographic survives a fresh git checkout, where
+ * mtimes are platform-dependent (CI restores files in a single batch
+ * with mtimes that don't reflect the original capture order).
+ *
+ * Pre-this-fix: mtime sort. CI's mtime-batch-on-checkout ordering
+ * caused this test to occasionally pick a stale screenshot (captured
+ * before the M13/E recipe fix shipped) instead of the post-fix one,
+ * tripping the inter-row strip count assertion.
+ */
 function latestEvalPng(variant: 'aptos' | 'classic'): string {
     const prefix = `eval-${variant}-`;
     const matches = readdirSync(FEATURE_DIR).filter((n) =>
@@ -158,12 +171,8 @@ function latestEvalPng(variant: 'aptos' | 'classic'): string {
             `Re-run scripts/pge/eval-screenshot.sh feature-1-m13-theme-aware-banding:${variant}.`,
         );
     }
-    matches.sort((a, b) => {
-        const ma = statSync(path.join(FEATURE_DIR, a)).mtimeMs;
-        const mb = statSync(path.join(FEATURE_DIR, b)).mtimeMs;
-        return mb - ma;
-    });
-    return path.join(FEATURE_DIR, matches[0]);
+    matches.sort();  // ISO timestamp → lexicographic === chronological
+    return path.join(FEATURE_DIR, matches[matches.length - 1]);
 }
 
 /**
@@ -613,11 +622,11 @@ function latestCfEvalPng(): string | null {
         n.startsWith('eval-') && n.endsWith('.png'),
     );
     if (matches.length === 0) return null;
-    matches.sort((a, b) => {
-        const ma = statSync(path.join(CF_FEATURE_DIR, a)).mtimeMs;
-        const mb = statSync(path.join(CF_FEATURE_DIR, b)).mtimeMs;
-        return mb - ma;
-    });
+    // Lexicographic === chronological for ISO-timestamped filenames,
+    // and unlike mtime it survives a fresh git checkout. See
+    // `latestEvalPng` for context.
+    matches.sort();
+    matches.reverse();  // newest first (rest of code reads matches[0])
     return path.join(CF_FEATURE_DIR, matches[0]);
 }
 
