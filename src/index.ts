@@ -1,5 +1,5 @@
 import joplin from 'api';
-import { MenuItemLocation, ToolbarButtonLocation } from 'api/types';
+import { ContentScriptType, MenuItemLocation, ToolbarButtonLocation } from 'api/types';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
 import { emptySnapshot, extractSnapshot, isNotesheetBody, wrapSnapshot } from './snapshot';
@@ -10,6 +10,19 @@ const LOG = '[Notesheet]';
 joplin.plugins.register({
     onStart: async function () {
         try {
+            // ── Markdown-It content script: render notesheet fences as
+            //    HTML tables in Joplin's preview pane / PDF / HTML export.
+            // Registers a ContentScriptType.MarkdownItPlugin that overrides
+            // markdown-it's fence renderer for the `notesheet` tag, parses
+            // the JSON snapshot inside, and emits inline-styled HTML so
+            // Joplin's right-click → Export PDF/HTML stops dumping the raw
+            // fenced JSON. See src/contentScripts/notesheetRenderer.ts.
+            await joplin.contentScripts.register(
+                ContentScriptType.MarkdownItPlugin,
+                'notesheetRenderer',
+                './contentScripts/notesheetRenderer.js',
+            );
+
             // ── Custom Editor: Univer spreadsheet view ──
             // When the active note's body matches the notesheet fence sentinel,
             // this editor takes over and shows the Univer spreadsheet UI.

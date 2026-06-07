@@ -1575,6 +1575,20 @@ function synthesizeTableStyleAssignments(
         }
     }
 
+    // The accent-coloured strip Excel paints at every banded-row
+    // boundary (e.g. `#72D068` for Aptos accent3, `#C9C9C9` for Classic
+    // accent3). Re-use the recipe's `totalsBottomBorder` slot — it's the
+    // same colour Excel uses for this strip in every TableStyleMedium
+    // we've measured. (If a future fixture decouples them, split the
+    // recipe into a dedicated `interRowStripBorder` slot.) Painted on
+    // bd.t of every data row so that, by Univer 0.23's "lower-cell's
+    // bd.t wins at a shared edge" rule, the strip shows correctly even
+    // on top of the header's bd.b table-outline.
+    const interRowStripRgb = palette.totalsBottomBorder;
+    const interRowStrip: BorderEntry | undefined = interRowStripRgb
+        ? { s: BORDER_STYLE_TO_UNIVER.medium, cl: { rgb: interRowStripRgb } }
+        : undefined;
+
     // Data rows with alternating banding (only when showRowStripes is true).
     if (table.showRowStripes) {
         for (let r = dataStartRow; r <= dataEndRow; r++) {
@@ -1583,12 +1597,15 @@ function synthesizeTableStyleAssignments(
             // Skip white (#FFFFFF) — no-op for default white background.
             const useBg = bg && bg.toUpperCase() !== '#FFFFFF' ? bg : undefined;
             for (let c = range.startColumn; c <= range.endColumn; c++) {
-                const rowBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
-                    ...(c === range.startColumn ? { l: thinBorder } : {}),
-                    ...(c === range.endColumn ? { r: thinBorder } : {}),
-                    ...(r === dataEndRow && totalRows === 0 ? { b: thinBorder } : {}),
-                } : undefined;
-                if (useBg || rowBorders) overlay(r, c, useBg, undefined, false, rowBorders);
+                const rowBorders: Partial<Record<BorderSide, BorderEntry>> = {};
+                if (interRowStrip) rowBorders.t = interRowStrip;
+                if (thinBorder) {
+                    if (c === range.startColumn) rowBorders.l = thinBorder;
+                    if (c === range.endColumn) rowBorders.r = thinBorder;
+                    if (r === dataEndRow && totalRows === 0) rowBorders.b = thinBorder;
+                }
+                const hasBorders = Object.keys(rowBorders).length > 0;
+                if (useBg || hasBorders) overlay(r, c, useBg, undefined, false, hasBorders ? rowBorders : undefined);
             }
         }
     } else if (thinBorder) {
@@ -1607,29 +1624,35 @@ function synthesizeTableStyleAssignments(
 
     // Totals row.
     if (totalRows === 1) {
-        // The totals row carries TWO accent-coloured strips — top and
-        // bottom — both in the table-style's lighter accent shade (e.g.
-        // `#72D068` for Aptos accent3 — see
-        // `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES`). The catalog's
-        // `borderColor` slot models the table outer frame; the
-        // `totalsTopBorder` and `totalsBottomBorder` slots are separate
-        // decorations painted on the totals row's top (between data area
-        // and totals body) and bottom (between totals body and table
-        // bottom edge). Pixel-probe verified against
-        // `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`:
-        // y=424-425 (top strip) and y=472-473 (bottom strip), both at
-        // `#72D068`, separated by ~46px of white totals-body fill.
+        // The totals row carries TWO accent-coloured strips with
+        // DIFFERENT shapes:
+        //   - TOP: header colour (e.g. `#34692E` Aptos accent3 dark
+        //     green / `#A5A5A5` Classic accent3 grey), painted as a
+        //     DOUBLE-LINE pair (two 2px strips with a 2px white gap,
+        //     ~6px total). Pixel-probed at y=826-831 in
+        //     `screenshots/excel-reference/FormattingSmorgasboard-Aptos-wide.png`:
+        //       y=826-827 #34692E
+        //       y=828-829 #FFFFFF
+        //       y=830-831 #34692E
+        //     and at y=500-505 in the Classic capture:
+        //       y=500-501 #A5A5A5
+        //       y=502-503 #FFFFFF
+        //       y=504-505 #A5A5A5
+        //   - BOTTOM: lighter accent (e.g. `#72D068` Aptos / `#C9C9C9`
+        //     Classic), single 2px strip — same shade Excel uses for
+        //     every banded-row boundary above it. Verified at y=908-909
+        //     (Aptos wide) and y=548-549 (Classic).
         //
-        // Style choice: MEDIUM (lineWidth=2), NOT DOUBLE. Univer 0.23's
-        // `BorderStyleTypes.DOUBLE` (style 7) renders as two 1px strips
-        // with a 1px white gap — visually similar to a "double-line"
-        // border but anti-aliased to `#89CE74` rather than pure target.
-        // Pixel-probe of `border-isolation.xlsx` confirmed Excel's
-        // DOUBLE = 2px+2px+2px (~6px tall), which the totals strip is
-        // NOT — Excel paints a single 2px MEDIUM strip per side.
+        // Style choices reflect that asymmetry:
+        //   - totals-top → BorderStyleTypes.DOUBLE (s:7). Univer 0.23's
+        //     `_renderDoubleBorder` paints two strokes with a gap, which
+        //     reproduces Excel's actual double-line shape here.
+        //   - totals-bottom → MEDIUM (s:8), single 2px.
+        // The earlier choice of MEDIUM for totals-top + `#72D068` was a
+        // pixel-probe error — see commit history; corrected here.
         const totalsTopBorderRgb = palette.totalsTopBorder;
         const totalsTopBorder: BorderEntry | undefined = totalsTopBorderRgb
-            ? { s: BORDER_STYLE_TO_UNIVER.medium, cl: { rgb: totalsTopBorderRgb } }
+            ? { s: BORDER_STYLE_TO_UNIVER.double, cl: { rgb: totalsTopBorderRgb } }
             : (thinBorder ?? undefined);
         const totalsBottomBorderRgb = palette.totalsBottomBorder;
         const totalsBottomBorder: BorderEntry | undefined = totalsBottomBorderRgb

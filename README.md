@@ -164,16 +164,74 @@ accidentally changes.
   (Aptos `TableStyleMedium4` accent3 and Classic `TableStyleMedium4`
   accent3). Workbooks whose `(styleName, accentHex)` pair isn't in
   the override map fall through to an HSL-L tint formula that
-  approximates the right hue but can drift by ~Δ18 RGB units. **Open
-  Univer renderer gap (filed for follow-up):** the snapshot now
-  carries the totals row's bottom-border accent strip (`bd.b`)
-  correctly per pixel-probe, but Univer 0.23 paints it with the
-  header colour rather than the lighter accent strip Excel uses.
-  Top-side strip renders correctly.
+  approximates the right hue but can drift by ~Δ18 RGB units. The
+  totals row's strips and the inter-row strips that Excel paints at
+  every banded-row boundary are synthesized into the snapshot:
+  totals-top is a DOUBLE-line in the header colour
+  (`#34692E` Aptos / `#A5A5A5` Classic), totals-bottom and inter-row
+  strips are MEDIUM single 2px in the lighter accent (`#72D068` /
+  `#C9C9C9`), all anchored to operator-captured Excel reference PNGs.
+  Univer's canvas renderer at DPR=2 anti-aliases these to slightly
+  drifted shades in the rendered visual (e.g. `#34692E` → `#426835`,
+  `#72D068` → `#89CE74`) — the underlying snapshot data and exported
+  `.xlsx` are unaffected. Pinned by
+  `tests/excelReferenceFidelity.test.ts`,
+  `tests/excelCanvasFidelity.test.ts`, and
+  `tests/roundTripBidirectional.test.ts`.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a
   later theme change in the host won't update the rendering.
+
+### `.xlsx` Markdown export — known shortcomings
+
+The Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`)
+shipped in M16 renders Notesheet fenced bodies as HTML tables for
+Joplin's PDF / HTML / preview-pane export. Coverage is intentional:
+common Excel formats render correctly; a small set of complex patterns
+ship with documented approximations. Each shortcoming carries a
+`KNOWN SHORTCOMING` Jest test in
+`tests/m16NotesheetMarkdownRender.test.ts` so a future change can't
+silently regress.
+
+- **Krona-pattern accounting symbol position**: Excel's
+  `_-* #,##0.00 "kr"_-` pattern positions the currency symbol AFTER
+  the number (`1,234.56 kr`). Notesheet's generic accounting formatter
+  shares the layout with US Accounting (`"$"*`) where the symbol is a
+  prefix, so the krona variant renders with the symbol in a different
+  position than Excel. Pinned down at
+  `tests/m16NotesheetMarkdownRender.test.ts:'Krona accounting pattern'`.
+- **Accounting `_(`/`_)`/`* ` underscore-fill rendered as single space**:
+  Excel's `_X` directive means "fill with as much space as character
+  X would take" — a variable-width column-alignment construct.
+  HTML doesn't have a column-alignment fill character; the M16
+  renderer emits a single space per fill marker. Result: numbers
+  won't align in vertical columns the way Excel would. Pinned down at
+  `tests/m16NotesheetMarkdownRender.test.ts:'Excel Accounting positive'`
+  and the negative / zero variants beneath it.
+- **dataBar (CF rule) rendering**: Excel's data bars render
+  proportional horizontal bars inside cells. The M16 HTML renderer
+  doesn't synthesize the bar fragments — those cells render with
+  their cell value only, no bar. Pinned down implicitly: the CF
+  evaluator at `formatNumberWithPattern` documents which CF types
+  bake into HTML.
+- **iconSet (CF rule) rendering**: Excel's icon sets render glyphs
+  (arrows, traffic lights, etc.) inside cells. The M16 HTML renderer
+  doesn't synthesize the glyphs. Same scope rationale as dataBar.
+- **Charts in HTML export**: Notesheet's anchored Chart.js charts
+  don't survive into static HTML. Cell values referenced by the
+  chart still render; the chart canvas itself does not.
+- **Live formula re-evaluation**: HTML export uses the cached `cell.v`
+  value from the snapshot (the value exceljs evaluated at last
+  Notesheet save). If a formula's cached value is stale, the stale
+  value renders.
+- **Per-run rich text**: M13/D's bold-word + plain-word in one cell
+  renders as plain text in HTML. Per-run formatting in HTML export
+  is M16-followup.
+- **Unsupported numFmt patterns**: any pattern not in the supported
+  set (Tier 1+2+3 above) falls through to the raw stringified value.
+  Pinned down at
+  `tests/m16NotesheetMarkdownRender.test.ts:'unknown pattern returns raw stringified value'`.
 
 ### Tolerated transitive deprecations + audit warnings
 

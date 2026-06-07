@@ -568,22 +568,18 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
         expect(bg).toMatch(/^#([0-9A-F]{2})\1\1$/i);
     });
 
-    test('Aptos fixture: totals-row carries top AND bottom borders in the Excel separator (#72D068 green, MEDIUM, both sides)', async () => {
-        // PR #22's recipe shape did not model the totals-row separators
-        // at all — the `borderColor` slot only covers the table outline.
-        // M13/E adds `totalsTopBorder` and `totalsBottomBorder` slots.
-        //
-        // Style choice MEDIUM (s=8) NOT DOUBLE (s=7): Excel's render
-        // shows a single 2px strip in the lighter accent on each side,
-        // separated by the totals-row body height. Pixel sampling at
-        // `screenshots/excel-reference/FormattingSmorgasboard-Aptos.png`
-        // confirms strips at y=424-425 (top) and y=472-473 (bottom),
-        // both `#72D068`, with white body in between.
-        //
-        // The totals BOTTOM strip replaces the table outline's thin
-        // frame on the totals row's bottom edge — Excel paints the
-        // accent-coloured strip across the full width, not the outline
-        // colour.
+    test('Aptos fixture: totals-row top is HEADER colour DOUBLE-line (#34692E s=7), bottom is lighter accent MEDIUM (#72D068 s=8)', async () => {
+        // PR #22 shipped the totals-top wrong: `#72D068` MEDIUM. A
+        // re-probe of the wide reference
+        // (`screenshots/excel-reference/FormattingSmorgasboard-Aptos-wide.png`,
+        // y=826-831) shows the totals-top is a DOUBLE-LINE pair in the
+        // HEADER colour (#34692E):
+        //   y=826-827 #34692E / y=828-829 #FFFFFF / y=830-831 #34692E.
+        // The totals BOTTOM (y=908-909) is the lighter accent #72D068
+        // single 2px strip — same shape Excel uses at every banded-row
+        // boundary. Style codes:
+        //   - totalsTop: BorderStyleTypes.DOUBLE (s=7).
+        //   - totalsBottom: BorderStyleTypes.MEDIUM (s=8).
         const snap = await importFixture(APTOS);
         const sheet = snap.sheets[snap.sheetOrder[0]];
         // ProjectTracker has totalsRowCount=1; totals row is row 9.
@@ -594,16 +590,18 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
             | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
             | undefined;
         expect(bd?.t).toBeDefined();
-        expect(bd!.t!.cl.rgb).toBe('#72D068');
-        expect(bd!.t!.s).toBe(8); // BorderStyleTypes.MEDIUM
+        expect(bd!.t!.cl.rgb).toBe('#34692E');
+        expect(bd!.t!.s).toBe(7); // BorderStyleTypes.DOUBLE
         expect(bd?.b).toBeDefined();
         expect(bd!.b!.cl.rgb).toBe('#72D068');
-        expect(bd!.b!.s).toBe(8);
+        expect(bd!.b!.s).toBe(8); // BorderStyleTypes.MEDIUM
     });
 
-    test('Classic fixture: totals-row carries top AND bottom borders in the Excel separator (#C9C9C9 grey, MEDIUM, both sides)', async () => {
-        // Same shape as Aptos, different accent. Empirical override
-        // for Classic accent3 #A5A5A5 sets both sides to #C9C9C9.
+    test('Classic fixture: totals-row top is HEADER colour DOUBLE-line (#A5A5A5 s=7), bottom is lighter accent MEDIUM (#C9C9C9 s=8)', async () => {
+        // Same shape as Aptos, different accent. Re-probed at
+        // `screenshots/excel-reference/FormattingSmorgasboard-Classic.png`
+        // y=500-509: #A5A5A5 / #FFFFFF / #A5A5A5 double-line top, then
+        // #C9C9C9 single bottom at y=548-549.
         const snap = await importFixture(CLASSIC);
         const sheet = snap.sheets[snap.sheetOrder[0]];
         const totalsCell = sheet.cellData[9]?.[0];
@@ -613,10 +611,54 @@ describe('M13/E pin-down — theme-aware banding synthesis', () => {
             | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
             | undefined;
         expect(bd?.t).toBeDefined();
-        expect(bd!.t!.cl.rgb).toBe('#C9C9C9');
-        expect(bd!.t!.s).toBe(8);
+        expect(bd!.t!.cl.rgb).toBe('#A5A5A5');
+        expect(bd!.t!.s).toBe(7);
         expect(bd?.b).toBeDefined();
         expect(bd!.b!.cl.rgb).toBe('#C9C9C9');
         expect(bd!.b!.s).toBe(8);
+    });
+
+    test('Aptos fixture: every banded data row carries an inter-row strip on bd.t (#72D068, MEDIUM)', async () => {
+        // Excel paints a 2px lighter-accent strip at every banded-row
+        // boundary (verified at 8 distinct boundaries on the wide
+        // reference). The synthesizer emits these on bd.t of each data
+        // row so Univer's "lower-cell's bd.t wins at shared edges" rule
+        // paints the correct colour at every boundary.
+        //
+        // Sample col 1 (not col 0): row 1 col 0 in this fixture has an
+        // explicit `#F4B183` per-cell border (user-set in source) so
+        // the synth's bd.t isn't applied (we never overwrite explicit
+        // user formatting). Every other cell on the data rows of col 1
+        // is clean and should carry the synth strip.
+        const snap = await importFixture(APTOS);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        // ProjectTracker A1:G10 — header row 0, data rows 1..8, totals
+        // row 9. Every data row should have bd.t on col 1.
+        for (let r = 1; r <= 8; r++) {
+            const cell = sheet.cellData[r]?.[1];
+            expect(cell?.s).toBeDefined();
+            const style = snap.styles[cell!.s!];
+            const bd = style.bd as { t?: { s: number; cl: { rgb: string } } } | undefined;
+            expect(bd?.t).toBeDefined();
+            expect(bd!.t!.cl.rgb).toBe('#72D068');
+            expect(bd!.t!.s).toBe(8);
+        }
+    });
+
+    test('Classic fixture: every banded data row carries an inter-row strip on bd.t (#C9C9C9, MEDIUM)', async () => {
+        // Mirrors the Aptos pin-down with the Classic palette. Sample
+        // col 1 to match the Aptos test (the Classic fixture also has
+        // some user-set borders on col 0 that we don't want to mix).
+        const snap = await importFixture(CLASSIC);
+        const sheet = snap.sheets[snap.sheetOrder[0]];
+        for (let r = 1; r <= 8; r++) {
+            const cell = sheet.cellData[r]?.[1];
+            expect(cell?.s).toBeDefined();
+            const style = snap.styles[cell!.s!];
+            const bd = style.bd as { t?: { s: number; cl: { rgb: string } } } | undefined;
+            expect(bd?.t).toBeDefined();
+            expect(bd!.t!.cl.rgb).toBe('#C9C9C9');
+            expect(bd!.t!.s).toBe(8);
+        }
     });
 });

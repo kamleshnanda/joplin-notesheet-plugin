@@ -1,622 +1,586 @@
-# Notesheet PGE — build plan (M15: Conditional formatting — full round-trip on exceljs)
+# Notesheet PGE — build plan (M16: Snapshot → HTML for Joplin's PDF/HTML export)
 
-> **Cycle context.** This is the FOURTH real-feature cycle through the
-> PGE harness, and the FIRST post-M14 milestone. M13/A–E shipped via
-> this loop (PRs #19, #20, #21, #22, #23) and M14 was an explicit
-> NO-GO documented at `docs/m14-sheetjs-spike.md` and merged via
-> PR #25 (commit `f423d5a`). Harness scripts under `scripts/pge/`
-> (`launch-joplin.sh`, `install-plugin.sh`, `import-fixture.{ts,sh}`,
-> `eval-screenshot.{js,sh}`, `prep-joplin-window.sh`,
-> `create-seeded-notesheet.js`) are present and proven. The pixel
-> sidecar (`<screenshot>.pixels.json`) plus `REGION_BY_FEATURE` /
-> `TITLE_PREFIX_BY_FEATURE` lookup in `eval-screenshot.js` are the
-> machine-checkable signals alongside the visual screenshot.
+> **Cycle context.** Fifth real-feature cycle through the PGE harness
+> and the first post-M15 milestone. M13/A–E shipped via this loop
+> (PRs #19, #20, #21, #22, #23), M14 was an explicit NO-GO documented
+> at `docs/m14-sheetjs-spike.md` (PR #25), and M15 conditional
+> formatting shipped via PRs #26 + #27 with all five rule types
+> round-tripping cleanly. The harness is mature: scripts under
+> `scripts/pge/` cover launch, install, fixture import, window prep,
+> selection moves, column-width resets, and per-feature region-aware
+> eval screenshots with pixel sidecars.
 >
-> **The two-layer fidelity test pattern is now the project default.**
-> M13/E established it the hard way (rework #2 / #3, PR #22): the
-> snapshot-data fidelity test (`tests/excelReferenceFidelity.test.ts`)
-> catches import-side bugs by anchoring expected RGBs to the
-> operator-captured Excel reference PNG; the canvas-vs-Excel fidelity
-> test (`tests/excelCanvasFidelity.test.ts`) catches render-side bugs
-> by sampling the Joplin canvas screenshot vs the same reference PNG.
-> M15 must extend BOTH layers — five tests per layer, one per CF
-> column. See "Test gap warning" in Risks.
+> **The two-layer fidelity test pattern remains the project default
+> for "match Excel" features.** M13/E established it; M15 extended
+> both layers (5 tests per layer for the 5 CF columns). M16 is
+> structurally different — it does NOT render onto the Univer canvas,
+> so canvas-vs-Excel pixel parity is not the gate. Instead the gate
+> is HTML-content fidelity: the rendered HTML carries the same cell
+> values and the same colour/border/alignment cues the snapshot
+> already validated for prior milestones. The acceptance criteria
+> below assert against that HTML.
 >
-> **Single-feature cycle, big feature.** The five CF rule types
-> (colorScale, dataBar, cellIs, top10, iconSet) ship together in one
-> PR per the operator's ask — they share the import/export
-> translation pipeline and the preset-wiring step. Decomposing into
-> five sequential features would force five round-trips through the
-> harness for what is structurally one piece of work.
->
-> **Single Excel reference screenshot, multiple regions.** Per the
-> operator ask: option (a) — one
-> `screenshots/excel-reference/ConditionalFormatting-Variants.png`
-> capture, with five `cfColumnRegion('A'|'C'|'E'|'G'|'I')` helpers
-> sampling the five CF column bands from the same image. Cleaner than
-> a `:variant` per column.
+> **Single-feature cycle, big feature.** The whole renderer ships in
+> one PR. It's a new content-script entry point — not previously
+> exercised by the codebase — plus the per-cell HTML emit logic plus
+> CF-evaluation logic plus a webpack build target plus a harness
+> region helper for the editor preview pane. Decomposing into
+> sub-features would force several round-trips through the harness
+> for what is structurally one piece of work.
 
 ## Operator ask
 
-(See `OPERATOR_ASK.md`.) Notesheet's import path currently drops all
-conditional-formatting rules silently. The KNOWN SHORTCOMING test at
-`tests/m12FixtureRoundTrip.test.ts:206` pins the current behaviour:
-imported snapshots have no CF resource, exported workbooks have zero
-`<conditionalFormatting>` blocks. The M14 SheetJS spike removed the
-"wait for SheetJS to make CF cheaper" rationale —
-`xlsx-js-style`'s `!cf` is also undefined on indexed-cellXf import,
-so M15 ships on the existing `exceljs` parser. No parser blocker.
+(See `OPERATOR_ASK.md`.) Joplin's right-click → **Export → PDF** and
+**Export → HTML** currently dump the raw fenced JSON for Notesheet
+notes — a 4-line JSON blob in the PDF instead of a rendered table.
+The README's "Joplin's Export → PDF / HTML menu" entry under "Known
+shortcomings" pins this. M16 ships proper rendering. When a Notesheet
+note is exported via Joplin's PDF or HTML export, the resulting
+document carries a human-readable HTML table with cell values and
+formatting (fills, font colours, borders, merged cells, basic
+alignment, multi-sheet layout). The .xlsx export button stays as the
+primary "send to Excel" path; M16 is the "send to PDF / HTML" path.
 
-The fixture
-`tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx`
-is already in the repo and contains all five rule types (verified):
-column A `colorScale`, column C `dataBar`, column E `cellIs > 50`,
-column G `top10` (top-3 rank), column I `iconSet 3Arrows`.
+The same renderer activates in Joplin's editor preview pane (the
+markdown-rendered preview), since Joplin runs every note body
+through the same markdown-it pipeline before export. That gives the
+PGE evaluator a renderable surface to capture without spawning a
+PDF round-trip.
 
-## Harness extensions chosen for this cycle
+## Harness extension chosen for this cycle
 
-The operator ask raises one harness extension; this plan picks
-**option (a) — single screenshot, multiple region helpers** for these
-reasons:
+The PGE harness's `eval-screenshot.js` until now targets the Univer
+main canvas inside the editor's `UserWebviewIndex.html` frame. M16
+needs to capture **the editor preview pane** — a Joplin-side DOM
+region containing the markdown-rendered HTML, NOT a Univer canvas.
 
-1. **All 5 rules visible in one shot.** The fixture authors A2..I11
-   in a single sheet area; one Univer canvas screenshot at default
-   zoom captures every CF column. No need for per-column scrolling
-   or :variant suffixes.
-2. **Cheaper to grade.** The evaluator captures ONE eval screenshot
-   and ONE pixel sidecar; the sidecar carries five aggregates
-   (`redInk`, `greenInk`, `blueInk`, `pinkInk`, `lightGreenInk`)
-   each gated against a different `cfColumnRegion`.
-3. **Reusable.** Future single-fixture multi-region features (e.g.
-   M16 if it covers something with multiple visible bands) can adopt
-   the same `cfColumnRegion(col)` shape.
-4. **Backward compat.** No existing `REGION_BY_FEATURE` /
-   `TITLE_PREFIX_BY_FEATURE` entries change. Adding
-   `feature-1-m15-conditional-formatting` keys is purely additive.
+The generator owns this work item as part of the cycle:
 
-The generator implements this by:
+- **Add a new region kind** `previewPane` to `REGION_BY_FEATURE` and
+  the corresponding sampler path in `eval-screenshot.js`.
+- **Capture target.** Instead of `webview.locator(canvasSel)
+  .screenshot()`, the new path locates Joplin's preview iframe
+  (`iframe.note-viewer-iframe`, or whichever stable selector exists
+  in current Joplin builds — the generator verifies via DevTools
+  before hardcoding) and screenshots its body. Generator may need
+  to query the parent Joplin page (NOT the editor page that hosts
+  Univer) — the preview pane is part of the main Joplin shell.
+- **Pixel sidecar.** The dominant-colour histogram still applies, but
+  the relevant ink aggregates are the table fill colours: `greenInk`
+  (Aptos header bg `#34692E` family) plus `pinkInk` / `lightGreenInk`
+  for CF visualisation. No new aggregate definitions needed — reuse
+  the M13/E + M15 ones.
+- **Title-prefix lookup.** `TITLE_PREFIX_BY_FEATURE
+  ['feature-1-m16-snapshot-to-html'] = 'PGE M16 HTML eval '`. The
+  fixture-import path stays unchanged (`import-fixture.sh` lands the
+  fixture as a Notesheet note); the editor preview pane renders it
+  via the new content script automatically.
+- **Window prep.** The existing `prep-joplin-window.sh` already
+  toggles sidebar / note list off and fills the window. M16
+  ADDITIONALLY needs the editor pane and preview pane both visible
+  — the toggle (Cmd+Shift+L on macOS / Joplin's "Toggle editor /
+  preview" command) needs to land in the "show both" state. If
+  `prep-joplin-window.sh` ends in editor-only mode, extend it to
+  detect `.note-viewer-iframe` visibility and toggle until both are
+  shown.
 
-- Adding ONE entry to both lookup tables in
-  `scripts/pge/eval-screenshot.js`:
-  - `TITLE_PREFIX_BY_FEATURE['feature-1-m15-conditional-formatting']
-    = 'PGE M15 CF eval '`.
-  - `REGION_BY_FEATURE['feature-1-m15-conditional-formatting']
-    = 'cfAllColumns'` — a composite region kind that triggers the
-    helper to emit five sub-region samples in the sidecar.
-- Adding `cfColumnRegion(col, dprScale)` to `eval-screenshot.js`,
-  similar in shape to `tableHeaderRowRegion`. The `col` argument is
-  the Excel column letter ('A', 'C', 'E', 'G', 'I'); the helper
-  returns `{x, y, w, h}` covering the CF data band (rows 2–11) for
-  that column. DPR-scale-aware per the M13/E lesson.
-- Extending `samplePixelsAt` to write a per-column nested object
-  under a top-level `cfColumns` key in the sidecar:
-  ```
-  cfColumns: {
-    A: { redInk, greenInk, ...top },
-    C: { blueInk, ...top },
-    E: { pinkInk, ...top },
-    G: { lightGreenInk, ...top },
-    I: { redInk, greenInk, yellowInk, ...top },
-  }
-  ```
-- Adding two new aggregate counters to `samplePixelsAt`:
-  - `pinkInk`: `R≥220 AND G∈[180,220] AND B∈[180,220]` (matches
-    `#FFC7CE` family).
-  - `lightGreenInk`: `R∈[180,220] AND G≥220 AND B∈[180,220]`
-    (matches `#C6EFCE` family).
-  Reuse the existing `redInk`, `greenInk`, `blueInk` aggregates
-  (defined for M13/D and M13/E). Re-tightening them is out of scope.
-- A `yellowInk` aggregate: `R≥200 AND G≥200 AND B≤120` (icon-set
-  middle band; loose because glyphs are small).
-
-The generator MUST NOT regress prior cycles' single-key paths
-(`feature-1-m13-rotated-text-renders`,
-`feature-1-m13-rich-text-renders`,
-`feature-1-m13-theme-aware-banding:aptos`/`:classic`) — those entries
-are evidence-bearing for `## Done` rows.
-
-## Excel reference screenshot — capture timing
-
-`screenshots/excel-reference/ConditionalFormatting-Variants.png` does
-NOT exist at planner time. The operator captures it from real Excel
-as part of THIS cycle, same pattern as M13/E with the Aptos and
-Classic Smorgasboard references. Generator should NOT block on it:
-
-- Phase 1 work (preset wire, exceljs↔Univer translation, round-trip
-  test, snapshot-fidelity test scaffolded with TODO assertions) can
-  proceed without the reference screenshot.
-- Phase 2 work (`excelCanvasFidelity.test.ts` extension and the
-  evaluator's pixel-sidecar gating) NEEDS the reference. Generator
-  captures own evidence first; if the reference screenshot lands
-  before Phase 2 begins, fold it in. If it lands after, the
-  evaluator runs the canvas-fidelity tests against the reference
-  once it's present.
-- Generator-evidence screenshots under
-  `screenshots/feature-1-m15-conditional-formatting/` are the
-  pre-evaluator due-diligence; they do NOT substitute for the Excel
-  reference. The reference is ground truth for snapshot-fidelity
-  RGBs and canvas-fidelity colour parity.
+The single-feature key is `feature-1-m16-snapshot-to-html`. No
+variant suffixes this cycle — the FormattingSmorgasboard fixture is
+the central capture, with the Multi-Sheet and CF-Variants fixtures
+exercised via Jest only (not via additional eval screenshots).
 
 ## Features
 
-### feature-1-m15-conditional-formatting
+### feature-1-m16-snapshot-to-html
 
 **Spec**
 
-When a user imports
-`tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx`
-into a Notesheet note, the workbook's five conditional-formatting
-rules — colour scale on column A, data bar on column C, cellIs > 50
-fill on column E, top-3 rank fill on column G, 3-arrow iconSet on
-column I — render correctly on the Univer canvas in Joplin's editor.
-Users can add, edit, and delete CF rules from the Univer "Manage
-Conditional Format Rules" panel (shipped by
-`@univerjs/preset-sheets-conditional-formatting`). Exporting the note
-back to .xlsx via the editor's Export button produces a workbook that
-re-opens cleanly in real Excel and re-imports into Notesheet with all
-five rules preserved structurally (type, ref, cfvo, colour, operator,
-rank where applicable).
+When a user opens a Notesheet note, Joplin's editor preview pane no
+longer shows the raw fenced JSON — it shows a rendered HTML table
+per sheet, with cell values, fills, borders, alignment, font weight
+and colour, merged cells, and CF rule colouring (colorScale, cellIs,
+top10) baked into per-cell inline styles. The same content script
+runs when the user invokes right-click → Export → PDF or
+Export → HTML, so the exported document carries the same rendered
+table instead of the JSON blob.
 
-The KNOWN SHORTCOMING test at
-`tests/m12FixtureRoundTrip.test.ts:206` flips from a negative
-("zero `<conditionalFormatting>` blocks", "no CF resource") to a
-positive pin-down ("five rules survive round-trip with the source
-ref/type/colours intact").
+The renderer is registered as a Joplin `MarkdownItPlugin` content
+script in `src/index.ts`. It recognises the `notesheet` fenced-code
+tag, parses the snapshot via `extractSnapshot()` (bundled into the
+content-script entry — content scripts run in a sandboxed worker and
+can't import from the plugin process), and emits HTML. Non-Notesheet
+fenced blocks fall through to markdown-it's default rendering.
 
-The five-rule scope is explicit. Out-of-scope rule types
-(text-based, time-period, unique/duplicate, formula-based,
-stopIfTrue, CF inside merged cells, custom dxf records beyond
-fill-bg) remain unsupported but documented as M15 follow-up.
+The Custom Editor still owns the active editing experience; the
+preview pane just stops showing JSON, and the export pipeline stops
+shipping JSON to PDF/HTML.
+
+The KNOWN SHORTCOMING entry "Joplin's Export → PDF / HTML menu shows
+the raw JSON fence" (README line in the Known shortcomings table)
+flips from "yes" to "no" — but the README docs cleanup is explicitly
+deferred to a follow-up docs PR per the M13/C, M13/D, M13/E, M15
+precedent.
 
 **Acceptance criteria**
 
 The evaluator must verify ALL of the following from a fresh context:
 
-1. **Visual — all 5 CF rule types render correctly in the Joplin
-   canvas.** A single evaluator-captured screenshot under
-   `screenshots/feature-1-m15-conditional-formatting/`, taken via
-   `bash scripts/pge/eval-screenshot.sh feature-1-m15-conditional-formatting`
-   after `import-fixture.sh
-   ConditionalFormatting-Variants.xlsx` and `prep-joplin-window.sh`
-   has filled the window and hidden the side panes. The screenshot
-   shows the Univer main canvas
-   (`canvas[id^="univer-sheet-main-canvas"]`) inside the editor's
-   `UserWebviewIndex.html` frame. The evaluator's verdict text
-   MUST explicitly call out:
-   - **Column A (colorScale)**: cells A2..A11 carry distinct
-     background fills along a red→yellow→green gradient. The lowest-
-     value cell renders red-ish (`#F8696B` family — i.e. R≥200, G≤140,
-     B≤140); the median cell renders yellow-ish (`#FFEB84` family —
-     R≥200, G≥200, B≤180); the highest-value cell renders green-ish
-     (`#63BE7B` family — R≤180, G≥180, B≤180). The verdict explicitly
-     names the gradient direction (low→high) and the three named hue
-     buckets.
-   - **Column C (dataBar)**: each of C2..C11 has a horizontal bar in
-     blue (`#638EC6` family — R≤140, G≤180, B≥180) whose width scales
-     with the cell value. The smallest-value bar is visibly shorter
-     than the largest; at least one cell shows a bar covering more
-     than half the cell width and at least one shows a bar shorter
-     than a quarter.
-   - **Column E (cellIs > 50)**: cells whose numeric value is `> 50`
-     carry a pink/light-red fill (`#FFC7CE` family — R≥220,
-     G∈[180,220], B∈[180,220]). Cells whose value is `<= 50` are
-     unfilled. The verdict explicitly names at least one filled cell
-     and at least one unfilled cell.
-   - **Column G (top-3 rank)**: exactly THREE cells in G2..G11 carry
-     a light-green fill (`#C6EFCE` family — R∈[180,220], G≥220,
-     B∈[180,220]). The other seven are unfilled. The verdict
-     explicitly states "exactly three".
-   - **Column I (iconSet 3-Arrows)**: each cell I2..I11 displays a
-     small arrow glyph — red-down for low-band (0–33%), yellow-flat
-     for mid-band (33–67%), green-up for high-band (67–100%). The
-     verdict explicitly names at least one of each colour glyph
-     observed in the screenshot.
+1. **HTML output contains a rendered table — base shape.** A new
+   Jest test `tests/m16NotesheetMarkdownRender.test.ts` (or
+   equivalent) imports the M16 content-script's render function,
+   feeds it a fenced notesheet body containing a known minimal
+   snapshot (1 sheet, 3×3 cells, one bold cell, one bg-coloured
+   cell, one merge range), and asserts the returned HTML string:
+   - Contains exactly one `<table>` element.
+   - Contains `<td>` elements for every non-merged-interior cell.
+   - For the bold cell, the matching `<td>`'s `style` attribute
+     contains `font-weight: bold` (case-insensitive substring).
+   - For the bg-coloured cell, the matching `<td>`'s `style`
+     attribute contains `background-color: #` followed by the
+     RGB hex from the snapshot's `styles[<id>].bg.rgb`.
+   - For the merged cell, the resulting `<td>` carries `colspan`
+     and/or `rowspan` matching the merge range; cells INSIDE the
+     merge range are skipped (not emitted as additional `<td>`s).
+   - The string `"sheetOrder"` (a key in the JSON snapshot) does
+     NOT appear anywhere in the HTML.
+   - The string `"workbook-"` (the snapshot's id prefix) does NOT
+     appear in the HTML.
 
-2. **Pixel sidecar — colour signal lands in the histograms per CF
-   column.** The
-   `screenshots/feature-1-m15-conditional-formatting/eval-*.pixels.json`
-   sidecar contains a `cfColumns` object with FIVE per-column
-   sub-objects, each with the right ink-aggregate signal sampled from
-   `cfColumnRegion(col)`:
-   - `cfColumns.A`: `redInk ≥ 30` AND `greenInk ≥ 30` (gradient
-     endpoints both visible in the band).
-   - `cfColumns.C`: `blueInk ≥ 30` (data bars).
-   - `cfColumns.E`: `pinkInk ≥ 20` (some > 50 cells render pink).
-   - `cfColumns.G`: `lightGreenInk ≥ 20` (top-3 cells render
-     light-green).
-   - `cfColumns.I`: at least one of `redInk`, `greenInk`,
-     `yellowInk` is `≥ 5` (icon glyphs are small; the threshold is
-     intentionally loose).
+   The test asserts what's IN the rendered HTML against the source
+   snapshot's expected content, NOT against our own emit format. Per
+   `feedback_pge_fidelity_test_gap.md`: tests that pin "we emit
+   `<table class='notesheet'>`" are no test — change the class name
+   and the test still passes. Tests that pin "the bold cell carries
+   `font-weight: bold` in its style" hold the renderer accountable
+   to the snapshot.
 
-   The harness extension adds `cfColumnRegion(col, dprScale)` plus
-   `pinkInk`, `lightGreenInk`, `yellowInk` aggregates to
-   `samplePixelsAt` in `scripts/pge/eval-screenshot.js`. M13/E's
-   `tableHeaderRowRegion` plus `greyInk` aggregate is the template.
-   DPR scaling is mandatory per the M13/E Phase 4 fix.
+2. **Multi-sheet workbooks render each sheet under its name.** A
+   second Jest test imports `MultiSheet.xlsx` (existing fixture),
+   converts it via `xlsxBufferToSnapshot()`, wraps in a fenced
+   notesheet body, and runs the content-script render. The HTML
+   output:
+   - Contains TWO or more `<table>` elements (one per sheet — the
+     fixture has at least 2 sheets; the test reads the actual count
+     from the snapshot's `sheetOrder` length and asserts equality).
+   - For each sheet, the heading text immediately preceding its
+     table contains the sheet name from the snapshot's
+     `sheets[id].name`. The HTML element used for the heading is
+     not pinned — `<h2>`, `<h3>`, or a `<caption>` inside the
+     `<table>` all qualify; the test asserts the sheet-name string
+     appears within 200 characters before the corresponding `<table>`
+     opening tag.
 
-3. **Snapshot fidelity — exceljs CF data → Univer CF resource shape.**
-   New test block in `tests/excelReferenceFidelity.test.ts` adds 5
-   tests that import
-   `ConditionalFormatting-Variants.xlsx` via
-   `xlsxBufferToSnapshot()` and assert the resulting snapshot's
-   `resources` array contains an entry whose `name` matches the
-   Univer CF plugin resource key (`SHEET_CONDITIONAL_FORMATTING_PLUGIN`,
-   re-exported from `@univerjs/sheets-conditional-formatting` — DON'T
-   hard-code the string; import the constant). The data inside MUST
-   carry 5 rules whose translated shape matches the source XML
-   structurally:
-   - Rule 0 — `colorScale`, ref `A2:A11`, 3 cfvo (min /
-     percentile=50 / max), 3 colours `#F8696B` / `#FFEB84` / `#63BE7B`.
-   - Rule 1 — `dataBar`, ref `C2:C11`, 2 cfvo (min / max), colour
-     `#638EC6`.
-   - Rule 2 — `highlightCell` (subType `number`), ref `E2:E11`,
-     operator `greaterThan`, formula `50`, fill bg `#FFC7CE`.
-   - Rule 3 — `highlightCell` (subType `rank`), ref `G2:G11`,
-     `rank: 3`, `isBottom: false`, fill bg `#C6EFCE`.
-   - Rule 4 — `iconSet`, ref `I2:I11`, iconSet `3Arrows`, 3 cfvo
-     (percent 0 / 33 / 67).
+3. **FormattingSmorgasboard.xlsx renders recognisably.** A third
+   Jest test imports the Aptos `FormattingSmorgasboard.xlsx`, runs
+   it through the renderer, and asserts the output contains:
+   - The known column headers from the `ProjectTracker` table:
+     `Project`, `Website`, `Budget`, `Spent`, `Discount` (or the
+     literal subset that the fixture defines — the test reads from
+     the snapshot to source the expected values, NOT a hardcoded
+     list — but each one MUST appear once in the HTML output).
+   - At least one `<td>` whose inline style contains
+     `background-color: #34692E` (the Aptos M13/E table-style header
+     fill — already validated by the existing M13/E pin-downs as
+     the synthesizer's emit colour).
+   - At least one `<td>` whose inline style contains
+     `background-color: #CAEFCB` (Aptos banded-row fill — also
+     validated by M13/E).
 
-   Each test reads the source `xl/worksheets/sheet1.xml` directly
-   (via the in-test fixture-XML reader pattern already in
-   `excelReferenceFidelity.test.ts`) so expected RGBs and refs are
-   sourced from the file, NOT from our parser's emit. This is the
-   import-side gate. Per `feedback_pge_fidelity_test_gap.md`,
-   pin-downs anchored to our own emit are no test at all — the
-   reference values come from upstream.
+   The expected RGBs come from the snapshot the test creates by
+   running `xlsxBufferToSnapshot()` — anchored to the snapshot, NOT
+   to a hardcoded literal. The HTML rendering is the outer test;
+   the snapshot's correctness is already pinned by M13/E.
 
-4. **Canvas fidelity — Joplin canvas vs Excel reference.** New
-   tests in `tests/excelCanvasFidelity.test.ts` (one per CF column,
-   five total) sample the dominant fill colour of each column band in
-   BOTH the operator-captured Excel reference screenshot
-   (`screenshots/excel-reference/ConditionalFormatting-Variants.png`)
-   AND the latest Joplin canvas eval screenshot
-   (`screenshots/feature-1-m15-conditional-formatting/eval-*.png` by
-   mtime). The five tests assert per-channel parity within Δ ≤ 16
-   for the column's dominant CF colour:
-   - Column A — pick the median row's dominant fill (yellow-ish
-     `#FFEB84` family — middle of the gradient; most stable
-     measurement).
-   - Column C — sample the right edge of a long-bar cell and the
-     centre of a short-bar cell separately; assert blue-bar regions
-     in both PNGs land within Δ ≤ 16 of each other.
-   - Column E — sample a known-`>50` cell (say E2, value 80 per the
-     fixture); assert pink fill parity.
-   - Column G — sample one of the top-3 cells (the highest-value
-     cell in G2..G11); assert light-green fill parity.
-   - Column I — sample the icon-glyph centroid for one row in each
-     band (low / mid / high); assert at least one of (red / yellow /
-     green) ink hits in the corresponding band parity-checks against
-     the same band in the reference within Δ ≤ 24 (icon glyphs
-     anti-alias more aggressively than fills; looser tolerance per
-     the M13/E "1-2px strip" lesson).
+4. **Conditional formatting renders into the export.** A fourth
+   Jest test imports `ConditionalFormatting-Variants.xlsx`, runs it
+   through the renderer, and asserts the output contains:
+   - At least one `<td>` whose inline style contains a
+     background-color from the colorScale red/yellow/green palette
+     (`#F8696B` family OR `#FFEB84` family OR `#63BE7B` family —
+     the test asserts at least one of the three appears in any
+     column-A `<td>`'s style).
+   - At least one `<td>` whose inline style contains
+     `background-color: #FFC7CE` (cellIs > 50 pink fill — M15
+     spec).
+   - At least one `<td>` whose inline style contains
+     `background-color: #C6EFCE` (top-3 light-green fill — M15
+     spec).
 
-   This is the render-side gate. M13/E's lesson stands: the
-   snapshot-data fidelity test alone is not sufficient — the
-   render-vs-render test catches Univer-renderer bugs the
-   snapshot-data test can't see. **The canvas-fidelity test is
-   skipped (Jest `test.skip`) when the reference PNG is absent and
-   re-enabled once the operator captures it.** The skip path keeps
-   the suite green while the reference is being produced; the
-   evaluator MUST verify the test is unskipped and passing before
-   PASS.
+   `dataBar` and `iconSet` rules are explicitly OUT OF SCOPE for
+   the Jest assertion — they require dynamic bar-width rendering or
+   glyph rendering that isn't well-served by static HTML. The test
+   does NOT assert anything about column C or column I. Document
+   the gap in OUT OF SCOPE below and in `## Notes` for the next
+   cycle.
 
-5. **Round-trip — five CF rules survive export → re-import.** New
-   test (or extend `tests/m12FixtureRoundTrip.test.ts`):
-   - Import `ConditionalFormatting-Variants.xlsx` →
-     snapshot.
-   - Call `snapshotToXlsxBuffer(snapshot)` → buffer.
-   - Re-load buffer with a fresh `new ExcelJS.Workbook()`.
-   - Assert all FIVE source rules survive: each rule's `type`,
-     `ref` (the cell-range string the worksheet returns), `cfvo`
-     array (length, types, values), and colour (`#RRGGBB` /
-     `dxf.fill.bgColor.argb`) match the source within
-     argbToHex / hexToArgb symmetry. For cellIs (rule 2): `operator`
-     and `formulae[0]` survive. For top10 (rule 3): `rank` and
-     `bottom` survive.
-   - The KNOWN SHORTCOMING test at
-     `tests/m12FixtureRoundTrip.test.ts:206` is FLIPPED to a
-     positive pin-down whose body now asserts the round-trip
-     preserves the rules. Old assertion bodies removed; new ones
-     reference the same source XML extraction.
+5. **Visual — Joplin editor preview pane shows the rendered table.**
+   Single evaluator-captured screenshot under
+   `screenshots/feature-1-m16-snapshot-to-html/`, taken via
+   `bash scripts/pge/eval-screenshot.sh feature-1-m16-snapshot-to-html`
+   after `import-fixture.sh FormattingSmorgasboard.xlsx` lands the
+   note and `prep-joplin-window.sh` fills the window with both
+   editor and preview panes visible. The screenshot targets Joplin's
+   note-viewer iframe (NOT the Univer canvas). The evaluator's
+   verdict text MUST explicitly call out:
+   - The `ProjectTracker` table renders as an HTML table with
+     visible column headers.
+   - The header row carries the green table-style fill (no
+     pixel-parity required against Excel — the gate is "the user
+     would recognise this as the same table they had in Excel,
+     coloured greenish").
+   - At least one banded-row colour difference is visible in the
+     data rows.
+   - The raw JSON `{"id":...}` text does NOT appear anywhere in
+     the screenshot. (If JSON appears, the content script didn't
+     register, the fence-tag check failed, or the renderer
+     errored out — the visible-JSON regression is the M13-style
+     failure mode for M16.)
 
-6. **Univer CF preset is registered in `src/editorView.tsx`.**
-   The editor mounts the CF preset alongside the existing six
-   presets (Core, Sort, Filter, Table, Drawing, HyperLink). New
-   imports in `src/editorView.tsx`:
-   - `import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';`
-   - `import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';`
-   - `import sheetsCfEnUS from '@univerjs/preset-sheets-conditional-formatting/locales/en-US';`
-   The preset is added to the `presets` array passed to
-   `createUniver()` (after `UniverSheetsHyperLinkPreset()`), and the
-   locale is merged into the `locales[LocaleType.EN_US]` object.
-   The CF preset must also be added to `package.json` as a direct
-   dependency (it's currently transitively pinned at 0.23.0 in the
-   lockfile via `@univerjs/presets`'s peer graph; making it a direct
-   dep ensures the editor wiring is reproducible).
+   The pixel sidecar
+   `screenshots/feature-1-m16-snapshot-to-html/eval-*.pixels.json`
+   carries `greenInk ≥ 30` (Aptos header fill is visible) and the
+   `dominant` histogram top entry is NOT a near-white background
+   colour like `rgb(255,255,255)` (which would mean no table
+   rendered at all). The harness work item — adding a `previewPane`
+   region kind to `eval-screenshot.js` — is part of THIS feature's
+   acceptance gate, not a separate row.
 
-   Verification: the editor's "Manage Rules" panel button is
-   reachable (whether by toolbar icon or menu) — the evaluator
-   verdict mentions the panel rendering in the canvas screenshot or
-   indicates it's accessible via a known click path. The visual gate
-   in criterion (1) is the load-bearing one; this criterion is the
-   MEANS. Without preset wiring, criterion (1) would fail with
-   "snapshot data correct, canvas blank" — exactly M13's failure
-   mode.
+6. **Content script is registered in `src/index.ts`.** The fixed
+   plugin entry point now invokes
+   `joplin.contentScripts.register(ContentScriptType.MarkdownItPlugin,
+   '<id>', './notesheetRenderer.js')` (or equivalent) alongside the
+   existing editor registration. The script ID is stable; if a
+   future cycle changes it, that's a breaking change requiring
+   plugin re-install. `ContentScriptType.MarkdownItPlugin` is
+   imported from `api/types`.
 
-7. **`npm run dist` succeeds and the .jpl is installed in the dev
+   Verification: a Jest test (criterion 1) imports the renderer
+   directly to run its render path; a runtime smoke confirms the
+   editor preview pane shows the rendered HTML for the
+   FormattingSmorgasboard fixture (criterion 5). Both gates fail
+   loudly if the registration is absent.
+
+7. **Joplin's right-click → Export → PDF works without crashing on a
+   Notesheet note.** PGE harness or manual smoke confirms the PDF
+   generation completes for the FormattingSmorgasboard note. The
+   evaluator does NOT pixel-validate the PDF — the HTML test bed
+   covers HTML output, and PDF rendering is downstream of HTML.
+   The gate here is:
+   - The PDF file exists on disk after the export action.
+   - The first page of the PDF is non-empty (file size > some
+     reasonable lower bound, e.g. > 5 KB; an empty / errored PDF
+     is typically < 2 KB).
+   - The Joplin renderer process did NOT log
+     "Cannot read properties of undefined" or similar error
+     during the export. (Joplin's renderer log lives at
+     `~/Library/Logs/Joplin/log.txt` on macOS; the evaluator
+     greps it for the export window.)
+
+   This criterion is intentionally loose because PDF pixel parity is
+   a brittle gate (Electron's Chromium version, system fonts,
+   page-break decisions all shift outputs); the value here is
+   "exporting doesn't crash" and "the rendered HTML the user sees
+   in preview is what gets baked into the PDF."
+
+8. **`npm run dist` succeeds and the .jpl is installed in the dev
    profile.** Generator captures own evidence under
-   `screenshots/feature-1-m15-conditional-formatting/`
+   `screenshots/feature-1-m16-snapshot-to-html/`
    (`generator-evidence.png` + `.pixels.json` sidecar), reads via
    the Read tool to satisfy the `verify-gate` hook.
 
-8. **`npm test` — all existing tests stay green plus new ones.**
-   Baseline at session start (verify with `npm test`): **209**. M15
-   adds:
-   - 5 new tests in `excelReferenceFidelity.test.ts` (snapshot
-     fidelity per CF column).
-   - 5 new tests in `excelCanvasFidelity.test.ts` (canvas fidelity
-     per CF column).
-   - 1 new round-trip test (or the flipped `m12FixtureRoundTrip`
-     KNOWN SHORTCOMING).
-   - Existing KNOWN SHORTCOMING at
-     `tests/m12FixtureRoundTrip.test.ts:206` flipped (no net change
-     in test count for that one — same `test()` block, body
-     rewritten).
-   Target: **209 → ≥ 220**. The full Jest suite is run before
-   flipping the row, NOT just the new tests. M15 touches `src/xlsx.ts`
-   (the import + export pipeline shared with every prior milestone)
-   and `src/editorView.tsx` (preset wiring); borders, hyperlinks,
-   table styles, chart export, alignment, rotation (M13/C), rich
-   text (M13/D), theme banding (M13/E) all share the import/export
-   pipeline. Nothing here should regress.
+9. **`npm test` — all existing tests stay green plus new ones.**
+   Baseline at session start (verify with `npm test`): **220**. M16
+   adds AT LEAST 4 new tests:
+   - 1 test for the base-shape render (criterion 1).
+   - 1 test for multi-sheet (criterion 2).
+   - 1 test for FormattingSmorgasboard render (criterion 3).
+   - 1 test for CF render (criterion 4).
+   Target: **220 → ≥ 224**. The full Jest suite is run before
+   flipping the row, NOT just the new tests. M16 touches
+   `src/index.ts` (content-script registration), introduces
+   `src/contentScripts/notesheetRenderer.ts` (the new entry), and
+   updates `plugin.config.json` (extraScripts entry list) and
+   `webpack.config.js` (if the existing `buildExtraScripts` config
+   doesn't already cover the new entry shape). Nothing else SHOULD
+   regress; the renderer is read-only on the snapshot and does NOT
+   touch the import/export pipeline (`src/xlsx.ts`).
 
 **Out of scope**
 
-- **Text-based CF rules** (`beginsWith`, `endsWith`, `containsText`,
-  `notContainsText`). Not in the fixture. Document as M15 follow-up.
-- **Time-period CF rules** (`thisMonth`, `last7Days`, `today`,
-  `yesterday`, `tomorrow`, `lastWeek`, `thisWeek`, `nextWeek`,
-  `lastMonth`, `nextMonth`). Same.
-- **Unique-values / duplicate-values rules.** Same.
-- **Formula-based CF rules** (`type="expression"`). Same.
-- **Stop-If-True semantics.** OOXML CF rules can carry `stopIfTrue` —
-  if a higher-priority rule matches, lower-priority ones don't apply.
-  M15 always applies all rules; document the gap.
-- **CF inside merged cells.** The fixture doesn't exercise it.
-- **Custom dxf records beyond fill-bg.** The fixture uses fill-bg
-  only. If exceljs surfaces a font-colour or border on a
-  cellIs/top10 dxf, preserve them; otherwise out of scope for M15.
-- **Univer "manage rules" panel UI customisations.** Use the panel
-  exactly as Univer ships it — no theming, no relabelling. The
-  preset's CSS import (`/lib/index.css`) is the ONLY styling
-  surface M15 touches.
-- **Editing CF via Joplin's note-import path.** The CF UI panel is
-  the editor surface; users do NOT edit CF via a markdown table or
-  fenced-code modification. Editor-only editing.
-- **README "Known shortcomings — Conditional formatting" cleanup.**
-  Punted to a follow-up docs PR (precedent: M13/C, M13/D, M13/E
-  punted theirs to PRs #21 and #23). The evaluator does NOT
-  penalise if the docs edit is deferred.
-- **iconSet variants beyond `3Arrows`.** The fixture uses only
-  `3Arrows`. Other iconSets (`3TrafficLights1`, `4RedToBlack`,
-  `5Arrows`, etc.) probably work via the same translation but are
-  not under test in M15.
-- **CF preserving theme-tinted colours via the source clrScheme.**
-  M15 treats CF colours as literal `argb` strings. Theme refs
-  (`type="theme"` inside `<dxf>`) are out of scope; document if
-  encountered in the wild.
+- **Charts in HTML export.** Notesheet's anchored Chart.js charts
+  don't survive into static HTML output. The renderer emits cell
+  values for cells under the chart anchor, but the chart canvas is
+  dropped. Listed cell values still render. Document as M16-followup
+  or M17 dependency.
+- **Live formula evaluation in the renderer.** HTML export uses the
+  cached `cell.v` value from the snapshot. If a formula's cached
+  value is stale (e.g. user typed in Univer but didn't save before
+  exporting), the stale value renders. Acceptable.
+- **Univer's `IDocumentBody.dataStream` rich-text per-run
+  formatting** — i.e., M13/D's bold word + plain word in one cell.
+  M16 renders the cell's plain text concatenation. Per-run
+  formatting in HTML is M16-followup. Document.
+- **Theme palette resolution beyond what's already baked into the
+  snapshot.** Colours come from the snapshot's resolved `bg.rgb`
+  and `cl.rgb` fields; the renderer does NOT re-walk theme
+  references. M13/E's synthesizer already bakes the theme-resolved
+  colours into per-cell `bg`/`cl` so this works correctly for
+  table-styled fixtures.
+- **Print stylesheets / page breaks.** Joplin's PDF export decides
+  page sizing and break points; the renderer does NOT override.
+- **iconSet glyphs as inline SVG.** Static glyph rendering for CF
+  icon sets is a non-trivial feature unto itself. M16-followup.
+- **DataBar gradient rendering.** Same — needs CSS gradient + per-
+  cell bar width math. M16-followup.
+- **Column widths and row heights.** The M16 renderer emits a
+  default-sized `<table>` and lets the browser flow it. Excel's
+  exact column-width replication is not pursued. If needed,
+  `<col style="width: ...">` could be added later from the
+  snapshot's `columnData` — out of scope for M16.
+- **Number-format precision parity with Excel.** `cell.v` may be
+  a number with full float precision. The renderer ships a
+  reasonable `numFmt` formatter for the common cases (percent,
+  currency, dates) but does NOT replicate every Excel format
+  string. Document gaps.
+- **Stop-If-True CF semantics in the static render.** If the M15
+  fixture or any other adds a `stopIfTrue: true` rule, the M16
+  renderer applies all matching CF rules in order regardless. M15
+  already documented this gap on the Univer-side; M16 inherits it
+  for HTML.
+- **CF rules with operators not in the M15 set** (text-based,
+  time-period, unique/duplicate, formula-based). Same M15 gap;
+  the renderer emits no fill for those rules.
+- **CF dataBar and iconSet rendering in HTML.** Static HTML can
+  approximate dataBar via inline `<div style="width:N%">` background
+  fill, and iconSet via inline SVG glyphs, but both require careful
+  per-row math (dataBar's value-to-width interpolation; iconSet's
+  cfvo-band lookup). Punt to M16-followup. The visible cell value
+  still renders for those columns.
+- **Cell hyperlinks rendering as `<a>`.** M12 ships per-cell
+  hyperlinks via Univer's customRange shape; emitting them as `<a
+  href="...">` in the HTML output is straightforward but punted to
+  M16-followup unless trivial. The visible cell value still
+  renders.
+- **README "Known shortcomings — Joplin's Export → PDF / HTML"
+  entry update.** Per the M13/C, M13/D, M13/E, M15 precedent,
+  punted to a follow-up docs PR. The evaluator does NOT penalise
+  if the docs edit is deferred.
 
 **Suggested fixtures**
 
+- `tests/ExcelBaseTestData/formatting-testdata/FormattingSmorgasboard.xlsx`
+  — Aptos workbook with table styling. The central fixture for
+  criterion 3 and the visual gate (criterion 5). Tests M13/E's
+  banding fidelity flowing through to HTML.
+- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`
+  — multi-sheet test for criterion 2's per-sheet rendering.
 - `tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx`
-  — already in the repo. 5 rules, one per column (A/C/E/G/I). This
-  is the spec's central fixture. Verified contents:
-  - colorScale on `A2:A11`, three cfvo (min / percentile=50 / max),
-    three colours #F8696B / #FFEB84 / #63BE7B.
-  - dataBar on `C2:C11`, two cfvo (min/max), colour #638EC6.
-  - cellIs `>50` on `E2:E11`, dxf fill bg #FFC7CE.
-  - top10 (rank=3, bottom=false) on `G2:G11`, dxf fill bg #C6EFCE.
-  - iconSet 3Arrows on `I2:I11`, three cfvo (percent 0 / 33 / 67).
-- `screenshots/excel-reference/ConditionalFormatting-Variants.png`
-  — operator-captured reference (does NOT exist at planner time).
-  Used as ground truth by the canvas-fidelity tests once captured.
-  Generator does NOT block on this; canvas-fidelity tests skip when
-  the file is absent and unskip when present.
+  — exercises M15's CF rules through the renderer for criterion 4.
 
-The harness invokes
-`scripts/pge/import-fixture.sh ConditionalFormatting-Variants.xlsx`
-to land the fixture into a Joplin note headlessly, then
-`eval-screenshot.sh feature-1-m15-conditional-formatting` for the
-canvas-targeted PNG and pixel sidecar.
+NO new fixtures are needed. The M16 acceptance surface is fully
+covered by the existing catalog under
+`tests/ExcelBaseTestData/formatting-testdata/`.
+
+The PGE harness invokes `import-fixture.sh
+FormattingSmorgasboard.xlsx`, lands the note, then
+`eval-screenshot.sh feature-1-m16-snapshot-to-html` for the
+preview-pane-targeted PNG and pixel sidecar.
 
 **Related risks**
 
-- **CF preset wiring is the single point of failure.** Without
-  registering `UniverSheetsConditionalFormattingPreset` in
-  `createUniver()`, the snapshot's CF data lands but Univer's
-  renderer paints nothing — the M13 failure mode (snapshot data
-  correct, canvas blank, Jest passes on snapshot fidelity, runtime
-  visual gate fails). The first thing the generator does after
-  exceljs↔Univer translation is wire the preset; do NOT
-  defer that to "I'll add it after I see the data lands."
+- **Joplin's content script API runs in a sandboxed renderer
+  worker.** Per `api/JoplinContentScripts.d.ts` and Joplin's
+  plugin samples, the entry exports a `default function(context)`
+  that returns `{ plugin: (markdownIt, pluginOptions) => {...},
+  assets: {...} }`. The function executes in Joplin's renderer,
+  NOT the plugin process. It cannot import from the plugin's main
+  bundle directly. The renderer must be self-contained — bundle
+  `extractSnapshot()` (from `src/snapshot.ts`) into the content-
+  script entry. Webpack handles this via the existing
+  `buildExtraScripts` config; the new entry is added to
+  `plugin.config.json`'s `extraScripts` list.
 
-- **`SHEET_CONDITIONAL_FORMATTING_PLUGIN` is the resource key**
-  Univer expects on the snapshot. It's a string constant exported
-  from `@univerjs/sheets-conditional-formatting`. **Reuse the
-  export, do NOT hard-code the string** — if Univer ever renames it,
-  a hard-coded string in `src/xlsx.ts` becomes a silent bug. The
-  pin-down test in `excelReferenceFidelity.test.ts` likewise reads
-  the constant from the package, not a string literal.
+- **Webpack target for content scripts.** The existing
+  `buildExtraScripts` config produces `commonjs2` bundles by
+  default and `IIFE` bundles for browser-bound scripts (see
+  `webpack.config.js:345`). Joplin's content scripts run in a
+  Node-like context within Joplin's renderer process; they expect
+  the `module.exports = function(context) { ... }` shape — i.e.
+  `commonjs2`. The generator should NOT add the new entry to the
+  `browserExtraScripts` set. If the renderer module fails to load
+  with a "no default export" error, that's the symptom — confirm
+  the bundle output uses `module.exports = ...` (commonjs2), not
+  `(function() { ... })()` (IIFE).
 
-- **exceljs's CF data shape doesn't match Univer's 1:1.**
-  Translation table (build a per-type translator):
-  - exceljs `type: 'colorScale'` → Univer `type: 'colorScale'` (cfvo
-    + colour arrays map directly). exceljs surfaces colours as
-    `argb: 'FFRRGGBB'`; Univer expects `#RRGGBB`. Strip leading
-    `FF` via `argbToHex`. cfvo `type` values (`min`, `percentile`,
-    `max`) carry over verbatim.
-  - exceljs `type: 'dataBar'` → Univer `type: 'dataBar'`. Single
-    colour, two cfvo. Direction (`gradient`, `solidFill`,
-    `negativeColor`) — exceljs may not surface these; ship defaults
-    matching Univer's preset defaults if absent.
-  - exceljs `type: 'cellIs'` → Univer `type: 'highlightCell'`,
-    `subType: 'number'`. `operator` (`greaterThan`,
-    `lessThan`, etc.) carries over. `formulae[0]` becomes Univer's
-    `formula` field. dxf fill bg becomes Univer's `style.bg.rgb`.
-  - exceljs `type: 'top10'` → Univer `type: 'highlightCell'`,
-    `subType: 'rank'`. `rank` value carries over. exceljs's
-    `bottom: true` (bottom-N) maps to Univer's `isBottom: true`.
-  - exceljs `type: 'iconSet'` → Univer `type: 'iconSet'`. iconSet
-    name carries over verbatim (`3Arrows`, `3TrafficLights1`,
-    `5Arrows`). cfvo bands carry over.
+- **The renderer is called for every note**, not just Notesheet
+  notes. The first thing the fence handler does is check the
+  fence info string for `notesheet v=1`; if it doesn't match,
+  return undefined (or call markdown-it's default fence handler)
+  to let other notes render normally. Don't break non-Notesheet
+  notes.
 
-- **Round-trip ARGB drift.** exceljs surfaces colours as `argb`
-  strings (`FF638EC6` — leading `FF` is alpha). Univer expects
-  `#RRGGBB` (no alpha). Both sides go through `argbToHex` /
-  `hexToArgb` helpers (already exist in `src/xlsx.ts` from M12). Do
-  NOT drop the alpha on import then accidentally reintroduce it on
-  export — the round-trip test in criterion (5) is the regression
-  sentinel.
+- **Cell value formatting via `numFmt`.** `cell.v` is the cached
+  value (number, string, boolean). For cells with a `numFmt`
+  (e.g. `"0%"`, `"$"#,##0`, `"yyyy-mm-dd"`), the renderer should
+  format the value through the pattern before emitting. exceljs's
+  `numFmt` syntax is the source. Out-of-scope to fully replicate
+  Excel's number-format engine; ship something reasonable for
+  common cases (percent, currency, dates) and document gaps. The
+  built-in numFmt code 0 (`General`) just stringifies the value.
 
-- **CF-on-top-of-table-style precedence.** M12's
-  `synthesizeTableStyleAssignments` (`src/xlsx.ts:943`) bakes
-  per-cell `bg`/`cl` from the table style. CF rules are applied by
-  Univer's renderer ON TOP of the cell style. **Confirm Univer
-  paints CF over the synthesized table-style fill, not under it.**
-  If it paints under, the table-style's fill will mask the CF
-  colour and criterion (1) fails. Mitigation if needed: mark
-  CF-bound cells in the synth-styles sidecar
-  (`SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN`) so the M12 synthesizer
-  skips painting per-cell `bg` on those cells. The current fixture
-  doesn't ship a `tableStyle` so this risk doesn't bite the gate
-  shot — but the M12-synthesized fixtures (Aptos, Classic) and the
-  M15 fixture share `src/xlsx.ts` parsing, so a bad change to one
-  could regress the others.
+- **CF rules don't paint cells in the snapshot — Univer's CF
+  engine paints them at canvas-render time.** For the M16
+  renderer to show CF colours, it has to evaluate CF rules
+  itself: walk the snapshot's `SHEET_CONDITIONAL_FORMATTING_PLUGIN`
+  resource, apply per-rule logic (cellIs > 50, top-N rank, color
+  scale interpolation by percentile), and bake the result into
+  per-cell inline styles. `colorScale`, `cellIs`, and `top10`
+  are doable in a static pass; `iconSet` and `dataBar` are
+  harder (need glyph / bar element rendering) and punted as
+  M16-followup. The renderer code lives in
+  `src/contentScripts/notesheetRenderer.ts` (or `cfEvaluator.ts`
+  pulled in from there); split internal logic so the next cycle
+  can extend.
 
-- **iconSet glyph rendering.** Univer's CF engine ships icon glyphs
-  for the standard iconSet names (`3Arrows`, `3TrafficLights1`,
-  `5Arrows`, etc.). Confirm `3Arrows` renders without additional
-  asset bundling. If glyphs render as missing characters
-  (□ / ?), that's a Univer-side icon-font issue — investigate
-  whether the preset's CSS includes the icon font or whether we
-  need an extra import. The CSS import
-  (`@univerjs/preset-sheets-conditional-formatting/lib/index.css`)
-  should pull the font; if it doesn't, the preset's
-  `package.json` `style` / `exports` field will tell.
+- **Merged cells affect table layout significantly.** A merge
+  spans rows/cols; the renderer must skip the cells inside the
+  merge range when emitting subsequent `<td>` elements (else the
+  HTML ends up with extra cells pushing the layout sideways).
+  The snapshot's `mergeData` array provides the ranges as
+  `{startRow, endRow, startColumn, endColumn}` (zero-based
+  inclusive). Algorithm: build a `Set` of "cells inside a merge
+  range but NOT the top-left anchor" before emitting; skip those
+  cells; for the top-left anchor of each merge, emit `<td colspan
+  rowspan>`.
 
-- **Test gap warning** (`feedback_pge_fidelity_test_gap.md`).
-  Pin-downs anchored to our own emit are no test at all. The
-  reference-fidelity test's expected RGBs come from the source
-  `xl/worksheets/sheet1.xml`, NOT from the parser output. The
-  canvas-fidelity test's expected RGBs come from the operator-
-  captured Excel reference screenshot, NOT from our render. Both
-  layers' assertions are anchored UPSTREAM of our code. M13/E
-  rework #2 / #3 is the precedent — those tests landed BEFORE the
-  fix (failing first, then passing) to prove the gap was real. The
-  M15 generator should follow the same ordering: write the
-  reference-fidelity test first against the source XML, watch it
-  fail (no CF resource yet emitted), then make it pass.
+- **The PGE harness adds a `previewPane` region helper this
+  cycle.** Until M16, the harness eval-screenshot path was
+  Univer-canvas-only. The preview pane is part of the main
+  Joplin shell (NOT inside `UserWebviewIndex.html`), so the CDP
+  page picker should attach to Joplin's main page. Selector:
+  generator verifies via DevTools at session start; expected
+  candidates include `iframe.note-viewer-iframe` (recent Joplin
+  versions), `.rendered-md`, or `#rendered-md`. The picker
+  scoring needs adjusting (the current heuristic favours the
+  editor page for Notesheet notes; we want the SHELL page for
+  this cycle). The harness fix lands as part of the cycle.
 
-- **Don't symptom-patch the test on a Jest failure post-rebuild.**
-  If a test regresses after wiring the CF preset, run
-  `git diff package-lock.json` first. The CF preset may have pulled
-  new transitives. Reference: `feedback_dependency_hygiene.md`.
-  Do NOT downgrade exceljs or any other dep to make a symptom go
-  away — fix the dependency drift instead.
+- **Window prep includes preview-visible toggle.** The existing
+  `prep-joplin-window.sh` covers sidebar/note-list hiding and
+  fill-window. M16 needs the preview pane visible — Joplin's
+  default state is editor-only after toggling sidebar off. The
+  generator extends `prep-joplin-window.sh` to detect preview
+  pane visibility and toggle until both panes show. macOS
+  shortcut: Cmd+L toggles editor only / split / preview only;
+  the script needs state-aware toggling per the M13/C precedent
+  for `prep-joplin-panes.js`.
 
-- **The feature touches `src/xlsx.ts` (parser's import + export
-  paths) and `src/editorView.tsx` (preset wiring) — the same files
-  every prior milestone touches.** Run the FULL Jest suite, not
-  just the new tests. M9 borders, M12 hyperlinks + table styles,
-  M10 chart export, M12 alignment, M13/C rotation, M13/D rich text,
-  M13/E theme banding all share the import/export pipeline. Nothing
-  here should regress. Specifically, verify the M13/E pin-downs
-  in `m12FixturePinDowns.test.ts` (Aptos + Classic header colours,
-  totals top + bottom borders) stay green — those are sensitive to
-  any synthesizer change, and a CF-precedence fix could touch the
-  synthesizer.
+- **Don't symptom-patch test failures post-build.** If a test
+  regresses after registering the content script, run
+  `git diff package-lock.json` first. The new content-script
+  entry may have pulled new transitives (unlikely — the renderer
+  uses only stdlib + existing snapshot helpers — but always
+  audit). Reference: `feedback_dependency_hygiene.md`. Do NOT
+  downgrade exceljs or any other dep to make a symptom go away.
 
-- **The Excel reference screenshot capture is operator-side.** The
-  generator must NOT block on it. Implement the canvas-fidelity
-  tests with `test.skip` semantics that detect file absence and
-  unskip when present (the M13/E pattern: read latest by mtime,
-  fail clearly if missing). Generator captures own evidence
-  (screenshot + sidecar) regardless; the verify-gate hook unlocks
-  the `test-results.json` write after the generator-evidence PNG is
-  Read.
+- **The feature touches `src/index.ts` (plugin entry registrations)
+  and adds `src/contentScripts/notesheetRenderer.ts` (new file).
+  It does NOT touch `src/xlsx.ts` (import/export pipeline) or
+  `src/editorView.tsx` (Univer wiring).** The full Jest suite must
+  stay green — borders, hyperlinks, table styles, chart export,
+  alignment, rotation (M13/C), rich text (M13/D), theme banding
+  (M13/E), conditional formatting (M15) all share the import
+  pipeline. M16 SHOULD be orthogonal — but run the whole suite
+  anyway.
 
-- **Window prep is mandatory before evaluator screenshots.**
-  `scripts/pge/prep-joplin-window.sh` (added in M13/C) fills the
-  Joplin window, hides the sidebar and note list, and closes
-  DevTools. A small / panes-up window crops the Univer canvas
-  horizontally; column I (the rightmost CF column) is most
-  vulnerable to being clipped offscreen. The harness wires this in
-  ahead of `eval-screenshot.js` automatically; do NOT bypass it.
+- **Test gap warning** (`feedback_pge_fidelity_test_gap.md`). The
+  M16 Jest tests must assert what's IN the rendered HTML against
+  source-fixture expected content (cell values from the snapshot,
+  colour values from the snapshot's already-validated styles
+  — those styles have their own M13/E pin-downs upstream), not
+  against whatever format the M16 renderer happens to emit. The
+  HTML output format CAN change without test failure as long as
+  the rendered values + colours match. Concretely: pin "the bold
+  cell carries `font-weight: bold`", not "the renderer emits
+  `<td class='b'>`". Pin "the header `<td>` carries
+  `background-color: #34692E`", not "the renderer emits a
+  particular wrapping span shape". The HTML emit style is
+  implementation detail — the cell-by-cell rendered content is
+  the contract.
 
-- **DPR scaling on `cfColumnRegion`.** M13/E's
-  `tableHeaderRowRegion` was Retina-broken until Phase 4 (hardcoded
-  y-offsets assumed DPR=1, broke on DPR=2 macOS). New region
-  helpers MUST scale x/y/w/h by `canvas.width / canvas.clientWidth`
-  at sample time. Use the M13/E pattern: write offsets in CSS px,
-  multiply by the DPR ratio at sample time.
+- **CF colour evaluation is duplicated logic.** The Univer CF
+  preset (M15) already evaluates rules at canvas-render time;
+  the M16 renderer evaluates them again in HTML-render time.
+  This is not deduplicatable without restructuring the snapshot
+  → renderer pipeline through Univer's headless engine, which
+  is itself a multi-cycle project. M16 ships its own evaluator
+  for cellIs, top10, and colorScale; the evaluator code lives
+  inside the content-script bundle and is unit-tested via the
+  Jest tests in criterion 4. If a cycle later wants to factor
+  out the evaluator into a shared module, that's its own
+  refactor.
 
-- **Univer column-letter strip occupies y≈0–18 at default zoom.** The
-  CF data band starts at row 2 (= second visible row), so y starts
-  ~y=18 + rowHeight = ~y=37. With ten data rows at 19px each, the
-  full band ends ~y=37 + 10*19 = ~y=227. `cfColumnRegion` should
-  cover `y=37..227, h=190` for a single column at default zoom (CSS
-  px). Generator may need to tune empirically against the first
-  generator-evidence screenshot.
+- **Editor preview pane DOM stability.** Joplin's preview
+  iframe DOM is not part of Joplin's plugin API contract —
+  selectors can change between Joplin versions. The harness
+  region helper should query for multiple candidate selectors
+  in order and take the first hit. M13/E's `tableHeaderRowRegion`
+  is the template (graceful fallback). If Joplin changes its
+  preview-pane DOM, the eval screenshot fails loudly with "no
+  preview-pane element found" — the generator updates the
+  selector list, doesn't paper over with a hardcoded screenshot
+  region.
 
-- **Active-cell selection on A1 colours the column-A region with
-  blue (`rgb(44,83,241)`).** On a freshly imported note Univer
-  defaults the active selection to A1, which lands at the top-left
-  of the colorScale band. The blue selection border could
-  contribute false-positive `blueInk` hits to the column-A region —
-  but column A is gated on `redInk` AND `greenInk`, not blueInk, so
-  this doesn't bite the spec. Still, if `redInk < 30` on a first
-  capture, programmatically click off A1 (Univer command bus via the
-  webview frame) before re-capturing.
+- **Generator MUST audit any npm install.** If adding a new
+  dev dep is needed for the content-script entry (markdown-it
+  type stubs, etc.), the generator runs `npm install --save-dev`
+  for the specific package, then surfaces the full
+  `git diff package.json package-lock.json` to the operator
+  per `feedback_dependency_hygiene.md`. Major-version transitive
+  shifts are flagged; downgrades are blocked unless the
+  operator explicitly approves.
 
-- **The flipped KNOWN SHORTCOMING test must keep its
-  `test.skip`-or-`test()` marker semantics aligned with the suite.**
-  `tests/m12FixtureRoundTrip.test.ts:206` is currently `test(...)`
-  asserting NO CF resource. Flipping its body (asserting the
-  preserved rules) keeps it as `test()`. Don't accidentally promote
-  to `test.skip` or `test.todo` — the suite count needs the test.
+- **The `extractSnapshot()` import path.** The content-script
+  entry can `import { extractSnapshot } from '../snapshot';`
+  via a relative path; webpack bundles `src/snapshot.ts` into
+  the renderer output. Avoid pulling `src/xlsx.ts` — it's heavy
+  (exceljs, JSZip) and the renderer doesn't need it. The
+  fence-parsing logic in `extractSnapshot()` is sufficient.
 
-- **Generator MUST add the CF preset to `package.json`
-  dependencies** as `@univerjs/preset-sheets-conditional-formatting`
-  at the version pinned in the lockfile (currently 0.23.0,
-  consistent with the other Univer presets). After the install,
-  `git diff package.json package-lock.json` and surface every
-  version change — npm's transitive resolution decisions are not
-  implicitly approved (`feedback_dependency_hygiene.md`). Major
-  version changes in transitive deps must be flagged.
+- **Smoke note leak risk** (`feedback_known_shortcomings_over_bugs.md`).
+  The PR #17 smoke seed in `emptySnapshot()` was a debug-state
+  leak that shipped to production for ~6 weeks. M16 introduces a
+  NEW entry point — make sure the renderer doesn't carry any
+  test-bed defaults (e.g. a "render this if the snapshot is
+  malformed" placeholder string that the user might see in
+  their PDF). If the snapshot is malformed, the renderer should
+  fall through to markdown-it's default fence rendering (which
+  shows the JSON, the existing pre-M16 behaviour) — explicit
+  failure beats silent injection.
 
 ## How the planner agent should fill out future BUILD_PLAN.md files
 
-Use this file (and the prior M13/C, M13/D, and M13/E BUILD_PLAN.md
-preserved in git history at `dc80505`, `420d583`, and `fca1cbc`) as
-the template. Each feature gets:
+Use this file (and the prior M13/C, M13/D, M13/E, M15 BUILD_PLAN.md
+files preserved in git history at `dc80505`, `420d583`, `fca1cbc`,
+`88297a1`) as the template. Each feature gets:
 
 - `### feature-N-<kebab-id>` heading (stable; never renamed once
   written).
 - **Spec**: one paragraph naming the user-observable change.
 - **Acceptance criteria**: numbered list of observable evidence
-  (visual, pixel-sidecar, Jest, runtime). Two-layer fidelity tests
-  (snapshot + canvas) anchored UPSTREAM of our code (source XML for
-  snapshot, operator-captured Excel reference PNG for canvas) are
-  the project default for "match Excel" features. NO data-shape-only
-  assertions; NO "code does X" — only outcomes the evaluator can
-  inspect from a fresh context.
+  (HTML content, pixel-sidecar, Jest, runtime). Tests anchored
+  UPSTREAM of our code (source fixture content for HTML; the
+  operator-captured Excel reference PNG for canvas-vs-Excel
+  features; the source XML for snapshot fidelity). NO assertions
+  pinned to our own emit; NO "code does X" — only outcomes the
+  evaluator can inspect from a fresh context.
 - **Out of scope**: explicit non-goals so the evaluator does not
   penalise for them.
 - **Suggested fixture(s)**: which file(s) under
   `tests/ExcelBaseTestData/formatting-testdata/` exercise this.
 - **Related risks**: regression hot-spots and prior-bug pointers,
-  including pointers into prior PR / commit hashes when prior work
-  is the starting point.
+  including pointers into prior PR / commit hashes when prior
+  work is the starting point.
 
 The lowest-numbered feature with `passes: false` in
 `test-results.json` is what the generator works on next.
