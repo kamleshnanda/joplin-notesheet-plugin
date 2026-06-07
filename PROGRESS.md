@@ -258,6 +258,51 @@ every feature.
 
 ## In progress
 
+- **M16 Gap #3 — formula re-evaluation in HTML export — RESOLVED via
+  documentation, no evaluator built** (2026-06-07). The original M16
+  spec listed live formula re-evaluation as out of scope; the
+  follow-up question "should we ship a renderer-side evaluator?"
+  closed with NO after empirical investigation:
+
+  Verified live in Joplin via CDP probe (`scripts/pge/probe-recalc.js`,
+  since deleted): editing C2 → 99999 in the Aptos fixture causes
+  Univer's `=SUBTOTAL(109,ProjectTracker[Budget])` to recalculate
+  correctly, and `workbook.save()` returns a snapshot with the
+  updated `cell.v`. Auto-recalc on precedent change AND
+  recalc-on-snapshot-load both work.
+
+  Also verified: `xlsxBufferToSnapshot` preserves whatever cached
+  `result` was in the source xlsx — exceljs does NOT recalculate at
+  parse time. So if Excel saved a workbook with a stale cached
+  result (e.g. user disabled auto-calc), the stale value flows
+  through to the snapshot until Univer is opened on the note.
+
+  Decision tree: build a renderer-side evaluator (option A,
+  ~30-50 functions, ~10KB bundle, two-engine drift risk) vs let
+  Univer be the single source of truth (option C). The actual user
+  flow always goes through Univer (`editorView.tsx:handleImport()`
+  boots Univer, `saveNow()` calls `workbook.save()`), so option C
+  has zero gap at the user-visible level. Option A is
+  narrow-scenario insurance against snapshots that bypass Univer
+  entirely (manual markdown edits, hypothetical external writers),
+  at the cost of bundle size + maintenance + drift risk. Operator
+  closed on C: document, don't build.
+
+  Shipped on branch `m16/document-formula-recalc`:
+  - README "Known shortcomings" entry rewritten to explain the
+    Univer-as-source-of-truth contract instead of saying "exceljs
+    evaluated at last Notesheet save" (which was inaccurate;
+    exceljs doesn't recalc).
+  - `tests/m16FormulaSourceOfTruth.test.ts`: 4 pin-down tests —
+    formula cells have BOTH f and v at import; stale results flow
+    through unchanged; synthesizeTableStyleAssignments doesn't
+    touch f/v; `renderCellValue` reads cell.v not cell.f
+    (code-shape sentinel — if a future change starts evaluating
+    cell.f, this test trips and forces the README + bundle-cost
+    discussion to reopen).
+
+  Test count: 263 → 267 (+4).
+
 - **m13/E follow-up cycle** (2026-06-07) — re-probed the wide Aptos
   reference (`screenshots/excel-reference/FormattingSmorgasboard-Aptos-wide.png`,
   1962×1070) at 7 distinct x positions and the existing Classic reference

@@ -221,10 +221,32 @@ silently regress.
 - **Charts in HTML export**: Notesheet's anchored Chart.js charts
   don't survive into static HTML. Cell values referenced by the
   chart still render; the chart canvas itself does not.
-- **Live formula re-evaluation**: HTML export uses the cached `cell.v`
-  value from the snapshot (the value exceljs evaluated at last
-  Notesheet save). If a formula's cached value is stale, the stale
-  value renders.
+- **Formula re-evaluation in HTML export — Univer is the source of
+  truth.** The HTML / PDF / preview-pane renderer reads `cell.v`
+  (cached value) directly; it does not parse or evaluate `cell.f`
+  (formula text). `cell.v` is kept fresh by Univer's formula engine
+  inside the editor: it recalculates on every cell edit AND when a
+  snapshot is loaded, then writes the result back into `cell.v` on
+  save. Every code path that persists a snapshot to a Joplin note
+  goes through Univer's `workbook.save()`, so a note that has been
+  opened in the Notesheet editor at least once has up-to-date
+  formula values for the HTML export.
+
+  The narrow case where the renderer would show a stale value:
+  someone hand-edits the JSON inside a `notesheet v=1` fence in
+  markdown, changes a precedent cell's `v`, and views the preview
+  before opening the editor. Opening the note in the Notesheet
+  editor triggers a save (via Univer's recalc) and the next preview
+  render is correct. We deliberately do NOT ship a second formula
+  engine inside the renderer — Univer's engine (`@univerjs/engine-formula`)
+  is the canonical evaluator; reimplementing 470+ Excel functions
+  in the renderer would mean two engines drifting apart over time
+  and a multi-MB bundle on every Joplin note open. Verified
+  empirically (2026-06-07) that Univer's recalc-on-edit produces
+  the same results Excel does for `SUBTOTAL`, `SUM`, structured
+  references, and arithmetic — pinned by
+  `tests/roundTripBidirectional.test.ts` for snapshot-level data
+  fidelity.
 - **Per-run rich text**: M13/D's bold-word + plain-word in one cell
   renders as plain text in HTML. Per-run formatting in HTML export
   is M16-followup.
