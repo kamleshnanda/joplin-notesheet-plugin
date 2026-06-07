@@ -258,7 +258,40 @@ every feature.
 
 ## In progress
 
-(empty)
+- **m13/E follow-up cycle** (2026-06-07) — re-probed the wide Aptos
+  reference (`screenshots/excel-reference/FormattingSmorgasboard-Aptos-wide.png`,
+  1962×1070) at 7 distinct x positions and the existing Classic reference
+  at 10 x positions. Two findings, both definitive after pixel probe:
+  (1) **totals-top is the HEADER colour DOUBLE-line**, not the lighter
+  accent MEDIUM. Aptos: `#34692E` two strips with white gap at y=826-831.
+  Classic: `#A5A5A5` two strips with white gap at y=504-509.
+  (2) **inter-row strips DO exist at every banded-row boundary**, in
+  the lighter accent (`#72D068` Aptos / `#C9C9C9` Classic). Verified
+  at 8 boundaries on the wide Aptos reference, ~7 on Classic. The
+  prior session's "no inter-row strip" claim was a probe error
+  (run-length scan coalesced the 2px strips into the band runs).
+  Recipe `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES.TableStyleMedium4`
+  updated. `synthesizeTableStyleAssignments` emits totals-top as
+  DOUBLE (s=7), totals-bottom as MEDIUM (s=8), inter-row strips as
+  MEDIUM bd.t (s=8) on every data row using `totalsBottomBorder` slot
+  (the lighter accent). All four reference-anchored fidelity tests
+  pass; six pin-down tests in `m12FixturePinDowns.test.ts` updated
+  (4 existing + 2 new for inter-row strips). New canvas-fidelity test
+  shape: structural sentinels for "double-line at totals-top" + "9
+  inter-row strips ±3" with gridline-tail trim heuristic for the
+  Joplin canvas's full-window screenshots. **Bidirectional round-trip
+  test** added at operator's request:
+  `tests/roundTripBidirectional.test.ts` (3 tests) verifies content +
+  style edits flow through both Joplin → export → Excel-edit (via
+  exceljs) → re-import correctly, and that synth fields don't bleed
+  into the exported xlsx or accumulate across multiple round-trips.
+  Test count: 256 → 263 (+7). Re-captured eval screenshots
+  `eval-aptos-2026-06-07T06-27-03-263Z.png` and
+  `eval-classic-2026-06-07T06-27-18-634Z.png`. Univer canvas
+  anti-aliases the recipe colours by ~Δ14-23 RGB units (e.g. recipe
+  `#34692E` → canvas `#426835`) — the snapshot data and exported
+  `.xlsx` are unaffected; documented as a Univer renderer
+  characteristic in the canvas-fidelity test header comment.
 
 ## Next
 

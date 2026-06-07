@@ -165,16 +165,19 @@ accidentally changes.
   accent3). Workbooks whose `(styleName, accentHex)` pair isn't in
   the override map fall through to an HSL-L tint formula that
   approximates the right hue but can drift by ~Δ18 RGB units. The
-  M13/E rework (PR #22) shipped with a known Univer renderer gap
-  where the totals row's bottom-border accent strip rendered in the
-  header colour rather than the lighter accent strip Excel uses; a
-  re-capture during the M16 cycle (2026-06-07) confirmed both top
-  and bottom totals strips now render correctly in `#72D068` — the
-  gap appears to have resolved through downstream snapshot-shape
-  changes between M13/E and M16. Pinned by
-  `tests/excelCanvasFidelity.test.ts` and the
-  `screenshots/feature-1-m13-theme-aware-banding/eval-aptos-*.png`
-  evidence.
+  totals row's strips and the inter-row strips that Excel paints at
+  every banded-row boundary are synthesized into the snapshot:
+  totals-top is a DOUBLE-line in the header colour
+  (`#34692E` Aptos / `#A5A5A5` Classic), totals-bottom and inter-row
+  strips are MEDIUM single 2px in the lighter accent (`#72D068` /
+  `#C9C9C9`), all anchored to operator-captured Excel reference PNGs.
+  Univer's canvas renderer at DPR=2 anti-aliases these to slightly
+  drifted shades in the rendered visual (e.g. `#34692E` → `#426835`,
+  `#72D068` → `#89CE74`) — the underlying snapshot data and exported
+  `.xlsx` are unaffected. Pinned by
+  `tests/excelReferenceFidelity.test.ts`,
+  `tests/excelCanvasFidelity.test.ts`, and
+  `tests/roundTripBidirectional.test.ts`.
 - **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
   resolved against whichever `<a:clrScheme>` is loaded at import time.
   After round-trip the resolved RGB is fixed in the snapshot, so a

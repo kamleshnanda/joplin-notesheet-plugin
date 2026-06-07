@@ -1,0 +1,41 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-07T06-27-03-263Z.png",
+  "region": "table header band (x 80–480, y 22–35; cols B+ of A1:_ table header row, excludes A1 active-cell selection border)",
+  "regionKind": "tableHeaderRow",
+  "dominant": "rgb(52,105,46)",
+  "count": 20644,
+  "sampled": 20800,
+  "top": [
+    [
+      "rgb(52,105,46)",
+      20644
+    ],
+    [
+      "rgb(53,106,47)",
+      52
+    ],
+    [
+      "rgb(46,85,241)",
+      52
+    ],
+    [
+      "rgb(53,105,62)",
+      26
+    ],
+    [
+      "rgb(54,107,48)",
+      26
+    ]
+  ],
+  "regionWidth": 800,
+  "regionHeight": 26,
+  "inkRows": 26,
+  "inkRowSpread": 1,
+  "redInk": 0,
+  "blueInk": 52,
+  "greenInk": 20748,
+  "greyInk": 0,
+  "pinkInk": 0,
+  "lightGreenInk": 0,
+  "yellowInk": 0
+}

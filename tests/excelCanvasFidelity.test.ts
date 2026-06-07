@@ -382,30 +382,47 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // Joplin's screenshot is a full-window capture so default Univer
     // gridlines (`#D7D8DB`) below the table can match the lighter
     // accent within REGION_TOLERANCE. Bound the inter-row strip search
-    // to the table region by finding the last `bandedHex` strip in
-    // each image (the last fill row above the totals row); the totals
-    // row body, totals-bottom strip, and a small buffer below all sit
-    // within ~80px CSS, so add 80*DPR to that y as the search cutoff.
-    function lastBandedY(img: DecodedPng, xMin: number, xMax: number, yStart: number): number {
-        const allBand = findAllColouredStrips(
+    // by the totals-bottom strip: scan for the LAST `interRowStripHex`
+    // strip in each image — that's structurally either an inter-row
+    // boundary OR the totals-bottom strip — then add a small buffer to
+    // include it. Anything past that buffer is post-table noise.
+    function lastInterRowStripY(img: DecodedPng, xMin: number, xMax: number, yStart: number): number {
+        // Walk row-by-row; stop ONCE we cross out of "consistent
+        // strip-or-fill" territory. Specifically: find the last
+        // 1-2px-tall (≤4px DPR=1, ≤8px DPR=2) strip in the
+        // interRowStripHex family that is followed by ≥ 30px of
+        // non-matching content. A gridline-tail starts where the
+        // post-table whitespace ends, so the LAST strip before the
+        // gridline tail is what we want.
+        const allStrips = findAllColouredStrips(
             img, xMin, xMax, yStart, img.height - 1,
-            probe.expected.bandedHex, 12,
-        );
-        if (allBand.length === 0) return img.height - 1;
-        return allBand[allBand.length - 1].yMax;
+            probe.expected.interRowStripHex, REGION_TOLERANCE,
+        ).filter((s) => s.yMax - s.yMin <= 8);
+        if (allStrips.length === 0) return yStart;
+        // Walk pairs from the end forward: drop trailing strips that
+        // sit in tight regular spacing (gridline pattern, gap < 50px
+        // and within ±4 of the previous gap). Stop trimming when we
+        // find a strip whose gap-to-prev is ≥ 50 OR whose spacing
+        // breaks regularity.
+        const trimmed = [...allStrips];
+        while (trimmed.length >= 3) {
+            const last = trimmed[trimmed.length - 1];
+            const prev = trimmed[trimmed.length - 2];
+            const prev2 = trimmed[trimmed.length - 3];
+            const lastGap = last.yMin - prev.yMax;
+            const prevGap = prev.yMin - prev2.yMax;
+            if (lastGap < 50 && prevGap < 50 && Math.abs(lastGap - prevGap) <= 4) {
+                trimmed.pop();
+            } else break;
+        }
+        return trimmed[trimmed.length - 1].yMax;
     }
-    const refLastBandY = lastBandedY(ref, probe.excelXMin, probe.excelXMax, refHeader!.yMax + 1);
-    const joplinLastBandY = lastBandedY(joplin, probe.joplinXMin, probe.joplinXMax, joplinHeader!.yMax + 1);
-    // Add buffer below the last band so we cover the totals row body +
-    // totals-top double-line + totals-bottom strip. Excel ref ≈ 1× CSS:
-    // Aptos has totals body ~80px between last band (y=825) and bottom
-    // strip (y=908), so +90px buffer. Joplin DPR=2 ≈ 2× CSS: totals
-    // body ~110px between last band (y=886) and totals-bottom (y=1100),
-    // so +220px buffer. Don't extend further — past y≈1138 the
-    // post-table Univer gridlines `#D7D8DB` start, and we have to
-    // leave a clean gap to exclude them.
-    const refSearchEnd = Math.min(ref.height - 1, refLastBandY + 90);
-    const joplinSearchEnd = Math.min(joplin.height - 1, joplinLastBandY + 220);
+    const refLastStripY = lastInterRowStripY(ref, probe.excelXMin, probe.excelXMax, refHeader!.yMax + 1);
+    const joplinLastStripY = lastInterRowStripY(joplin, probe.joplinXMin, probe.joplinXMax, joplinHeader!.yMax + 1);
+    // Tiny buffer (5px) below the last legitimate strip so it's
+    // included in the bounded search.
+    const refSearchEnd = Math.min(ref.height - 1, refLastStripY + 5);
+    const joplinSearchEnd = Math.min(joplin.height - 1, joplinLastStripY + 5);
 
     // --- Inter-row strips (banded-row boundaries) ----------------------
     // Excel paints a 2px strip in the lighter-accent colour at every
@@ -418,9 +435,12 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // MEDIUM border anti-aliases at DPR=2 to a lighter shade
     // (e.g. `#89CE74` for Aptos `#72D068`, ΔR=23). For Classic,
     // Univer's default post-table gridlines (`#D7D8DB`) ALSO match
-    // `#C9C9C9` within Δ=24 (ΔR=14). To exclude those, bound the
-    // search by `lastBandedY + buffer` (above) so the gridlines past
-    // the table don't get counted.
+    // `#C9C9C9` within Δ=24 (ΔR=14). To exclude those, drop strips
+    // that occur in tight regular spacing past a clear gap — Univer
+    // gridlines repeat every ~38px CSS / ~76px DPR=2 with high
+    // regularity. Real inter-row strips have a ~106px DPR=2 spacing
+    // (one per banded row) and the totals-bottom strip is
+    // structurally followed by 50+ px of white before any gridline.
     const refInterRowStrips = findAllColouredStrips(
         ref, probe.excelXMin, probe.excelXMax, refHeader!.yMax + 1, refSearchEnd,
         probe.expected.interRowStripHex, REGION_TOLERANCE,
