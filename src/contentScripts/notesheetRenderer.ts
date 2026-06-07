@@ -269,23 +269,6 @@ function loadCfRulesFromSnapshot(snapshot: Snapshot): Record<string, CfRule[]> {
     return out;
 }
 
-function inRange(
-    row: number,
-    col: number,
-    range: { startRow: number; endRow: number; startColumn: number; endColumn: number },
-): boolean {
-    return row >= range.startRow && row <= range.endRow
-        && col >= range.startColumn && col <= range.endColumn;
-}
-
-function cellMatchesRule(rule: CfRule, row: number, col: number): boolean {
-    if (!Array.isArray(rule.ranges)) return false;
-    for (const r of rule.ranges) {
-        if (inRange(row, col, r)) return true;
-    }
-    return false;
-}
-
 // Linear interpolation between two RGB colours, weighted by `t` in [0,1].
 function lerpRgb(a: string, b: string, t: number): string {
     const ah = a.replace('#', '');
@@ -651,7 +634,7 @@ export default function (_context: any) {
         plugin: function (markdownIt: MarkdownIt, _opts: unknown) {
             if (!markdownIt || !markdownIt.renderer || !markdownIt.renderer.rules) return;
             const defaultFence = markdownIt.renderer.rules.fence
-                || function (tokens: FenceToken[], idx: number, options: unknown, env: unknown, self: { renderToken: (...args: unknown[]) => string }) {
+                || function (tokens: FenceToken[], idx: number, options: unknown, _env: unknown, self: { renderToken: (...args: unknown[]) => string }) {
                     return self.renderToken(tokens as unknown as never[], idx as unknown as never, options as never);
                 };
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
