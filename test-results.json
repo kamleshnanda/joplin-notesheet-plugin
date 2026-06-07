@@ -7,7 +7,7 @@
       "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.png",
       "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.pixels.json"
     ],
-    "evaluator_verdict": null,
-    "last_attempted_at": "2026-06-06T23:50:00Z"
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-06T23:55:00Z"
   }
 }
