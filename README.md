@@ -1,78 +1,129 @@
 # Notesheet — Spreadsheets for Joplin
 
-Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SDK](https://github.com/dream-num/univer), it gives Joplin first-class support for formulas, formatting, sorting, filtering, named tables, anchored charts, and `.xlsx` import/export — all inside the note editor pane you already use.
+Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SDK](https://github.com/dream-num/univer), it gives Joplin first-class support for formulas, formatting, sorting, filtering, named tables, conditional formatting, anchored charts, and `.xlsx` import / export — all inside the note editor pane you already use.
 
 ## Features
 
-- **Spreadsheet inside any note.** A new "New Spreadsheet" command (Tools menu, toolbar button, or `Cmd/Ctrl+Shift+S`) creates a note that opens directly in a Univer-powered spreadsheet editor. Persistence, sync, and full-text search all use Joplin's normal note storage.
-- **Formulas, formatting, sort, filter** — out of the box via Univer's standard toolbar.
-- **Excel structured-reference formulas** — formulas like `=Table1[[#This Row],[Investment]]` from imported `.xlsx` files resolve natively because the table definition is preserved in the snapshot and registered with Univer's formula engine on load.
-- **Named tables** — Insert Table from the Data ribbon; right-click inside a table for row/column insert/remove.
-- **Anchored charts** — Insert ribbon → "Insert Chart" opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via Chart.js.
-- **`.xlsx` import/export** — Import/Export buttons in the editor view, plus a Tools menu command "Import .xlsx as Notesheet" that creates a new note from a `.xlsx` file. Round-trips values, formulas (including structured references), fonts (theme-default workbook fonts like Aptos Narrow / Calibri preserved), fills, alignment, number formats, borders, merged cells, named tables with their built-in style (TableStyleMedium2 etc.), and hyperlinks (both `{text, hyperlink}` cell values and the named-Hyperlink cell style). Workbook theme palette (`<a:clrScheme>`) is preserved on round-trip so the same `TableStyleMediumN` resolves the same accent in the exported file.
+### Spreadsheets in any note
+
+A new **"New Spreadsheet"** command (Tools menu, toolbar button, or `Cmd/Ctrl+Shift+S`) creates a note that opens directly in a Univer-powered spreadsheet editor. Persistence, sync, and full-text search all use Joplin's normal note storage. Notes that aren't spreadsheets open in the regular markdown editor — Notesheet adds zero overhead to non-spreadsheet notes.
+
+### Formulas
+
+- Univer's full Excel-compatible formula engine (`@univerjs/engine-formula`) runs inside the editor. Formulas recalculate on every cell edit and on snapshot load.
+- Excel structured-reference formulas like `=Table1[[#This Row],[Investment]]` resolve natively because table definitions are preserved in the snapshot and registered with Univer's formula engine on load.
+
+### Formatting
+
+- Fonts (theme-default workbook fonts like Aptos Narrow / Calibri preserved), fills, alignment, rotated text, number formats, borders, merged cells.
+- Rich text within a single cell (multi-run bold / colour / italic).
+- Conditional formatting: color scale, data bar, cell-is, top-N, icon set — all five types round-trip.
+- Theme-aware named-table styling: TableStyleMedium variants paint correctly under the workbook's own `<a:clrScheme>` (Aptos accent3 paints green, Office Classic accent3 paints grey, etc.) instead of being baked to a single hardcoded palette.
+
+### Tables
+
+- **Insert Table** from the Data ribbon; right-click inside a table for row / column insert / remove.
+- Built-in styles (TableStyleMedium2, TableStyleMedium4, etc.) are preserved on round-trip.
+
+### Anchored charts
+
+Insert ribbon → **Insert Chart** opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via [Chart.js](https://www.chartjs.org/) (MIT). Charts export to native OOXML (`xl/charts/chart*.xml`) — opening the exported file in Excel produces a real Excel chart, not a screenshot.
+
+> Univer's own chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server. Notesheet ships a custom Chart.js + Univer drawing-preset integration instead so the floating overlay stays open-source.
+
+### `.xlsx` import / export
+
+- **Import / Export** buttons in the editor view, plus a Tools menu command **"Import .xlsx as Notesheet"** that creates a new note from a `.xlsx` file.
+- Round-trips: values, formulas (including structured references), fonts, fills, alignment, rotation, number formats, borders, merged cells, named tables with built-in style, hyperlinks (both `{text, hyperlink}` cell values and the named-Hyperlink cell style), workbook theme palette (`<a:clrScheme>`), conditional formatting, rich-text runs.
+- Workbook theme is preserved on round-trip so the same `TableStyleMediumN` resolves the same accent in the exported file.
+
+### PDF / HTML export of rendered spreadsheet
+
+A Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`) renders Notesheet fenced bodies as inline-styled HTML tables for Joplin's preview pane and PDF / HTML export. Common Excel number formats render correctly; conditional formatting (cellIs / top-N / colorScale) bakes into the static HTML.
 
 ## Milestones
 
 | | Milestone | PR |
 |---|---|---|
-| ✅ | M0 — Rebrand to Notesheet, strip v0 popup model | [#1](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/1) |
-| ✅ | M1 — New Spreadsheet command + snapshot fence helpers | [#2](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/2) |
-| ✅ | M2 — Univer Custom Editor renders in Joplin's editor pane | [#3](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/3) |
-| ✅ | M3 — Formatting (already in Univer's core preset, no work needed) | — |
-| ✅ | M4 — Sort & Filter via Univer presets | [#4](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/4) |
-| ✅ | M5 — `.xlsx` import/export via exceljs | [#5](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/5) |
-| ✅ | M6 — Named tables via Univer preset | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
-| ✅ | M7 + M8 — Anchored Chart.js charts with live updates | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
-| ✅ | M9 — Excel structured-references + table import/export fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
+| ✅ | M0 — Rebrand to Notesheet | [#1](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/1) |
+| ✅ | M1 — New Spreadsheet command + snapshot fence | [#2](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/2) |
+| ✅ | M2 — Univer Custom Editor in Joplin's editor pane | [#3](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/3) |
+| ✅ | M3 — Formatting (Univer core preset) | — |
+| ✅ | M4 — Sort & Filter | [#4](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/4) |
+| ✅ | M5 — `.xlsx` import / export | [#5](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/5) |
+| ✅ | M6 — Named tables | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
+| ✅ | M7 + M8 — Anchored Chart.js charts | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
+| ✅ | M9 — Excel structured-references + table fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
 | ✅ | M10 — Chart export to `.xlsx` (native OOXML) | [#13](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/13) |
-| ✅ | M11 — Dependency hygiene: Jest 29 → 30 to drop deprecated transitive `glob@7` | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
-| ✅ | M12 — Formatting fidelity polish: theme fonts, named-style banding, hyperlinks (Pattern A `{text, hyperlink}` + Pattern B named cell style), workbook theme palette round-trip, table grid border synthesis, friendly errors for unsupported `.xlsx` shapes | [#14](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/14) [#15](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/15) |
-| ✅ | PGE — Planner-Generator-Evaluator harness for runtime visual gating (catches the M13 failure mode where Jest passes but Univer renders broken) | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
-| ✅ | M13/C — Rotated text round-trip, validated via the PGE harness | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
-| ✅ | M13/D — Rich-text within a single cell (multi-run bold / colour / italic), validated via the PGE harness | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
-| ✅ | M13/E — Theme-aware banding accuracy: TableStyle synthesis driven by the source `<a:clrScheme>`, with a reference-anchored fidelity test bed against operator-captured Excel renders | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
-| ❌ | M14 — SheetJS Community migration spike: investigated migrating `src/xlsx.ts` from `exceljs` to [`xlsx-js-style`](https://www.npmjs.com/package/xlsx-js-style) (the only SheetJS Community fork with cell-style support). **NO-GO** — the fork drops borders, alignment / rotation, and most font formatting from the OOXML indexed-cellXf path that every Microsoft-Excel-generated workbook uses; migrating would directly regress M12 / M13/C / M13/E features that already ship. Spike branch closed without merging; the decision document, capability matrix, and 14 golden-snapshot baselines are preserved at [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md). See "M14 — SheetJS evaluation outcome" below for the short version. | [#24 (closed)](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
-| ✅ | M15 — Conditional formatting full round-trip (color scale / data bar / cell-is / top-N / icon set) on `exceljs` + Univer's CF preset wired into the editor; reference-anchored fidelity test bed against the operator-captured Excel render | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
-| ⏳ | M16 — Snapshot → HTML for Joplin's PDF/HTML export menu. Independent of the `.xlsx` parser choice — operates on the in-memory snapshot. | planned |
-| ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions, currently `xlsx-charts-unsupported`). | planned |
+| ✅ | M11 — Dependency hygiene | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
+| ✅ | M12 — Formatting fidelity polish | [#14](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/14) [#15](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/15) |
+| ✅ | PGE — Planner-Generator-Evaluator harness | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
+| ✅ | M13/C — Rotated text round-trip | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
+| ✅ | M13/D — Rich-text within a single cell | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
+| ✅ | M13/E — Theme-aware banding accuracy | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
+| ❌ | M14 — SheetJS Community migration spike (NO-GO; see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)) | [#24](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
+| ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
+| ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) |
+| ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions) | planned |
 
-> **Note on charts:** Univer's chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server, so M7 + M8 ship a custom integration with [Chart.js](https://www.chartjs.org/) (MIT) and Univer's open-source drawing preset for the floating overlay.
+## Compatibility
 
-## M14 — SheetJS evaluation outcome
+- **Joplin 3.5+** — desktop only. Joplin Mobile's plugin model isn't yet ready for the Custom Editor API.
+- **Node.js 20+** for development (CI runs 20.x and 22.x).
+- **`.xlsx`**: tested against fixtures saved by Microsoft Excel and openpyxl. SheetJS-generated workbooks have not been exercised; the M14 spike found that SheetJS Community drops most cell styling at the parser level.
 
-`exceljs@^4.4.0` is the foundation of `src/xlsx.ts`. exceljs has gone quiet (last release December 2024) and ships stale transitives (`uuid@8` with a moderate CVE that we tolerate as not-reachable from our call sites; `glob@7` deprecated). M14 was a research spike to evaluate migrating to SheetJS Community.
+## Known gaps
 
-**Result: NO-GO.** Notesheet stays on `exceljs`. The full evidence is in [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md); the short version:
+These are pinned by `KNOWN SHORTCOMING` Jest tests so accidental changes are caught.
 
-- **Plain SheetJS Community (`xlsx`) does NOT support cell styles.** It's a non-starter for our use because every shipped feature from M9 onwards depends on per-cell styling.
-- **The only community fork with styling support, [`xlsx-js-style@1.2.0`](https://www.npmjs.com/package/xlsx-js-style), drops most styling on Excel-imported workbooks.** The spike ran both parsers across all 14 fixtures under [`tests/ExcelBaseTestData/formatting-testdata/`](./tests/ExcelBaseTestData/formatting-testdata/) and recorded a per-dimension parity matrix:
-  - **Borders** — 0 of 5 fixtures preserve borders on the SheetJS path. Direct M12 regression.
-  - **Rotated text** — 0 of 1 fixtures preserve rotation. Direct M13/C regression.
-  - **Style records** — 50–95% of indexed-cellXf style records lost on every Microsoft-Excel-generated workbook.
-  - **Rich text per-run** — runs flattened; only recoverable via a hand-written raw-XML walker (which is what `xlsx-js-style` is supposed to do for us).
-  - **Self-roundtrip works** — a workbook xlsx-js-style writes can be read back with borders intact. But that's interop-with-itself, not interop-with-Excel; the latter is what every operator-imported fixture exercises.
-- **`xlsx-js-style` is a 2022 fork on a 2022 base.** It hasn't shipped a release since. Migrating would replace one quiet library (`exceljs`, last release Dec 2024) with one that has been silent for longer.
-- **Phase 2 cost was estimated at 9.5–14.5 days**, most of which would be Notesheet building in-house replacements for what the styling fork is named after (a `xl/styles.xml` walker, table export, rich-text export, etc.). At that point we're maintaining a Notesheet-internal Excel parser, not benefiting from a third-party library — the dependency-hygiene argument inverts.
+### Editor
 
-**Revisit conditions:** the migration becomes worth re-evaluating if either (a) SheetJS Community proper (`xlsx`) adds first-class cell-style read support upstream, or (b) `exceljs` is publicly archived, forcing the migration regardless of cost. Until either is true, NO-GO stands.
+- **Left arrow in column A / Up arrow in row 1** jumps the cursor to the bottom-right of the sheet (upstream Univer bug, [dream-num/univer#6988](https://github.com/dream-num/univer/issues/6988)). Workaround: navigate with the mouse.
+- **Cmd/Ctrl+K** opens Joplin's markdown link dialog instead of Univer's link dialog. Use the Univer toolbar's Insert → Link from inside the spreadsheet. Imported `.xlsx` hyperlinks are preserved and clickable; this affects only typing a new link via the keyboard shortcut.
 
-The spike's preserved artefacts at [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md) include a 24-fixture × 14-dimension capability matrix, an honest assessment of the fork's maintenance state, the exact migration cost breakdown, and a Phase-2 feature-smoke checklist for the 11 features the operator listed as MUST-NOT-REGRESS — useful inputs for any future revisit.
+### `.xlsx` import / export
 
-## How a Notesheet note is stored
+- **Theme-tinted borders** (`{theme: N, tint: T}`) resolve against whichever `<a:clrScheme>` is loaded at import time. After round-trip the resolved RGB is fixed in the snapshot, so a later host-side theme change won't update the rendering.
+- **Workbooks with chart drawings** trip exceljs's reconcile pipeline — surfaced as a `NotesheetImportError` with code `xlsx-charts-unsupported`. Workaround: delete charts in Excel and re-save before importing. M17 addresses this.
+- **Multi-sheet workbooks with a named table on each sheet** trip exceljs's table-reduce — `xlsx-multi-table-unsupported`. Workaround: move all tables onto one sheet.
+- **Other exceljs reconcile failures** surface as `xlsx-import-failed` with the original error preserved in `.cause`.
+
+### PDF / HTML export
+
+The Markdown-It renderer reads the snapshot directly without booting Univer. A few features don't have static-HTML equivalents:
+
+- **dataBar conditional-formatting rules**: cells render with the value but no bar fragment. cellIs / top-N / colorScale do bake into HTML.
+- **iconSet conditional-formatting rules**: cells render with the value but no glyph (arrows, traffic lights, etc.).
+- **Anchored charts**: Chart.js canvases don't survive into static HTML. Cell values referenced by the chart still render; the chart visual does not.
+- **Per-run rich text**: a cell with bold + plain runs in one cell renders as plain text in HTML.
+- **Krona-pattern accounting symbol position**: Excel's `_-* #,##0.00 "kr"_-` puts the symbol after the number; Notesheet's accounting formatter places it before, so the layout differs from Excel for this specific pattern.
+- **Accounting `_X` underscore-fill** (variable-width column-alignment construct) renders as a single space; numeric columns won't align as tightly as Excel's column-alignment fill.
+- **Unsupported numFmt patterns** fall through to the raw stringified value.
+- **Formula re-evaluation**: the renderer reads `cell.v` (cached value) directly. `cell.v` is kept fresh by Univer's formula engine in the editor — recalc happens on every cell edit and on snapshot load, then `workbook.save()` writes the result back. Every code path that persists a snapshot to a Joplin note goes through Univer, so a note opened in the editor at least once has up-to-date formula values. The narrow case where the renderer can show stale values: someone hand-edits the JSON inside a `notesheet v=1` markdown fence and views the preview before opening the editor. Opening the note triggers a save and the next preview is correct. We deliberately do not ship a second formula engine inside the renderer (Univer's is 1.6MB minified; reimplementing 470+ Excel functions would mean two engines drifting apart over time and a multi-MB bundle on every Joplin note open).
+
+### Dependency hygiene
+
+`npm install` and `npm audit` print warnings for transitive packages buried under our direct deps. We document rather than mask:
+
+- **`uuid@8.3.2` moderate CVE** ([GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)) — missing buffer bounds check in `uuid.v3`/`v5`/`v6`. Pulled in by exceljs. Not reachable: exceljs only calls the CVE-free random `uuid()` (v4). `npm audit fix --force` would downgrade exceljs to 3.4.0 (major-version downgrade), unacceptable. The replacement path was evaluated in the M14 spike and ruled NO-GO.
+- **Transitive deprecation noise** (`inflight@1`, `rimraf@2`, `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3) — every entry is buried under exceljs (`>archiver`, `>unzipper`, `>fast-csv`) or jest internals. M11 already bumped jest to 30 to drop the deprecated transitive globs we could; the rest are upstream noise we can't act on from `package.json` without making something worse.
+- **`glob@11.1.0`** (our direct devDep) — npm warns about "old versions of glob" for any glob; `glob@11.1.0` IS the current major. Ignore.
+
+## Developer notes
+
+### How a Notesheet note is stored
 
 A Spreadsheet note is a regular Joplin note whose body is a Univer snapshot wrapped in a fenced markdown code block tagged ```` ```notesheet ````:
 
-```
+````
 ```notesheet v=1
 { "id": "...", "sheetOrder": [...], "sheets": {...}, ... }
 ```
-```
+````
 
-When the active note's body matches that shape, Joplin's editor pane shows the Univer editor instead of the markdown editor (via Joplin's [Custom Editor API](https://joplinapp.org/api/references/plugin_api/classes/joplinviewseditor.html)). For any other note, the markdown editor opens normally — Notesheet adds zero overhead to non-spreadsheet notes.
+When the active note's body matches that shape, Joplin's editor pane shows the Univer editor instead of the markdown editor (via Joplin's [Custom Editor API](https://joplinapp.org/api/references/plugin_api/classes/joplinviewseditor.html)). The fence's `v=1` marker is a forward-compatibility hook so a future on-disk format change can dispatch by version.
 
-The fence's `v=1` marker is a forward-compatibility hook so a future on-disk format change can dispatch by version.
-
-## Development
+### Building
 
 ```bash
 npm install
@@ -80,17 +131,21 @@ npm run dist     # builds the .jpl into publish/
 npm test         # runs Jest unit tests
 ```
 
-Requires Node.js 20+ (CI runs 20.x and 22.x). The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, which can be installed in Joplin via **Tools → Options → Plugins → ⚙ → Install from file**.
+The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable in Joplin via **Tools → Options → Plugins → ⚙ → Install from file**.
+
+### `.xlsx` parser
+
+`exceljs@^4.4.0` is the foundation of `src/xlsx.ts`. The M14 spike evaluated migrating to SheetJS Community and ruled NO-GO; full evidence is at [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md). The migration becomes worth re-evaluating only if (a) SheetJS Community proper (`xlsx`) adds first-class cell-style read support upstream, or (b) `exceljs` is publicly archived. Until then, the `xlsx-js-style` fork's parser-level loss of borders, alignment, rotation, and most font formatting on Excel-imported workbooks would directly regress shipped features.
 
 ### PGE harness (visual regression gate)
 
-Jest unit tests cover the snapshot-data shape but cannot catch the failure mode where the data is correct and Univer's renderer ignores it (M13 shipped that bug twice). The **planner-generator-evaluator** harness adds a runtime visual gate on top of Jest:
+Jest unit tests cover the snapshot-data shape but cannot catch the failure mode where the data is correct and Univer's renderer ignores it. The **planner-generator-evaluator** harness adds a runtime visual gate on top of Jest:
 
-- A **planner** agent translates an operator ask in `OPERATOR_ASK.md` into `BUILD_PLAN.md` (per-feature acceptance criteria phrased as user-observable outcomes, not data shape).
+- A **planner** agent translates an operator ask in `OPERATOR_ASK.md` into `BUILD_PLAN.md` with per-feature acceptance criteria phrased as user-observable outcomes.
 - A **generator** agent picks the lowest-numbered `passes: false` row from `test-results.json`, builds the feature, captures a screenshot from the running Joplin desktop app, and only then flips its row.
 - A **fresh-context evaluator** subprocess runs after the generator. It captures its OWN screenshot (Playwright over CDP, attached to the running Joplin) and grades PASS or NEEDS_WORK from the bytes — no memory of what the generator did, no plausibility bias.
 
-Each evaluator screenshot is paired with a `<screenshot>.pixels.json` sidecar holding the top non-background colours sampled from the Univer canvas, so colour-sensitive assertions ("A1 rendered red") can be machine-checkable instead of human-eyeball-only.
+Each evaluator screenshot is paired with a `<screenshot>.pixels.json` sidecar holding the top non-background colours sampled from the Univer canvas, so colour-sensitive assertions can be machine-checkable.
 
 #### Running a cycle
 
@@ -106,7 +161,7 @@ Each evaluator screenshot is paired with a `<screenshot>.pixels.json` sidecar ho
 - `.claude/CLAUDE.md` — generator runtime contract
 - `.claude/agents/{planner,generator,evaluator}.md` — agent briefs
 - `.claude/hooks/verify-gate.sh` — denies Write to `test-results.json` until evidence is Read
-- `scripts/pge/eval-screenshot.{sh,js}` — Playwright + CDP attach, frame drop into the editor's `UserWebviewIndex.html` iframe (where Univer actually mounts), wait on `canvas[id^="univer-sheet-main-canvas"]`, screenshot + pixel sidecar
+- `scripts/pge/eval-screenshot.{sh,js}` — Playwright + CDP attach, frame drop into the editor's `UserWebviewIndex.html` iframe (where Univer mounts), wait on `canvas[id^="univer-sheet-main-canvas"]`, screenshot + pixel sidecar
 - `scripts/pge/run-cycle.sh` — orchestrator (one cycle per invocation, no auto-loop)
 - `BUILD_PLAN.md` / `OPERATOR_ASK.md` / `PROGRESS.md` / `AUDIT.md` / `test-results.json` — operator-readable harness state
 - `screenshots/<feature-id>/` — committed visual evidence per feature (both the generator's drop and the evaluator's authoritative captures)
@@ -119,199 +174,6 @@ Each evaluator screenshot is paired with a `<screenshot>.pixels.json` sidecar ho
 
 Pattern adapted from [anthropics/cwc-long-running-agents](https://github.com/anthropics/cwc-long-running-agents).
 
-## Compatibility
-
-- Joplin 3.5+
-- Desktop only (Joplin Mobile's plugin model isn't yet ready for the Custom Editor API)
-
-## Known issues
-
-### Editor
-
-- Pressing **Left arrow** in column A (or **Up arrow** in row 1) jumps the
-  cursor to the bottom-right corner of the sheet. This is an upstream Univer
-  bug — track at [dream-num/univer#6988](https://github.com/dream-num/univer/issues/6988).
-  Workaround: navigate to the edge with the mouse instead.
-- Joplin's **Export → PDF / HTML** menu (right-click on a note) currently
-  exports the raw fenced JSON for Notesheet notes instead of a rendered
-  table. To save a Notesheet as an Excel file, use the in-editor
-  **Export .xlsx** button. PDF/HTML export of rendered spreadsheet content
-  is planned (M16).
-- **Cmd/Ctrl+K** opens Joplin's markdown link dialog instead of Univer's
-  link insertion UI for the active cell. Use the Univer toolbar's Insert →
-  Link option from inside the spreadsheet. (Imported `.xlsx` hyperlinks are
-  preserved and clickable; this affects only typing a new link via the
-  keyboard shortcut.)
-
-### `.xlsx` import — known shortcomings
-
-The shape of these is "things that survive a round-trip cleanly through
-the in-Joplin editor but render differently between Excel and Joplin
-itself, OR features Excel supports that Notesheet doesn't yet model."
-Each is pinned by a `KNOWN SHORTCOMING` test in
-`tests/m12FixtureRoundTrip.test.ts` so we notice if the behavior
-accidentally changes.
-
-- **Theme-aware banding**: Joplin renders synthesized table-style
-  banding from a hardcoded catalog (Office 2007 RGBs). When a workbook
-  uses a different theme — for example Aptos's `accent3 = #196B24`
-  vs Office Classic's `#9BBB59` — the in-Joplin display can disagree
-  with what the same file renders in Excel. The exported `.xlsx`
-  preserves the source's `<a:clrScheme>`, so opening the round-tripped
-  file back in Excel renders it correctly. M13/E (PR #22) made the
-  in-Joplin paint clrScheme-aware via an empirical-override map keyed
-  by `(styleName, accentHex)` for the two project-owned fixtures
-  (Aptos `TableStyleMedium4` accent3 and Classic `TableStyleMedium4`
-  accent3). Workbooks whose `(styleName, accentHex)` pair isn't in
-  the override map fall through to an HSL-L tint formula that
-  approximates the right hue but can drift by ~Δ18 RGB units. The
-  totals row's strips and the inter-row strips that Excel paints at
-  every banded-row boundary are synthesized into the snapshot:
-  totals-top is a DOUBLE-line in the header colour
-  (`#34692E` Aptos / `#A5A5A5` Classic), totals-bottom and inter-row
-  strips are MEDIUM single 2px in the lighter accent (`#72D068` /
-  `#C9C9C9`), all anchored to operator-captured Excel reference PNGs.
-  Univer's canvas renderer at DPR=2 anti-aliases these to slightly
-  drifted shades in the rendered visual (e.g. `#34692E` → `#426835`,
-  `#72D068` → `#89CE74`) — the underlying snapshot data and exported
-  `.xlsx` are unaffected. Pinned by
-  `tests/excelReferenceFidelity.test.ts`,
-  `tests/excelCanvasFidelity.test.ts`, and
-  `tests/roundTripBidirectional.test.ts`.
-- **Theme-tinted borders**: `{theme: N, tint: T}` border colors are
-  resolved against whichever `<a:clrScheme>` is loaded at import time.
-  After round-trip the resolved RGB is fixed in the snapshot, so a
-  later theme change in the host won't update the rendering.
-
-### `.xlsx` Markdown export — known shortcomings
-
-The Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`)
-shipped in M16 renders Notesheet fenced bodies as HTML tables for
-Joplin's PDF / HTML / preview-pane export. Coverage is intentional:
-common Excel formats render correctly; a small set of complex patterns
-ship with documented approximations. Each shortcoming carries a
-`KNOWN SHORTCOMING` Jest test in
-`tests/m16NotesheetMarkdownRender.test.ts` so a future change can't
-silently regress.
-
-- **Krona-pattern accounting symbol position**: Excel's
-  `_-* #,##0.00 "kr"_-` pattern positions the currency symbol AFTER
-  the number (`1,234.56 kr`). Notesheet's generic accounting formatter
-  shares the layout with US Accounting (`"$"*`) where the symbol is a
-  prefix, so the krona variant renders with the symbol in a different
-  position than Excel. Pinned down at
-  `tests/m16NotesheetMarkdownRender.test.ts:'Krona accounting pattern'`.
-- **Accounting `_(`/`_)`/`* ` underscore-fill rendered as single space**:
-  Excel's `_X` directive means "fill with as much space as character
-  X would take" — a variable-width column-alignment construct.
-  HTML doesn't have a column-alignment fill character; the M16
-  renderer emits a single space per fill marker. Result: numbers
-  won't align in vertical columns the way Excel would. Pinned down at
-  `tests/m16NotesheetMarkdownRender.test.ts:'Excel Accounting positive'`
-  and the negative / zero variants beneath it.
-- **dataBar (CF rule) rendering**: Excel's data bars render
-  proportional horizontal bars inside cells. The M16 HTML renderer
-  doesn't synthesize the bar fragments — those cells render with
-  their cell value only, no bar. Pinned down implicitly: the CF
-  evaluator at `formatNumberWithPattern` documents which CF types
-  bake into HTML.
-- **iconSet (CF rule) rendering**: Excel's icon sets render glyphs
-  (arrows, traffic lights, etc.) inside cells. The M16 HTML renderer
-  doesn't synthesize the glyphs. Same scope rationale as dataBar.
-- **Charts in HTML export**: Notesheet's anchored Chart.js charts
-  don't survive into static HTML. Cell values referenced by the
-  chart still render; the chart canvas itself does not.
-- **Formula re-evaluation in HTML export — Univer is the source of
-  truth.** The HTML / PDF / preview-pane renderer reads `cell.v`
-  (cached value) directly; it does not parse or evaluate `cell.f`
-  (formula text). `cell.v` is kept fresh by Univer's formula engine
-  inside the editor: it recalculates on every cell edit AND when a
-  snapshot is loaded, then writes the result back into `cell.v` on
-  save. Every code path that persists a snapshot to a Joplin note
-  goes through Univer's `workbook.save()`, so a note that has been
-  opened in the Notesheet editor at least once has up-to-date
-  formula values for the HTML export.
-
-  The narrow case where the renderer would show a stale value:
-  someone hand-edits the JSON inside a `notesheet v=1` fence in
-  markdown, changes a precedent cell's `v`, and views the preview
-  before opening the editor. Opening the note in the Notesheet
-  editor triggers a save (via Univer's recalc) and the next preview
-  render is correct. We deliberately do NOT ship a second formula
-  engine inside the renderer — Univer's engine (`@univerjs/engine-formula`)
-  is the canonical evaluator; reimplementing 470+ Excel functions
-  in the renderer would mean two engines drifting apart over time
-  and a multi-MB bundle on every Joplin note open. Verified
-  empirically (2026-06-07) that Univer's recalc-on-edit produces
-  the same results Excel does for `SUBTOTAL`, `SUM`, structured
-  references, and arithmetic — pinned by
-  `tests/roundTripBidirectional.test.ts` for snapshot-level data
-  fidelity.
-- **Per-run rich text**: M13/D's bold-word + plain-word in one cell
-  renders as plain text in HTML. Per-run formatting in HTML export
-  is M16-followup.
-- **Unsupported numFmt patterns**: any pattern not in the supported
-  set (Tier 1+2+3 above) falls through to the raw stringified value.
-  Pinned down at
-  `tests/m16NotesheetMarkdownRender.test.ts:'unknown pattern returns raw stringified value'`.
-
-### Tolerated transitive deprecations + audit warnings
-
-`npm install` and `npm audit` print warnings for transitive packages
-buried under our direct dependencies. The summary below documents
-which we tolerate and why; we do not paper over them with `npm
-audit fix --force` or `overrides` blocks because both fixes
-introduce silent regression risk worse than the warnings themselves.
-
-- **`uuid@8.3.2` → moderate CVE
-  [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)**
-  (missing buffer bounds check in `uuid.v3`/`v5`/`v6` when `buf`
-  arg is supplied). Pulled in by exceljs. **Not reachable** —
-  exceljs only calls the CVE-free `uuid()` (random v4) for
-  identifier generation; `v3`/`v5`/`v6` are never invoked.
-  `npm audit fix --force` would downgrade exceljs to 3.4.0
-  (a major-version DOWNGRADE), which is unacceptable. Real fix
-  is upstream in exceljs (migrating off was evaluated in M14 and
-  ruled NO-GO — see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)).
-- **Transitive deprecation noise** (`inflight@1`, `rimraf@2`,
-  `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3):
-  every entry is buried under exceljs (`>archiver`, `>unzipper`,
-  `>fast-csv`) or jest@30 internals. We are already on jest@30
-  (M11 bumped specifically to drop deprecated transitive globs);
-  no further direct-dep change can clear these. Only an exceljs
-  replacement does — that path was evaluated in M14 and ruled NO-GO
-  (see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md));
-  the noise is accepted indefinitely until the revisit conditions
-  in that document are met.
-- **`glob@11.1.0`** (our direct devDep) — npm prints a blanket
-  "old versions of glob" warning for any glob it sees, but
-  `glob@11.1.0` IS the current major. Ignore.
-
-These warnings are real upstream signals; we just can't act on them
-from `package.json` without making something worse.
-
-### `.xlsx` import — unsupported shapes (handled with friendly errors)
-
-These trip exceljs's internal reconcile pipeline. Notesheet wraps the
-crash with a `NotesheetImportError` carrying a stable `code` so the
-host UI can show an actionable message instead of a raw stack trace.
-
-- **Workbooks with chart drawings** → `xlsx-charts-unsupported`. exceljs's
-  drawing-reconcile crashes on chart anchor structures that openpyxl
-  and modern Excel emit. M17 will address this by reading the chart
-  structure directly with a lightweight OOXML reader similar to the
-  M10 export path (and pre-stripping drawings before they reach exceljs
-  on the read path).
-- **Multi-sheet workbooks where each sheet has its own named table**
-  → `xlsx-multi-table-unsupported`. exceljs's table-reduce crashes when
-  more than one sheet has a `<tableParts>` block.
-- **Other reconcile failures** → `xlsx-import-failed` (generic wrapper,
-  preserves the original error message in `.cause`).
-
-You can still import the same workbooks if you remove the offending
-content (delete charts, or move all tables onto one sheet) and
-re-save in Excel before importing.
-
 ## License
 
-MIT. Bundled libraries: Univer SDK is Apache-2.0, [exceljs](https://github.com/exceljs/exceljs) is MIT, [Chart.js](https://www.chartjs.org/) is MIT, [JSZip](https://stuk.github.io/jszip/) is MIT-or-GPLv3 (we use it under the MIT terms).
+MIT. Bundled libraries: Univer SDK is Apache-2.0, [exceljs](https://github.com/exceljs/exceljs) is MIT, [Chart.js](https://www.chartjs.org/) is MIT, [JSZip](https://stuk.github.io/jszip/) is MIT-or-GPLv3 (used under MIT).
