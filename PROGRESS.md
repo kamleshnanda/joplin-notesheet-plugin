@@ -297,17 +297,74 @@ every feature.
 
 ## Next
 
-- **feature-1-m17-chart-import** — see `OPERATOR_ASK.md` for the
-  M17 brief. Scope: Excel-authored chart drawings (bar/line/pie/
-  doughnut) import to Notesheet's existing Chart.js float-DOM
-  pipeline, fully replacing the current
-  `xlsx-charts-unsupported` import error. Anchors:
-  `tests/fixtures/charts/01-bar-simple.xlsx` through
-  `10-bar-with-trendline.xlsx` (existing M10 export ground truth)
-  + the live-fixture smoke against
-  `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`.
-  Planner agent reads OPERATOR_ASK.md and writes BUILD_PLAN.md +
-  test-results.json before the generator session starts.
+M17 ships chart import from `.xlsx` (drawings + bar/line/pie/doughnut
+chart definitions) plus the M16 follow-up gap "charts don't render in
+HTML / preview-pane / PDF export" rolled into the same cycle. See
+`BUILD_PLAN.md` for the full per-feature decomposition; see
+`OPERATOR_ASK.md` for the operator brief (12 acceptance criteria,
+Out-of-scope list, three suggested fixture sets, detailed
+Related-risks notes). Approach choice: **B — extend pre-load
+zip-direct readers** (mirrors `readTablesFromXlsxZip` /
+`readThemeFont` / `readNamedHyperlinkCells` / `readThemeClrScheme`
+existing pattern); the chart parts are read first, then a drawing-
+stripped buffer is passed to exceljs.
+
+- **feature-1-m17-chart-import-no-crash** — all 10 hand-crafted
+  fixtures (`tests/fixtures/charts/01-bar-simple.xlsx` through
+  `10-bar-with-trendline.xlsx`) import without throwing
+  `xlsx-charts-unsupported`; snapshot has `SHEET_DRAWING_PLUGIN`
+  resource with chart drawings. Tests anchor to source XML, NOT to
+  our own emit. Error class stays defined for future drawing-related
+  crash classes.
+- **feature-2-m17-chart-type-fidelity** — bar / line / pie / doughnut
+  fixtures import with the matching `ChartType` literal; unsupported
+  source types (radar, scatter) fall back to `'bar'` with
+  `meta.unsupportedSourceType` populated and a `console.warn`.
+  Programmatic radar-chart zip exercises the fallback in-test (not
+  a checked-in fixture).
+- **feature-3-m17-multisheet-import-editor-canvas** — PGE smoke
+  against `MultiSheet.xlsx` (the original "this crashes import"
+  fixture) imported via `import-fixture.sh`, opened in Joplin's
+  Custom Editor; screenshot of the Univer outer container shows
+  cells + chart float-DOM + chart title + bars/lines/slices. New
+  `floatDomChart` regionKind in `eval-screenshot.js`. Harness
+  fixture-path expansion accepts `tests/fixtures/charts/` too.
+- **feature-4-m17-live-update-data-bus** — Jest test confirms the
+  imported chart's `chartId` is what `subscribeChartUpdate` keys off;
+  `extractData(snapshot, sourceRange)` returns labels/values matching
+  the source XML; no second renderer code path in `editorView.tsx`
+  (static-analysis sentinel).
+- **feature-5-m17-bidirectional-roundtrip-excel-fixtures** —
+  Excel-authored fixture → snapshot → M10 export → re-import yields
+  same chart-drawing fields (type, sourceRange, labels, datasets).
+  Anchored to ORIGINAL snapshot, not a hardcoded literal.
+  Cross-sheet (`07-chart-cross-sheet.xlsx`) survives.
+- **feature-6-m17-programmatic-roundtrip-pack** — 5–7 in-memory
+  snapshots (negative values, single-data-point, long labels, empty
+  series, special chars, cross-sheet, two-charts-on-one-sheet) round-
+  trip through M10 export + M17 import. NO `new ExcelJS.Workbook()`
+  in the test (per operator's "Notesheet emit ↔ Notesheet import"
+  framing).
+- **feature-7-m17-chart-svg-html-export-jest** — M16 content script
+  extended with chart-to-SVG renderer (hand-authored `<rect>` /
+  `<polyline>` / `<path>` primitives — NO Chart.js / D3 in the
+  bundle). Bar `<rect>` count == data length; line `<polyline>`/
+  `<path>` count per dataset; pie sweep angles ±3° of expected.
+  Bundle stays under ~20 KB. M16's existing tests stay green.
+  CHART_PALETTE duplicated in the content script with a comment
+  pointing at `src/charts/extractData.ts` (verified at test time).
+- **feature-8-m17-chart-preview-pane-pge-smoke** — second PGE smoke
+  against `MultiSheet.xlsx` re-using M16's `previewPane` regionKind;
+  preview iframe screenshot shows table + inline `<svg>` chart at
+  anchor; sidecar's new `inlineSvgCount ≥ 1` signal gates this.
+- **feature-9-m17-flip-pin-downs-and-test-count** — flip
+  `tests/m12ImportRecovery.test.ts:59,84` from "MultiSheet → throws"
+  / "LargeWorkbook → throws" to "MultiSheet → snapshot with N
+  charts" / "LargeWorkbook → snapshot with M charts" (counts read
+  from source XML). Test count moves 267 → ≥ 290. `git diff tests/`
+  shows ONLY new `tests/m17*.test.ts` files AND the two flipped
+  lines — no other content edit to any existing test file (operator
+  criterion #10 is load-bearing structural-integrity gate).
 
 ## Notes
 

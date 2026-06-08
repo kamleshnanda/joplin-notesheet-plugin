@@ -1,13 +1,56 @@
 {
-  "feature-1-m16-snapshot-to-html": {
-    "passes": true,
-    "evidence": [
-      "screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.png",
-      "screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.pixels.json",
-      "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.png",
-      "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.pixels.json"
-    ],
-    "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-06T23:55:00Z"
+  "feature-1-m17-chart-import-no-crash": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-2-m17-chart-type-fidelity": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-3-m17-multisheet-import-editor-canvas": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-4-m17-live-update-data-bus": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-5-m17-bidirectional-roundtrip-excel-fixtures": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-6-m17-programmatic-roundtrip-pack": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-7-m17-chart-svg-html-export-jest": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-8-m17-chart-preview-pane-pge-smoke": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-9-m17-flip-pin-downs-and-test-count": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
   }
 }
