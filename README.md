@@ -41,36 +41,10 @@ Insert ribbon → **Insert Chart** opens a docked panel that mirrors your live c
 
 A Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`) renders Notesheet fenced bodies as inline-styled HTML tables for Joplin's preview pane and PDF / HTML export. Common Excel number formats render correctly; conditional formatting (cellIs / top-N / colorScale) bakes into the static HTML.
 
-## Milestones
-
-| | Milestone | PR |
-|---|---|---|
-| ✅ | M0 — Rebrand to Notesheet | [#1](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/1) |
-| ✅ | M1 — New Spreadsheet command + snapshot fence | [#2](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/2) |
-| ✅ | M2 — Univer Custom Editor in Joplin's editor pane | [#3](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/3) |
-| ✅ | M3 — Formatting (Univer core preset) | — |
-| ✅ | M4 — Sort & Filter | [#4](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/4) |
-| ✅ | M5 — `.xlsx` import / export | [#5](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/5) |
-| ✅ | M6 — Named tables | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
-| ✅ | M7 + M8 — Anchored Chart.js charts | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
-| ✅ | M9 — Excel structured-references + table fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
-| ✅ | M10 — Chart export to `.xlsx` (native OOXML) | [#13](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/13) |
-| ✅ | M11 — Dependency hygiene | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
-| ✅ | M12 — Formatting fidelity polish | [#14](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/14) [#15](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/15) |
-| ✅ | PGE — Planner-Generator-Evaluator harness | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
-| ✅ | M13/C — Rotated text round-trip | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
-| ✅ | M13/D — Rich-text within a single cell | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
-| ✅ | M13/E — Theme-aware banding accuracy | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
-| ❌ | M14 — SheetJS Community migration spike (NO-GO; see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)) | [#24](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
-| ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
-| ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) |
-| ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions) | planned |
-
 ## Compatibility
 
 - **Joplin 3.5+** — desktop only. Joplin Mobile's plugin model isn't yet ready for the Custom Editor API.
-- **Node.js 20+** for development (CI runs 20.x and 22.x).
-- **`.xlsx`**: tested against fixtures saved by Microsoft Excel and openpyxl. SheetJS-generated workbooks have not been exercised; the M14 spike found that SheetJS Community drops most cell styling at the parser level.
+- **`.xlsx`**: tested against fixtures saved by Microsoft Excel and openpyxl.
 
 ## Known gaps
 
@@ -101,14 +75,6 @@ The Markdown-It renderer reads the snapshot directly without booting Univer. A f
 - **Unsupported numFmt patterns** fall through to the raw stringified value.
 - **Formula re-evaluation**: the renderer reads `cell.v` (cached value) directly. `cell.v` is kept fresh by Univer's formula engine in the editor — recalc happens on every cell edit and on snapshot load, then `workbook.save()` writes the result back. Every code path that persists a snapshot to a Joplin note goes through Univer, so a note opened in the editor at least once has up-to-date formula values. The narrow case where the renderer can show stale values: someone hand-edits the JSON inside a `notesheet v=1` markdown fence and views the preview before opening the editor. Opening the note triggers a save and the next preview is correct. We deliberately do not ship a second formula engine inside the renderer (Univer's is 1.6MB minified; reimplementing 470+ Excel functions would mean two engines drifting apart over time and a multi-MB bundle on every Joplin note open).
 
-### Dependency hygiene
-
-`npm install` and `npm audit` print warnings for transitive packages buried under our direct deps. We document rather than mask:
-
-- **`uuid@8.3.2` moderate CVE** ([GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)) — missing buffer bounds check in `uuid.v3`/`v5`/`v6`. Pulled in by exceljs. Not reachable: exceljs only calls the CVE-free random `uuid()` (v4). `npm audit fix --force` would downgrade exceljs to 3.4.0 (major-version downgrade), unacceptable. The replacement path was evaluated in the M14 spike and ruled NO-GO.
-- **Transitive deprecation noise** (`inflight@1`, `rimraf@2`, `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3) — every entry is buried under exceljs (`>archiver`, `>unzipper`, `>fast-csv`) or jest internals. M11 already bumped jest to 30 to drop the deprecated transitive globs we could; the rest are upstream noise we can't act on from `package.json` without making something worse.
-- **`glob@11.1.0`** (our direct devDep) — npm warns about "old versions of glob" for any glob; `glob@11.1.0` IS the current major. Ignore.
-
 ## Developer notes
 
 ### How a Notesheet note is stored
@@ -125,6 +91,8 @@ When the active note's body matches that shape, Joplin's editor pane shows the U
 
 ### Building
 
+Requires Node.js 20+ (CI runs 20.x and 22.x).
+
 ```bash
 npm install
 npm run dist     # builds the .jpl into publish/
@@ -132,6 +100,39 @@ npm test         # runs Jest unit tests
 ```
 
 The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable in Joplin via **Tools → Options → Plugins → ⚙ → Install from file**.
+
+### Milestones
+
+| | Milestone | PR |
+|---|---|---|
+| ✅ | M0 — Rebrand to Notesheet | [#1](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/1) |
+| ✅ | M1 — New Spreadsheet command + snapshot fence | [#2](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/2) |
+| ✅ | M2 — Univer Custom Editor in Joplin's editor pane | [#3](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/3) |
+| ✅ | M3 — Formatting (Univer core preset) | — |
+| ✅ | M4 — Sort & Filter | [#4](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/4) |
+| ✅ | M5 — `.xlsx` import / export | [#5](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/5) |
+| ✅ | M6 — Named tables | [#6](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/6) |
+| ✅ | M7 + M8 — Anchored Chart.js charts | [#8](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/8) |
+| ✅ | M9 — Excel structured-references + table fidelity + borders | [#9](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/9) |
+| ✅ | M10 — Chart export to `.xlsx` (native OOXML) | [#13](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/13) |
+| ✅ | M11 — Dependency hygiene | [#12](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/12) |
+| ✅ | M12 — Formatting fidelity polish | [#14](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/14) [#15](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/15) |
+| ✅ | PGE — Planner-Generator-Evaluator harness | [#17](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/17) |
+| ✅ | M13/C — Rotated text round-trip | [#19](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/19) |
+| ✅ | M13/D — Rich-text within a single cell | [#20](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/20) |
+| ✅ | M13/E — Theme-aware banding accuracy | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
+| ❌ | M14 — SheetJS Community migration spike (NO-GO; see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)) | [#24](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
+| ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
+| ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) |
+| ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions) | planned |
+
+### Dependency hygiene
+
+`npm install` and `npm audit` print warnings for transitive packages buried under our direct deps. We document rather than mask:
+
+- **`uuid@8.3.2` moderate CVE** ([GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)) — missing buffer bounds check in `uuid.v3`/`v5`/`v6`. Pulled in by exceljs. Not reachable: exceljs only calls the CVE-free random `uuid()` (v4). `npm audit fix --force` would downgrade exceljs to 3.4.0 (major-version downgrade), unacceptable. The replacement path was evaluated in the M14 spike and ruled NO-GO.
+- **Transitive deprecation noise** (`inflight@1`, `rimraf@2`, `lodash.isequal`, `glob@7.x` × 4, `fstream@1`, `glob@10.x` × 3) — every entry is buried under exceljs (`>archiver`, `>unzipper`, `>fast-csv`) or jest internals. M11 already bumped jest to 30 to drop the deprecated transitive globs we could; the rest are upstream noise we can't act on from `package.json` without making something worse.
+- **`glob@11.1.0`** (our direct devDep) — npm warns about "old versions of glob" for any glob; `glob@11.1.0` IS the current major. Ignore.
 
 ### `.xlsx` parser
 
