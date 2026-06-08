@@ -1,220 +1,275 @@
-# Operator ask — M16: Snapshot → HTML for Joplin's PDF/HTML export
+# Operator ask — M17: Chart import from `.xlsx`
 
 ## Why this matters
 
-Joplin's right-click → **Export → PDF** and **Export → HTML** menus
-currently dump the raw fenced JSON for Notesheet notes:
+`xlsxBufferToSnapshot()` (`src/xlsx.ts:1727`) currently throws
+`NotesheetImportError('xlsx-charts-unsupported', ...)` whenever
+exceljs's reconcile pipeline trips on chart drawings. README's
+"Known shortcomings" line `M17 addresses this` is the standing
+promise. The user-visible failure today: a workbook authored in
+Excel that contains a bar chart (the most common case) cannot be
+opened in Notesheet at all — the import is rejected with a friendly
+message, but the workbook is still inaccessible.
 
-```
-```notesheet v=1
-{ "id": "workbook-...", "sheetOrder": [...], ... }
-```
-```
-
-The user gets a 4-line JSON blob in their PDF instead of a rendered
-table. README's "Joplin's Export → PDF / HTML menu" entry under
-"Known shortcomings" pins this. The current workaround is the
-in-editor **Export .xlsx** button.
-
-M16 ships proper rendering. When a Notesheet note is exported via
-Joplin's PDF or HTML export, the resulting document carries a
-human-readable HTML table with cell values and formatting (fills,
-font colours, borders, merged cells, basic alignment). The .xlsx
-export button stays as the primary "send to Excel" path; M16 is the
-"send to PDF / HTML" path.
+Notesheet already has a fully-shipped chart pipeline on the EXPORT
+side (M7/M8 anchored Chart.js + M10 native OOXML write-back via
+zip surgery). M17 builds the IMPORT-side counterpart. The user's
+mental model: "I author a chart in Excel, paste the workbook into
+Notesheet, the chart shows up live and re-renders when I edit the
+source range." Same shape as a Notesheet-authored chart.
 
 ## The mechanism
 
-Joplin's PDF and HTML export both go through the markdown renderer.
-The plugin API exposes `joplin.contentScripts.register(
-ContentScriptType.MarkdownItPlugin, ...)` which lets us intercept
-fenced code blocks. We register a content script that recognises the
-`notesheet` fence tag, parses the snapshot via the existing
-`extractSnapshot()`, and emits HTML.
+Excel charts live in three OOXML parts inside the workbook zip:
+1. `xl/drawings/drawing*.xml` — the anchor (cell range the float
+   sits over) plus a relationship to the chart XML
+2. `xl/charts/chart*.xml` — the chart definition (type, title,
+   series, source range references)
+3. `xl/charts/style*.xml` + `xl/charts/colors*.xml` — chart style
+   metadata (M10 already parses these; can be ignored on import)
 
-Single content script, multiple consumers — Joplin's editor preview,
-Joplin's PDF export, and Joplin's HTML export all pass note body
-through the same renderer pipeline. M16 ships the same HTML for all
-three.
+The exceljs reconcile loop crashes because it looks up the chart's
+drawing target and `anchors` is undefined — the crash class is
+already classified at `src/xlsx.ts:1745`. M17 needs to:
+1. Read the chart parts directly from the zip (parallel to the
+   existing `readTablesFromXlsxZip` / `readThemeFont` /
+   `readNamedHyperlinkCells` zip-direct readers in `src/xlsx.ts`)
+   BEFORE exceljs's reconcile crashes — or after, recovering from
+   the throw with a chart-aware fallback path.
+2. Map each parsed chart definition into Notesheet's existing
+   `ChartDrawing` shape (`src/charts/xlsxChart.ts:25`) and emit a
+   `SHEET_DRAWING_PLUGIN` snapshot resource that mirrors what the
+   in-app chart authoring command produces.
+3. Resolve the source data ranges (chart XML uses `Sheet1!$A$1:$B$5`
+   formula-style references) into the snapshot's existing cell
+   coordinates so Univer's float-DOM rendering picks up the chart
+   verbatim — same code path as a Notesheet-authored chart.
 
 ## The feature
 
-When a user right-clicks a Notesheet note and picks **Export →
-PDF** or **Export → HTML**:
+When a user imports an `.xlsx` with chart drawings:
 
-1. The exported file shows a rendered HTML table for each sheet in
-   the snapshot, NOT the raw JSON fence.
-2. Cell values are visible: numbers, strings, formula results
-   (using the cached value `cell.v` exceljs evaluated at last
-   save — Univer doesn't re-evaluate during render).
-3. Cell formatting is preserved as inline-styled HTML:
-   - Background colour (`bg.rgb` → `background-color`)
-   - Foreground colour (`cl.rgb` → `color`)
-   - Font weight (`bl: 1` → `font-weight: bold`)
-   - Italic (`it: 1` → `font-style: italic`)
-   - Underline (`un.s: 1` → `text-decoration: underline`)
-   - Horizontal alignment (`ht` → `text-align`)
-   - Vertical alignment (`vt` → `vertical-align`)
-   - Per-side borders (`bd.t/r/b/l` → `border-top/right/bottom/left`)
-4. Merged cells render as `<td colspan=N rowspan=M>` per the
-   snapshot's `mergeData`.
-5. Multi-sheet workbooks render each sheet under its name as a
-   heading.
-6. The fenced JSON does NOT appear in the output anywhere.
-
-The renderer also activates in Joplin's editor preview pane (the
-markdown-rendered preview), but that's a side-effect of the same
-hook. The Custom Editor still owns the active editing experience;
-the preview just stops showing JSON.
+1. The import does NOT throw. A note is created with cells, tables,
+   and formatting (the existing M5 + M9 paths) AND chart float-DOMs
+   anchored at the original positions.
+2. Each imported chart renders live: drag a source-range cell, the
+   chart re-renders. Same `subscribeChartUpdate` pubsub the
+   in-app charts use — there is no second renderer.
+3. Round-trip: import an Excel chart, export the same notebook
+   back to `.xlsx`, the resulting file opens in Excel with the
+   chart visible. M10's existing export pipeline picks the chart
+   up from the snapshot and writes it back — M17 only adds the
+   import side; export is already shipped.
+4. Existing tests stay green. `m12ImportRecovery.test.ts` flips
+   from "MultiSheet.xlsx → xlsx-charts-unsupported" to
+   "MultiSheet.xlsx → snapshot with N charts". The error class
+   stays defined for non-chart drawing crashes.
 
 ## Acceptance criteria
 
 The evaluator must verify ALL of:
 
-1. **HTML output contains rendered table.** A new Jest test
-   `tests/m16NotesheetMarkdownRender.test.ts` (or similar) imports
-   the M16 content script, calls its render function on a fenced
-   notesheet body containing a known snapshot, and asserts the
-   output contains:
-   - One `<table>` per sheet
-   - `<td>` elements with cell values
-   - At least one cell with inline `style="background-color: #..."`
-     matching the snapshot's `styles[].bg.rgb`
-   - At least one cell with inline `style="font-weight: bold"`
-     matching `bl: 1`
-   - Merged cells rendered as `<td colspan>` / `<td rowspan>`
-   - The raw JSON does NOT appear anywhere in the output
-2. **Multi-sheet workbooks render each sheet.** A second Jest test
-   asserts `MultiSheet.xlsx` (existing fixture) renders all sheets,
-   each with its sheet name as a heading.
-3. **Fixture round-trip — Aptos FormattingSmorgasboard.xlsx renders
-   recognisably.** A third Jest test imports
-   `FormattingSmorgasboard.xlsx`, runs it through the M16 renderer,
-   and asserts the output contains the expected `ProjectTracker`
-   column headers (`Project`, `Website`, `Budget`, etc.) and the
-   table-style banding colours (`#34692E` header bg, `#CAEFCB`
-   banded rows per M13/E).
-4. **Conditional formatting renders into the export.** A fourth
-   Jest test imports `ConditionalFormatting-Variants.xlsx`, runs it
-   through the M16 renderer, and asserts the output contains:
-   - At least one cell with the colorScale red/yellow/green hue
-     (sample any column-A cell's bg-color attribute)
-   - At least one cell with the cellIs > 50 pink fill (`#FFC7CE`)
-   - At least one cell with the top-3 light-green fill (`#C6EFCE`)
-   The dataBar and iconSet rules can be punted to M16-followup —
-   they require dynamic ranking / glyph rendering that's harder in
-   static HTML. Document explicitly.
-5. **Visual — open the rendered HTML in a real browser.** PGE
-   evaluator captures Joplin's editor preview pane (which runs the
-   same content script as the export pipeline) for the
-   FormattingSmorgasboard fixture and confirms:
-   - The `ProjectTracker` table is visible with column headers
-   - Cell values are present
-   - Header row carries the green table-style fill
-   - Banded data rows are visible
-   The PGE harness needs a region helper for the preview pane (a
-   Joplin DOM region, not the Univer canvas). Add as needed.
-6. **Content script is registered in `src/index.ts`.** New imports
-   + a `joplin.contentScripts.register(...)` call alongside the
-   existing editor registration.
-7. **Joplin's right-click → Export PDF works without crashing on a
-   Notesheet note.** The PGE harness or a manual smoke confirms the
-   PDF generation completes (don't deeply validate the PDF
-   pixel-level — the content-script test bed covers HTML output).
-8. **`npm run dist` succeeds and `npm test` count moves from 220
-   to ≥ 224** (4+ new Jest tests).
+1. **Import doesn't crash on chart-bearing fixtures.** A new Jest
+   test loads each of `tests/fixtures/charts/01-bar-simple.xlsx`
+   through `10-bar-with-trendline.xlsx` (already shipped, used as
+   M10 export ground truth) via `xlsxBufferToSnapshot()` and
+   asserts:
+   - No `NotesheetImportError` thrown.
+   - The returned snapshot has a `SHEET_DRAWING_PLUGIN` resource
+     containing at least one chart drawing per fixture.
+   - The chart's `chartId`, `type`, `sourceRange` and `anchor`
+     fields match the source XML (use the same XML reader pattern
+     as `tests/util/pngSampler.ts` — pure-stdlib, no new deps).
+2. **Chart type round-trip.** A second Jest test asserts:
+   - `01-bar-simple.xlsx` imports as `type: 'bar'` (not 'line', etc.)
+   - `02-line-multi-series.xlsx` imports as `type: 'line'`
+   - `03-pie-single.xlsx` imports as `type: 'pie'`
+   - `04-doughnut.xlsx` imports as `type: 'doughnut'`
+   The four types match Notesheet's existing `ChartType` union
+   (`src/charts/xlsxChart.ts:23`). Charts of types we don't support
+   (e.g. radar, scatter) fall back to bar with a console.warn —
+   document the fallback in the chart drawing's `meta.unsupportedSourceType`
+   field for evaluator visibility.
+3. **MultiSheet.xlsx import works end-to-end.** The PGE harness
+   imports `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`
+   (currently throws `xlsx-charts-unsupported`) via
+   `scripts/pge/import-fixture.sh`, opens the resulting Notesheet
+   note, and screenshots the Univer canvas. The screenshot shows:
+   - The cells from each sheet rendered (this part already works
+     once import doesn't throw)
+   - The chart float-DOM visible at its anchor position
+   - The chart's title text visible
+   - The chart bars/lines/pie slices visible (live Chart.js render)
+4. **Live update through the data bus.** A Jest test asserts:
+   - Import `01-bar-simple.xlsx` to a snapshot
+   - The snapshot has a `subscribeChartUpdate` ID matching
+     `chartId` from the snapshot's chart drawing
+   - When `extractData(snapshot, sourceRange)` is called against
+     the imported source range, it returns the same labels and
+     dataset values the source XML declared
+   This proves the import-to-bus wiring is the SAME as the
+   authoring-to-bus wiring; the chart isn't a separate code path.
+5. **Bidirectional round-trip.** A Jest test:
+   - Imports `01-bar-simple.xlsx` to snapshot
+   - Calls `snapshotToXlsxBuffer()` (the existing M10 export)
+   - Reloads the resulting buffer via `xlsxBufferToSnapshot()`
+   - Asserts the second snapshot has the same chart drawing as
+     the first (same type, source range, labels, dataset values)
+   This pins that import + export are inverse operations on the
+   chart subset, just like they are on cells + tables today.
+6. **`xlsx-charts-unsupported` error class is no longer thrown
+   for the existing fixtures.** `tests/m12ImportRecovery.test.ts:59`
+   "MultiSheet.xlsx → xlsx-charts-unsupported with a friendly
+   message" flips to "MultiSheet.xlsx → snapshot with N charts"
+   (positive pin-down). Same for `tests/m12ImportRecovery.test.ts:84`
+   ("LargeWorkbook.xlsx → xlsx-charts-unsupported"). The error
+   class itself stays defined for any FUTURE crash class we
+   haven't classified yet — don't remove it.
+7. **`npm run dist` succeeds and `npm test` count moves from 267
+   to ≥ 280** (10+ new Jest tests across criteria 1, 2, 4, 5,
+   plus the two flipped pin-downs).
+8. **README's "Known shortcomings" entry referencing
+   `xlsx-charts-unsupported` is removed.** The README line at
+   `README.md:61` ("Workbooks with chart drawings... M17 addresses
+   this") is replaced with whatever residual gap survives M17 —
+   if a chart type isn't supported on import (radar, scatter,
+   stock, etc.), document THAT residual gap, not the existing
+   "any chart" gap.
 
 ## Out of scope
 
-- **Charts in HTML export.** Notesheet's anchored Chart.js charts
-  don't survive into the static HTML output. Document as an
-  M16-followup or M17 dependency. Listed cell values still render.
-- **Live formula evaluation in the renderer.** HTML export uses the
-  cached `cell.v` value from the snapshot. If a formula's cached
-  value is stale (e.g. user typed in Univer but didn't save before
-  exporting), the stale value renders. Acceptable.
-- **Univer's own `IDocumentBody.dataStream` rich-text per-run
-  formatting** — i.e., M13/D's bold word + plain word in one cell.
-  M16 renders the cell's plain text. Per-run formatting in HTML is
-  M16-followup. Document.
-- **Theme palette resolution beyond what's already baked into the
-  snapshot.** Colours come from the snapshot's resolved `bg.rgb`
-  and `cl.rgb` fields; we don't re-walk theme references in the
-  renderer.
-- **Print stylesheets / page breaks.** Joplin's PDF export decides
-  page sizing; we don't override.
-- **iconSet glyphs as inline SVG.** Static glyph rendering for CF
-  icon sets is a non-trivial feature unto itself. M16-followup.
-- **DataBar gradient rendering.** Same — needs CSS gradient + per-
-  cell bar width math. M16-followup.
-- **README "Known shortcomings — Joplin's Export → PDF / HTML"
-  entry update.** Punted to a follow-up docs PR per precedent.
+- **Excel chart types beyond bar/line/pie/doughnut.** Notesheet's
+  existing chart authoring pipeline only supports those four;
+  importing a radar or scatter chart should fall back to bar
+  with a warning (criterion 2). Adding new chart types is a
+  follow-up M17.x.
+- **Chart styling fidelity.** Notesheet's Chart.js renderer uses
+  `CHART_PALETTE` (`src/charts/extractData.ts`), not Excel's per-
+  chart style XML. The imported chart will look like a Notesheet
+  chart, not pixel-identical to the source. Acceptable.
+- **Chart titles with rich-text formatting.** Excel's chart titles
+  can carry mixed font runs; M17 imports the plain text only.
+  Punt M13/D-style rich-text title fidelity to a follow-up.
+- **Multiple data label positions, trendlines, error bars, axis
+  labels.** Trendlines exist in `10-bar-with-trendline.xlsx` —
+  the import must not crash, but the trendline itself is dropped
+  with a documented gap.
+- **Chart drag/resize on import preservation beyond anchor cells.**
+  Excel stores anchors as cell + EMU offset; Notesheet stores
+  cell + col/row offset. We round to the nearest cell on import
+  (drop the EMU sub-cell offset). Ditto on export — that's
+  already M10 behaviour.
+- **Charts in HTML export (M16).** M16's content script doesn't
+  render charts; that gap stays open. M17's HTML export
+  follow-up is a separate cycle.
+- **Pivot charts, sparklines, or any non-`xl/charts/chart*.xml`
+  chart variant.** Those use different OOXML parts. Document
+  as M18 candidates.
+- **README update beyond the M17 milestone row + the chart-
+  unsupported known-shortcoming entry** — punted to a follow-up
+  docs PR per precedent.
 
 ## Suggested fixtures
 
-- `tests/ExcelBaseTestData/formatting-testdata/FormattingSmorgasboard.xlsx`
-  — Aptos workbook with table styling. Tests the M13/E banding
-  fidelity flowing through to HTML.
-- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`
-  — multi-sheet test for the per-sheet rendering.
-- `tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx`
-  — exercises the M15 CF rules through the renderer.
+Primary anchor (each gets criterion-1 + criterion-2 coverage):
+- `tests/fixtures/charts/01-bar-simple.xlsx` — single bar chart,
+  one series, simplest case
+- `tests/fixtures/charts/02-line-multi-series.xlsx` — line, three
+  series (tests multi-dataset import)
+- `tests/fixtures/charts/03-pie-single.xlsx` — pie
+- `tests/fixtures/charts/04-doughnut.xlsx` — doughnut
+- `tests/fixtures/charts/05-bar-special-chars.xlsx` — XML escape
+  on category names with `&`, `<`, `>`
+- `tests/fixtures/charts/06-two-charts-one-sheet.xlsx` —
+  multi-chart-per-sheet (validates `chartId` uniqueness across
+  charts in same sheet)
+- `tests/fixtures/charts/07-chart-cross-sheet.xlsx` — chart on
+  Sheet2 referencing data on Sheet1 (cross-sheet ref resolution)
+- `tests/fixtures/charts/08-drag-resized.xlsx` — non-default
+  anchor position (tests anchor parsing)
+- `tests/fixtures/charts/09-bar-percent-axis.xlsx` — percent
+  number format on axis (the format is dropped; bars still render)
+- `tests/fixtures/charts/10-bar-with-trendline.xlsx` — trendline
+  is dropped (out of scope) but bars render
 
-The PGE harness invokes `import-fixture.sh FormattingSmorgasboard.xlsx`,
-opens the resulting note, and screenshots the editor preview pane
-(NOT the Univer canvas — we want the markdown-rendered preview, which
-is where the new content script's HTML lands).
+Smoke fixture (criterion 3):
+- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx` —
+  the original "this crashes import" fixture, already shipped.
+  The PGE harness exercises this end-to-end.
 
 ## Related risks
 
-- **Joplin's content script API runs in a sandboxed worker.** The
-  content script entry exports a `default function(context)` that
-  returns `{ plugin: (markdownIt, pluginOptions) => {...},
-  assets: {...} }`. The function runs in Joplin's renderer, not
-  the plugin process — so it can't import from the plugin's main
-  bundle directly. The renderer needs to be self-contained or
-  load via webpack's content-script entry point.
-- **`extractSnapshot()` lives in `src/snapshot.ts` and is shared.**
-  The content script can either bundle a copy or duplicate the
-  fence-parsing logic. Bundling is cleaner. webpack's existing
-  contentScript build target pattern (see `webpack.config.js`)
-  should handle this.
-- **The renderer is called for every note**, not just Notesheet
-  notes. Make the fence-tag check (`notesheet v=1`) the first
-  thing — if the body doesn't match, return undefined and let
-  markdown-it render the code block normally. Don't break
-  non-Notesheet notes.
-- **Cell value rendering precision.** `cell.v` may be a number
-  with full float precision. If a cell carries `numFmt` (e.g.
-  `"0%"` or `"$"#,##0`), we should format the value through that
-  pattern before emitting. exceljs's `numFmt` syntax is the
-  source. Out-of-scope to fully replicate Excel's number-format
-  engine; ship something reasonable for the common cases (percent,
-  currency, dates) and document gaps.
-- **CF rules don't paint cells in the snapshot — Univer's CF
-  engine paints them at render time.** For the M16 renderer to
-  show CF colours, we have to evaluate CF rules ourselves: walk
-  the snapshot's `SHEET_CONDITIONAL_FORMATTING_PLUGIN` resource,
-  apply per-rule logic (cellIs > 50, top-N rank, color scale
-  interpolation by percentile), and bake the result into per-cell
-  inline styles. Color scale and cellIs and top10 are doable;
-  iconSet and dataBar are harder (need glyph / bar element
-  rendering). Document the iconSet and dataBar gaps.
-- **Merged cells affect table layout significantly.** A merge
-  spans rows/cols; the renderer must skip the cells inside the
-  merge range when emitting subsequent `<td>` elements (else the
-  HTML ends up with extra cells pushing the layout). The snapshot's
-  `mergeData` array provides the ranges.
+- **The exceljs reconcile crash happens BEFORE we get to read the
+  zip directly.** Two viable architectures: (A) catch the throw,
+  parse charts from the zip, retry exceljs's load with a
+  drawing-stripped buffer; (B) extend the existing pre-load
+  zip-direct readers (`readTablesFromXlsxZip`, `readThemeFont`,
+  etc.) with `readChartsFromXlsxZip`, then strip the chart parts
+  in-memory before passing to exceljs. Approach B is cleaner and
+  matches existing conventions; A is easier but introduces a
+  retry path that could mask other errors. **Generator picks one
+  in the BUILD_PLAN.md and documents the choice.**
+- **The chart's source range may reference cells that don't exist
+  in the snapshot.** Excel allows charts to point at any range,
+  including ranges with formulas that haven't been computed.
+  Notesheet's `extractData(snapshot, range)` reads `cell.v`
+  (cached value) and tolerates missing cells — but if the chart
+  references an entire column (`Sheet1!A:A`), that's a different
+  shape we don't currently handle. M10's export rejects it; M17's
+  import should reject it the same way (with a console.warn and
+  fallback to dropping the chart).
+- **`SHEET_DRAWING_PLUGIN` snapshot resource shape**. Notesheet's
+  in-app chart command writes to this resource via Univer's
+  `ICommandService.executeCommand('sheet.command.add-floating-dom',...)`.
+  The import path needs to write the resource directly (we're
+  outside Univer's command bus during snapshot construction).
+  Document the exact JSON shape in BUILD_PLAN.md so the generator
+  isn't reverse-engineering it during implementation. Reference:
+  the in-app authoring command's output, captured by the M10
+  export tests via `snapshot.resources[?].name === 'SHEET_DRAWING_PLUGIN'`.
+- **Univer 0.23 chart float-DOM lifecycle.** Univer's drawing
+  service binds the float-DOM to a sheet's drawingsManager;
+  imported charts must register through the SAME service so
+  drag/resize/persist behaves identically to authored charts.
+  M10's export pipeline already documents the resource shape
+  (`src/charts/xlsxChart.ts:25`); M17 should reuse that shape
+  verbatim.
+- **Test gap warning** (`feedback_pge_fidelity_test_gap.md`).
+  M17's tests must anchor to the SOURCE Excel XML (the actual
+  chart definitions in `tests/fixtures/charts/*.xlsx`), NOT to
+  what `xlsxBufferToSnapshot()` produces. The chart's labels,
+  dataset values, source range, type, anchor — all of these
+  exist in the source XML and can be parsed independently as
+  the upstream truth. Asserting `snapshot.charts[0].labels ===
+  ['Q1','Q2','Q3','Q4']` without first independently reading
+  those labels from the XML is the M13/E mistake.
+- **Chart import + table import interactions.** A workbook can
+  have both a chart and a named table on the same sheet
+  (`tests/fixtures/charts/06-two-charts-one-sheet.xlsx` does
+  not, but `MultiSheet.xlsx` may). The existing
+  `readTablesFromXlsxZip` and the new `readChartsFromXlsxZip`
+  must be order-independent. Run the M9 + M13/E + M15 test
+  suites after wiring; flag any fixture-level regression.
 - **Don't symptom-patch test failures post-rebuild.** If a test
-  regresses after registering the content script, run
-  `git diff package-lock.json` first. The content-script entry
-  may have pulled new transitives. Reference:
-  `feedback_dependency_hygiene.md`.
-- **Test gap warning.** Per `feedback_pge_fidelity_test_gap.md`,
-  pin-downs anchored to our own emit are no test. The M16 tests
-  should assert what's IN the rendered HTML against the source
-  fixture's expected content (cell values, colour values from the
-  snapshot's already-validated styles), not against whatever
-  format we decide to emit. The HTML output format CAN change
-  without test failure as long as the rendered values + colours
-  match.
+  regresses after wiring chart import, run
+  `git diff package-lock.json` first. The new chart import path
+  uses only stdlib + JSZip + the existing chart utilities — no
+  new dependency should appear. Reference:
+  `feedback_dependency_hygiene.md`. Do NOT downgrade exceljs or
+  any other dep to make a symptom go away.
+- **The PGE harness needs a chart region helper.** Until M17
+  every screenshotted note had Univer rendering the entire
+  visible content as a canvas. Charts are float-DOM (HTML
+  overlays on top of the canvas). The harness's existing
+  canvas-screenshot path will capture the canvas underneath
+  the float-DOM but NOT the float-DOM itself unless we
+  screenshot the editor frame as a whole. Add a `floatDomChart`
+  regionKind to `eval-screenshot.js` that screenshots the
+  outer Univer container instead of just the canvas. Reference:
+  M16's `previewPane` regionKind (`scripts/pge/eval-screenshot.js`)
+  for the precedent of a non-canvas region.
+- **`scripts/pge/import-fixture.sh` may need updating** to
+  accept fixtures from `tests/fixtures/charts/` (currently
+  hardcodes `tests/ExcelBaseTestData/formatting-testdata/`).
+  The harness change is part of the M17 cycle; expand the
+  fixture path search rather than copying chart fixtures over.

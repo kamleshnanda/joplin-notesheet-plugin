@@ -256,91 +256,58 @@ every feature.
   (commit `88297a1`); README cleanup PR #27 (commit `19b0a6c`)
   marked M15 shipped.
 
+- **m16-gap-3-formula-recalc-doc-only** (2026-06-07) — Closed M16's
+  formula re-evaluation gap with documentation, NOT a renderer-side
+  evaluator. Empirical investigation showed Univer is the de facto
+  source of truth for cell.v on every save path; building a second
+  evaluator inside the M16 HTML renderer would be ~30-50 functions
+  / ~10KB / two-engine drift. README "Known shortcomings" entry
+  rewritten to explain the Univer-as-source-of-truth contract; 4
+  pin-down tests added in `tests/m16FormulaSourceOfTruth.test.ts`
+  (formula cells carry both f and v at import; stale results flow
+  through unchanged; synthesizeTableStyleAssignments doesn't touch
+  f/v; renderCellValue reads cell.v not cell.f). Detail under
+  ## Notes "M16 Gap #3 closure rationale". Test count 263 → 267.
+  Shipped on `m16/document-formula-recalc` branch.
+
+- **m13-e-followup-totals-and-inter-row-strips** (2026-06-07) —
+  Re-probed the wide Aptos reference at 7 x positions and Classic
+  at 10 x positions. Two definitive findings: (1) totals-top is the
+  HEADER colour DOUBLE-line (not the lighter accent MEDIUM) — Aptos
+  `#34692E` and Classic `#A5A5A5`; (2) inter-row strips DO exist at
+  every banded-row boundary in the lighter accent (`#72D068` Aptos /
+  `#C9C9C9` Classic). Recipe `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES.TableStyleMedium4`
+  updated; synthesizeTableStyleAssignments now emits totals-top as
+  DOUBLE (s=7), totals-bottom as MEDIUM (s=8), inter-row strips as
+  MEDIUM bd.t (s=8) on every data row using `totalsBottomBorder`
+  slot. New canvas-fidelity test shape: structural sentinels for
+  "double-line at totals-top" + "9 inter-row strips ±3" with
+  gridline-tail trim heuristic. Bidirectional round-trip test
+  added (3 tests in `tests/roundTripBidirectional.test.ts`)
+  verifying content + style edits flow through both Joplin → export
+  → Excel-edit → re-import correctly, and that synth fields don't
+  bleed into the exported xlsx or accumulate. Test count 256 → 263.
+  Univer canvas anti-aliases recipe colours by Δ14-23 RGB units —
+  documented as a Univer renderer characteristic (snapshot data and
+  exported `.xlsx` are unaffected).
+
 ## In progress
 
-- **M16 Gap #3 — formula re-evaluation in HTML export — RESOLVED via
-  documentation, no evaluator built** (2026-06-07). The original M16
-  spec listed live formula re-evaluation as out of scope; the
-  follow-up question "should we ship a renderer-side evaluator?"
-  closed with NO after empirical investigation:
-
-  Verified live in Joplin via CDP probe (`scripts/pge/probe-recalc.js`,
-  since deleted): editing C2 → 99999 in the Aptos fixture causes
-  Univer's `=SUBTOTAL(109,ProjectTracker[Budget])` to recalculate
-  correctly, and `workbook.save()` returns a snapshot with the
-  updated `cell.v`. Auto-recalc on precedent change AND
-  recalc-on-snapshot-load both work.
-
-  Also verified: `xlsxBufferToSnapshot` preserves whatever cached
-  `result` was in the source xlsx — exceljs does NOT recalculate at
-  parse time. So if Excel saved a workbook with a stale cached
-  result (e.g. user disabled auto-calc), the stale value flows
-  through to the snapshot until Univer is opened on the note.
-
-  Decision tree: build a renderer-side evaluator (option A,
-  ~30-50 functions, ~10KB bundle, two-engine drift risk) vs let
-  Univer be the single source of truth (option C). The actual user
-  flow always goes through Univer (`editorView.tsx:handleImport()`
-  boots Univer, `saveNow()` calls `workbook.save()`), so option C
-  has zero gap at the user-visible level. Option A is
-  narrow-scenario insurance against snapshots that bypass Univer
-  entirely (manual markdown edits, hypothetical external writers),
-  at the cost of bundle size + maintenance + drift risk. Operator
-  closed on C: document, don't build.
-
-  Shipped on branch `m16/document-formula-recalc`:
-  - README "Known shortcomings" entry rewritten to explain the
-    Univer-as-source-of-truth contract instead of saying "exceljs
-    evaluated at last Notesheet save" (which was inaccurate;
-    exceljs doesn't recalc).
-  - `tests/m16FormulaSourceOfTruth.test.ts`: 4 pin-down tests —
-    formula cells have BOTH f and v at import; stale results flow
-    through unchanged; synthesizeTableStyleAssignments doesn't
-    touch f/v; `renderCellValue` reads cell.v not cell.f
-    (code-shape sentinel — if a future change starts evaluating
-    cell.f, this test trips and forces the README + bundle-cost
-    discussion to reopen).
-
-  Test count: 263 → 267 (+4).
-
-- **m13/E follow-up cycle** (2026-06-07) — re-probed the wide Aptos
-  reference (`screenshots/excel-reference/FormattingSmorgasboard-Aptos-wide.png`,
-  1962×1070) at 7 distinct x positions and the existing Classic reference
-  at 10 x positions. Two findings, both definitive after pixel probe:
-  (1) **totals-top is the HEADER colour DOUBLE-line**, not the lighter
-  accent MEDIUM. Aptos: `#34692E` two strips with white gap at y=826-831.
-  Classic: `#A5A5A5` two strips with white gap at y=504-509.
-  (2) **inter-row strips DO exist at every banded-row boundary**, in
-  the lighter accent (`#72D068` Aptos / `#C9C9C9` Classic). Verified
-  at 8 boundaries on the wide Aptos reference, ~7 on Classic. The
-  prior session's "no inter-row strip" claim was a probe error
-  (run-length scan coalesced the 2px strips into the band runs).
-  Recipe `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES.TableStyleMedium4`
-  updated. `synthesizeTableStyleAssignments` emits totals-top as
-  DOUBLE (s=7), totals-bottom as MEDIUM (s=8), inter-row strips as
-  MEDIUM bd.t (s=8) on every data row using `totalsBottomBorder` slot
-  (the lighter accent). All four reference-anchored fidelity tests
-  pass; six pin-down tests in `m12FixturePinDowns.test.ts` updated
-  (4 existing + 2 new for inter-row strips). New canvas-fidelity test
-  shape: structural sentinels for "double-line at totals-top" + "9
-  inter-row strips ±3" with gridline-tail trim heuristic for the
-  Joplin canvas's full-window screenshots. **Bidirectional round-trip
-  test** added at operator's request:
-  `tests/roundTripBidirectional.test.ts` (3 tests) verifies content +
-  style edits flow through both Joplin → export → Excel-edit (via
-  exceljs) → re-import correctly, and that synth fields don't bleed
-  into the exported xlsx or accumulate across multiple round-trips.
-  Test count: 256 → 263 (+7). Re-captured eval screenshots
-  `eval-aptos-2026-06-07T06-27-03-263Z.png` and
-  `eval-classic-2026-06-07T06-27-18-634Z.png`. Univer canvas
-  anti-aliases the recipe colours by ~Δ14-23 RGB units (e.g. recipe
-  `#34692E` → canvas `#426835`) — the snapshot data and exported
-  `.xlsx` are unaffected; documented as a Univer renderer
-  characteristic in the canvas-fidelity test header comment.
+(Empty between sessions.)
 
 ## Next
 
-(Empty for now. M17 SheetJS-related items are post-M16.)
+- **feature-1-m17-chart-import** — see `OPERATOR_ASK.md` for the
+  M17 brief. Scope: Excel-authored chart drawings (bar/line/pie/
+  doughnut) import to Notesheet's existing Chart.js float-DOM
+  pipeline, fully replacing the current
+  `xlsx-charts-unsupported` import error. Anchors:
+  `tests/fixtures/charts/01-bar-simple.xlsx` through
+  `10-bar-with-trendline.xlsx` (existing M10 export ground truth)
+  + the live-fixture smoke against
+  `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`.
+  Planner agent reads OPERATOR_ASK.md and writes BUILD_PLAN.md +
+  test-results.json before the generator session starts.
 
 ## Notes
 
