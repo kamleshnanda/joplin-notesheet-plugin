@@ -114,9 +114,25 @@ The evaluator must verify ALL of:
    - Import `01-bar-simple.xlsx` to a snapshot
    - The snapshot has a `subscribeChartUpdate` ID matching
      `chartId` from the snapshot's chart drawing
-   - When `extractData(snapshot, sourceRange)` is called against
-     the imported source range, it returns the same labels and
-     dataset values the source XML declared
+   - When a NEW `extractDataFromSnapshot(snapshot, sourceRange)`
+     production helper (M17 adds it; the existing
+     `extractRangeAsChartData(workbook, range)` in
+     `src/charts/extractData.ts:60` takes a Univer FWorkbook
+     not a snapshot) is called against the imported source range,
+     it returns the same labels and dataset values the source XML
+     declared.
+   - **Snapshot-load populates `trackedCharts`.** The test asserts
+     that a snapshot-load → `trackedCharts.set(chartId, ...)`
+     code path runs at editor boot time. Today
+     (`src/editorView.tsx:177`) `trackedCharts` is populated ONLY
+     by `insertChart()` at line 290; imported snapshots have no
+     code path to populate it, so a chart imported from .xlsx
+     subscribes to nothing and edits to source-range cells do
+     not re-render the chart in the live editor. M17 must add
+     this code path or the chart silently shows stale data.
+     This is exactly the M13 failure mode (snapshot data
+     correct, runtime broken) — see BUILD_PLAN feature-4
+     criteria 3-4.
    This proves the import-to-bus wiring is the SAME as the
    authoring-to-bus wiring; the chart isn't a separate code path.
 5. **Bidirectional round-trip — Excel-authored fixtures.** A Jest
@@ -324,7 +340,8 @@ Programmatic round-trip pack (criterion 6):
 - **The chart's source range may reference cells that don't exist
   in the snapshot.** Excel allows charts to point at any range,
   including ranges with formulas that haven't been computed.
-  Notesheet's `extractData(snapshot, range)` reads `cell.v`
+  Notesheet's new `extractDataFromSnapshot(snapshot, range)`
+  helper (M17 adds it) reads `cell.v`
   (cached value) and tolerates missing cells — but if the chart
   references an entire column (`Sheet1!A:A`), that's a different
   shape we don't currently handle. M10's export rejects it; M17's
