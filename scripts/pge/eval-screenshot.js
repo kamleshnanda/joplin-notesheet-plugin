@@ -47,7 +47,21 @@
 
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { execSync } = require('child_process');
+
+// Notesheet's chart palette — duplicated here so the harness doesn't have
+// to import TS. MUST stay in sync with src/charts/extractData.ts:CHART_PALETTE.
+const NOTESHEET_CHART_PALETTE_HEX = [
+    '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+];
+const NOTESHEET_CHART_PALETTE_RGB = NOTESHEET_CHART_PALETTE_HEX.map((h) => ({
+    hex: h.toLowerCase(),
+    r: parseInt(h.slice(1, 3), 16),
+    g: parseInt(h.slice(3, 5), 16),
+    b: parseInt(h.slice(5, 7), 16),
+}));
 
 const FEATURE_ID = process.argv[2];
 if (!FEATURE_ID) {
@@ -89,6 +103,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-m15-conditional-formatting': 'PGE M15 CF eval ',
     'feature-1-m16-snapshot-to-html': 'PGE M16 HTML eval ',
     'feature-1-m17-chart-import-no-crash': 'PGE M17 chart eval ',
+    'feature-3-m17-multisheet-import-editor-canvas': 'PGE M17 chart f3 eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -118,6 +133,16 @@ const REGION_BY_FEATURE = {
     // feature-3 territory; row-zero captures enough to verify the
     // import path didn't crash and Univer mounted with real cell data.
     'feature-1-m17-chart-import-no-crash': 'rowZero',
+    // M17 feature-3: chart float-DOM smoke. The chart float-DOM lives as
+    // an HTML overlay above the Univer canvas (not inside the canvas pixel
+    // buffer), so screenshotting the canvas alone wouldn't capture it. We
+    // screenshot the OUTER Univer container — `#notesheet-univer-root`,
+    // mounted by editorView.tsx — which contains both the canvas AND
+    // every float-DOM positioned over it. Pixel sampling reads from the
+    // captured PNG (NOT the live canvas), so we can detect chart
+    // palette colours that the Chart.js renderer paints into the
+    // float-DOM's <canvas> child.
+    'feature-3-m17-multisheet-import-editor-canvas': 'floatDomChart',
 };
 
 function discoverApiPort() {
@@ -725,6 +750,126 @@ end tell`;
     }
 }
 
+// Decode an 8-bit RGB(A) PNG from disk into a flat row-major byte buffer.
+// Stripped-down sibling of tests/util/pngSampler.ts — handles only the
+// non-interlaced 8-bit RGB / RGBA shape Playwright produces. Throws on any
+// other format (we'd rather know than silently pass a black sidecar).
+function decodePngFromFile(filePath) {
+    const buf = fs.readFileSync(filePath);
+    if (buf.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error(`Not a PNG: ${filePath}`);
+    let i = 8;
+    let width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0;
+    const idat = [];
+    while (i < buf.length) {
+        const len = buf.readUInt32BE(i); i += 4;
+        const type = buf.subarray(i, i + 4).toString('ascii'); i += 4;
+        const data = buf.subarray(i, i + len); i += len;
+        i += 4; // CRC ignored
+        if (type === 'IHDR') {
+            width = data.readUInt32BE(0);
+            height = data.readUInt32BE(4);
+            bitDepth = data[8];
+            colorType = data[9];
+            interlace = data[12];
+        } else if (type === 'IDAT') idat.push(data);
+        else if (type === 'IEND') break;
+    }
+    if (bitDepth !== 8) throw new Error(`unsupported bit depth ${bitDepth}`);
+    if (interlace !== 0) throw new Error('interlaced PNGs not supported');
+    const channels = colorType === 6 ? 4 : colorType === 2 ? 3 : null;
+    if (!channels) throw new Error(`unsupported colorType ${colorType}`);
+
+    const inflated = zlib.inflateSync(Buffer.concat(idat));
+    const stride = width * channels;
+    const out = Buffer.alloc(stride * height);
+    let prevRowStart = -1;
+    let srcOff = 0;
+    for (let y = 0; y < height; y++) {
+        const filter = inflated[srcOff++];
+        const dstStart = y * stride;
+        for (let x = 0; x < stride; x++) {
+            const cur = inflated[srcOff++];
+            const left = x >= channels ? out[dstStart + x - channels] : 0;
+            const up = prevRowStart >= 0 ? out[prevRowStart + x] : 0;
+            const upleft = (prevRowStart >= 0 && x >= channels) ? out[prevRowStart + x - channels] : 0;
+            let recon;
+            if (filter === 0) recon = cur;
+            else if (filter === 1) recon = (cur + left) & 0xff;
+            else if (filter === 2) recon = (cur + up) & 0xff;
+            else if (filter === 3) recon = (cur + Math.floor((left + up) / 2)) & 0xff;
+            else if (filter === 4) {
+                const p = left + up - upleft;
+                const pa = Math.abs(p - left), pb = Math.abs(p - up), pc = Math.abs(p - upleft);
+                const paeth = (pa <= pb && pa <= pc) ? left : (pb <= pc ? up : upleft);
+                recon = (cur + paeth) & 0xff;
+            } else throw new Error(`unsupported filter ${filter} on row ${y}`);
+            out[dstStart + x] = recon;
+        }
+        prevRowStart = dstStart;
+    }
+    return { width, height, channels, data: out };
+}
+
+// Scan a screenshot file for chart-palette colour pixels. For each
+// CHART_PALETTE entry, count pixels within Δ ≤ 30 per channel — that's
+// loose enough for Chart.js's anti-aliased fill edges and tight enough
+// that the white background and dark gridlines don't qualify. Returns:
+//   { chartPaletteHits: { '#3b82f6': N, ... }, chartPaletteHitsTotal: N,
+//     dominantNonBackground: 'rgb(R,G,B)' or null,
+//     scannedPixels: N, paletteSwatchesFound: K }
+// where K is the count of palette entries with at least 50 hits — a
+// floor that filters anti-alias spillover without requiring a full
+// chart's worth of one colour.
+function scanScreenshotForChartPalette(filePath, maxColors = 8) {
+    let png;
+    try { png = decodePngFromFile(filePath); }
+    catch (e) { return { error: `decode failed: ${e.message}` }; }
+    const { width, height, channels, data } = png;
+
+    const hits = Object.fromEntries(NOTESHEET_CHART_PALETTE_HEX.map((h) => [h, 0]));
+    const hist = new Map();
+    let scannedPixels = 0;
+    let dominantNonBg = null;
+    const TOLERANCE = 30;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const off = (y * width + x) * channels;
+            const r = data[off], g = data[off + 1], b = data[off + 2];
+            // Skip pure-white backgrounds and dark gridlines.
+            if (r > 240 && g > 240 && b > 240) continue;
+            if (r < 30 && g < 30 && b < 30) continue;
+            scannedPixels++;
+            for (const p of NOTESHEET_CHART_PALETTE_RGB) {
+                if (Math.abs(r - p.r) <= TOLERANCE
+                    && Math.abs(g - p.g) <= TOLERANCE
+                    && Math.abs(b - p.b) <= TOLERANCE) {
+                    hits[p.hex.toUpperCase().replace('#', '#').toLowerCase()] = (hits[p.hex.toUpperCase().replace('#', '#').toLowerCase()] || 0) + 1;
+                    break;
+                }
+            }
+            // Bucket exact-tuple histogram for evaluator-readable
+            // top-N output. Snap to nearest 8 so the histogram doesn't
+            // explode from anti-alias variants.
+            const key = `rgb(${r & 0xf8},${g & 0xf8},${b & 0xf8})`;
+            hist.set(key, (hist.get(key) || 0) + 1);
+        }
+    }
+    const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
+    if (top.length > 0) dominantNonBg = top[0][0];
+    const paletteSwatchesFound = Object.values(hits).filter((n) => n >= 50).length;
+    const chartPaletteHitsTotal = Object.values(hits).reduce((a, b) => a + b, 0);
+    return {
+        chartPaletteHits: hits,
+        chartPaletteHitsTotal,
+        paletteSwatchesFound,
+        dominantNonBackground: dominantNonBg,
+        scannedPixels,
+        topNonBackground: top,
+        paletteTolerance: TOLERANCE,
+        paletteSwatchFloor: 50,
+    };
+}
+
 // Probe the renderer DOM for which editor is currently visible:
 //   - `customEditor` — Univer iframe (plugin user-webview) takes over
 //   - `tinymce` — rich-text editor (.tox-edit-area__iframe present)
@@ -1042,7 +1187,9 @@ async function main() {
                 ? richTextA1A2Region
                 : regionKind === 'tableHeaderRow'
                     ? tableHeaderRowRegion
-                    : rowZeroRegion;
+                    : regionKind === 'floatDomChart'
+                        ? rowZeroRegion // canvas-only sample alongside; PNG post-scan adds chart-palette signals
+                        : rowZeroRegion;
         if (didOpenNote && regionKind === 'previewPane') {
             // M16 path: drive Joplin into preview-visible state, find
             // the preview frame, sample CSS-computed background colours
@@ -1077,6 +1224,46 @@ async function main() {
                 if (sel) {
                     console.error(`eval-screenshot: Univer canvas rendered (selector "${sel}")`);
                     captureCanvas = sel;
+                    // Optional: activate a non-default sheet before sampling.
+                    // joplin:// re-opens the workbook on its first sheet; for
+                    // M17 feature-3 the chart float-DOM lives on the Chart
+                    // sheet of MultiSheet.xlsx (not the Data sheet that
+                    // opens by default). PGE_ACTIVATE_SHEET=<name> tells the
+                    // script to call FUniver.getActiveWorkbook().getSheets()
+                    // → find by name → .activate() before screenshotting.
+                    if (process.env.PGE_ACTIVATE_SHEET) {
+                        const targetSheet = process.env.PGE_ACTIVATE_SHEET;
+                        try {
+                            const result = await captureWebview.evaluate((name) => {
+                                const api = window.__notesheetUniverAPI;
+                                if (!api) return { error: 'no __notesheetUniverAPI on window' };
+                                const wb = api.getActiveWorkbook ? api.getActiveWorkbook() : null;
+                                if (!wb) return { error: 'no active workbook' };
+                                let sheet = null;
+                                if (wb.getSheets) {
+                                    for (const s of wb.getSheets()) {
+                                        const n = s.getSheetName ? s.getSheetName() : (s.getName ? s.getName() : null);
+                                        if (n === name) { sheet = s; break; }
+                                    }
+                                }
+                                if (!sheet) return { error: `no sheet named "${name}"` };
+                                if (sheet.activate) sheet.activate();
+                                else if (wb.setActiveSheet) wb.setActiveSheet(sheet);
+                                const active = wb.getActiveSheet ? wb.getActiveSheet() : null;
+                                return { ok: true, activeName: active && (active.getSheetName ? active.getSheetName() : null) };
+                            }, targetSheet);
+                            if (result && result.ok) {
+                                console.error(`eval-screenshot: activated sheet "${result.activeName}"`);
+                                // Give Univer a beat to repaint the new sheet,
+                                // including its float-DOM chart overlay.
+                                await page.waitForTimeout(800);
+                            } else {
+                                console.error(`eval-screenshot: PGE_ACTIVATE_SHEET=${targetSheet} failed: ${result?.error ?? 'unknown'}`);
+                            }
+                        } catch (e) {
+                            console.error(`eval-screenshot: PGE_ACTIVATE_SHEET threw: ${e.message}`);
+                        }
+                    }
                     // Re-pick the frame just before sampling. When opening
                     // a different note via joplin://, the editor may swap
                     // out the UserWebviewIndex iframe; the original frame
@@ -1111,11 +1298,35 @@ async function main() {
 
         // 5. Screenshot. Per region kind:
         //   - previewPane: screenshot the preview iframe element directly.
+        //   - floatDomChart: screenshot the OUTER Univer container so the
+        //     chart float-DOM (HTML overlay above the canvas) is included.
         //   - canvas-mode (rowZero / rotatedRow / etc.): screenshot the
         //     Univer canvas element.
         //   - fallback: whole page.
         if (regionKind === 'previewPane' && previewLocator) {
             await previewLocator.screenshot({ path: out });
+        } else if (regionKind === 'floatDomChart' && captureWebview) {
+            // Try the Notesheet root first (created in editorView.tsx as
+            // #notesheet-univer-root). If for any reason it's not there
+            // (Univer 0.23+ wrapper mutation, plugin mounted late), fall
+            // through to the canvas selector — we still get the canvas
+            // background; sampling will report no chart palette but the
+            // screenshot won't be empty.
+            const rootSel = '#notesheet-univer-root';
+            let captured = false;
+            try {
+                const rootLoc = captureWebview.locator(rootSel).first();
+                await rootLoc.waitFor({ state: 'visible', timeout: 2_000 });
+                await rootLoc.screenshot({ path: out });
+                captured = true;
+            } catch (e) {
+                console.error(`eval-screenshot: floatDomChart root selector "${rootSel}" not visible (${e.message}); falling back to canvas-only screenshot.`);
+            }
+            if (!captured && captureCanvas) {
+                await captureWebview.locator(captureCanvas).first().screenshot({ path: out });
+            } else if (!captured) {
+                await page.screenshot({ path: out, fullPage: false });
+            }
         } else if (captureWebview && captureCanvas) {
             await captureWebview.locator(captureCanvas).first().screenshot({ path: out });
         } else {
@@ -1126,6 +1337,23 @@ async function main() {
         console.error(`eval-screenshot: saved ${out} (${stat.size} bytes)`);
         if (stat.size < 1024) {
             throw new Error(`screenshot is suspiciously small (${stat.size} bytes); likely blank.`);
+        }
+
+        // floatDomChart: scan the saved PNG for chart-palette colours.
+        // The float-DOM lives ABOVE the canvas, so the canvas-pixel
+        // sampler can't see Chart.js's render. Post-decoding the PNG is
+        // the cheapest reliable way to detect "chart drew something
+        // recognisable in our palette" without screenshotting twice.
+        if (regionKind === 'floatDomChart') {
+            try {
+                const palette = scanScreenshotForChartPalette(out);
+                pixelSummary = {
+                    ...(pixelSummary ?? {}),
+                    ...palette,
+                };
+            } catch (e) {
+                console.error(`eval-screenshot: chart palette scan failed: ${e.message}`);
+            }
         }
 
         // 6. Pixel-summary sidecar JSON. Future feature evaluators can
@@ -1142,7 +1370,9 @@ async function main() {
                             ? 'CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)'
                             : regionKind === 'previewPane'
                                 ? 'preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)'
-                                : 'row-0 (top 80px slab of main canvas)';
+                                : regionKind === 'floatDomChart'
+                                    ? 'editor canvas + float-DOM (full #notesheet-univer-root container; chart-palette histogram derived from saved PNG)'
+                                    : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(sidecar, JSON.stringify({
                 source: out,
                 region: regionLabel,
@@ -1153,6 +1383,9 @@ async function main() {
             console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`);
             if (regionKind === 'previewPane') {
                 console.error(`eval-screenshot:   tableCount=${pixelSummary.tableCount} sheetHeadings=${JSON.stringify(pixelSummary.sheetHeadings)} rawJsonLeak=${pixelSummary.rawJsonLeak} pinkInk=${pixelSummary.pinkInk} lightGreenInk=${pixelSummary.lightGreenInk}`);
+            }
+            if (regionKind === 'floatDomChart' && pixelSummary.chartPaletteHits) {
+                console.error(`eval-screenshot:   chartPaletteHitsTotal=${pixelSummary.chartPaletteHitsTotal} paletteSwatchesFound=${pixelSummary.paletteSwatchesFound} dominantNonBackground=${pixelSummary.dominantNonBackground}`);
             }
             if (pixelSummary.cfColumns) {
                 if (pixelSummary.geometrySource) {

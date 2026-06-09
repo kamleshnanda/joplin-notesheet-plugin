@@ -295,6 +295,79 @@ every feature.
 
 (Empty between sessions.)
 
+- **feature-2,3,4,5-m17 (multi-feature cycle)** (2026-06-09) —
+  M17's round-trip core landed in one session by treating
+  features 2 + 3 + 4 + 5 as interlocked rather than feature-cycling
+  through each. Decisions and their consequences:
+  - **Plumbed `sourceSheetName` end-to-end** (`ChartDrawing.sourceSheetName`
+    in `src/charts/xlsxChart.ts`, written by xlsx.ts at import time,
+    read by `injectChartsIntoZip` to rebuild `<c:f>` formulas against
+    the data sheet — not the chart-host sheet). Cross-sheet round-trip
+    test (`tests/m17ChartBidirectionalRoundTrip.test.ts`) asserts the
+    EXPORTED chart1.xml's `<c:f>` prefix stays `Sheet1!` even when the
+    chart lives on Sheet2.
+  - **Added `extractDataFromSnapshot(snapshot, range, sheetName?)`**
+    (`src/charts/extractData.ts`) — pure-function snapshot variant of
+    `extractRangeAsChartData` for the M16 content-script (feature-7) and
+    feature-4's bus tests. Reads cell.v sparsely; tolerates empty cells
+    via NaN/empty-string coercion. Same column-0 → labels convention as
+    the FWorkbook variant.
+  - **Factored `trackedCharts` + `populateTrackedChartsFromSnapshot`**
+    out of `src/editorView.tsx` into `src/charts/trackedCharts.ts` so
+    Jest can import without booting Univer. Hydrates the editor's
+    chart-tracking map from `SHEET_DRAWING_PLUGIN` on snapshot load —
+    plugs the M13-class trap that imported charts subscribed to nothing
+    on the bus.
+  - **Two correctness fixes in xlsx.ts's chart-resource emit, both
+    load-bearing for feature-3:**
+      1. **`drawingType: 5` → `drawingType: 8`.** The 5 was
+         `DrawingTypeEnum.DRAWING_VIDEO`; 8 is `DRAWING_DOM` (verified
+         in `node_modules/@univerjs/core/lib/es/index.js:2867`). Univer's
+         drawing service silently drops unrecognized chart components
+         from the render layer when drawingType is wrong — no warning,
+         no error, just an invisible chart. Discovered via probe script
+         that compared `addFloatDomToPosition`-emitted shape (`8`) with
+         our import shape (`5`).
+      2. **Added `transform: { left, top, width, height }` block** with
+         pixel coords derived from the anchor's cell indices using the
+         same `DEFAULT_COL_W=73 / DEFAULT_ROW_H=19 / ROW_HEADER_W=46 /
+         COL_HEADER_H=20` constants the live `insertChart` uses. Without
+         the transform block the float-DOM mounts at (0,0) regardless of
+         anchor.
+  - **`resolveDataFromCells` fallback** in xlsx.ts: when the source
+    chart XML's `<c:cat>`/`<c:val>` shipped formulas without
+    `<strCache>`/`<numCache>` (programmatically-built workbooks like
+    `MultiSheet.xlsx`), we resolve the labels/data values from the
+    matching data sheet's `cellData` at import time. Each dataset gets
+    a `backgroundColor` from `CHART_PALETTE` so the rendered chart uses
+    Notesheet's recognisable palette (otherwise NotesheetChart falls
+    back to Chart.js's neutral default).
+  - **Harness extensions for feature-3:**
+    `scripts/pge/eval-screenshot.js` gained `floatDomChart` regionKind
+    (screenshots `#notesheet-univer-root` instead of just the canvas so
+    the float-DOM is captured), a stdlib PNG decoder + chart-palette
+    histogram (decodes the saved screenshot, counts pixels within Δ ≤ 30
+    of each `CHART_PALETTE` entry, sidecar reports `chartPaletteHits`,
+    `paletteSwatchesFound`, `dominantNonBackground`), and an optional
+    `PGE_ACTIVATE_SHEET=<name>` env var that activates a non-default
+    sheet via FUniver before screenshotting (needed because
+    MultiSheet.xlsx's chart lives on the second sheet, but joplin://
+    re-opens onto the first).
+  - **`scripts/pge/activate-sheet.js`** — companion utility that does
+    the same activation as a one-shot.
+  - **Test totals: 279 → 294** (15 new tests across features 2/4/5):
+    `tests/m17ChartTypeFidelity.test.ts` (5 type-fidelity cases incl.
+    radar fallback), `tests/m17ChartImportLiveUpdate.test.ts` (5 bus +
+    snapshot + trackedCharts cases), `tests/m17ChartBidirectionalRoundTrip.test.ts`
+    (5 cases: 4 type fixtures + cross-sheet survives).
+  - **Feature-3 evidence:** generator-evidence.png shows MultiSheet's
+    Chart sheet with the bar chart float-DOM rendered — title "Data
+    Chart", bars Apples 30 / Bananas 50 / Cherries 20 / Dates 45 /
+    Elderberry 60 in `#3b82f6` (CHART_PALETTE[0]). Sidecar reports
+    `chartPaletteHits["#3b82f6"]: 134791`, `paletteSwatchesFound: 1`,
+    `dominantNonBackground: rgb(72,128,232)` (anti-aliased blue near
+    the palette colour).
+
 - **feature-1-m17-chart-import-no-crash** (2026-06-09) — Pre-load chart
   reader + drawing-stripper architecture. New module
   `src/charts/xlsxChartImport.ts` exports `readChartsFromXlsxZip(buffer)`

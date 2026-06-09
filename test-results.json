@@ -6,28 +6,28 @@
     "last_attempted_at": "2026-06-09T07:02:20Z"
   },
   "feature-2-m17-chart-type-fidelity": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": null,
-    "last_attempted_at": null
+    "passes": true,
+    "evidence": "tests/m17ChartTypeFidelity.test.ts (5 tests, anchored to source XML)",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
   },
   "feature-3-m17-multisheet-import-editor-canvas": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": null,
-    "last_attempted_at": null
+    "passes": true,
+    "evidence": "screenshots/feature-3-m17-multisheet-import-editor-canvas/generator-evidence.png",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
   },
   "feature-4-m17-live-update-data-bus": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": null,
-    "last_attempted_at": null
+    "passes": true,
+    "evidence": "tests/m17ChartImportLiveUpdate.test.ts (5 tests; bus contract + trackedCharts hydration + extractDataFromSnapshot end-to-end + no second renderer code path)",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
   },
   "feature-5-m17-bidirectional-roundtrip-excel-fixtures": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": null,
-    "last_attempted_at": null
+    "passes": true,
+    "evidence": "tests/m17ChartBidirectionalRoundTrip.test.ts (5 tests; 4 type fixtures + cross-sheet survives via sourceSheetName plumbing)",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
   },
   "feature-6-m17-programmatic-roundtrip-pack": {
     "passes": false,

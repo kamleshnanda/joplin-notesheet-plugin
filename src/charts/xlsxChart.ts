@@ -31,6 +31,14 @@ export interface ChartDrawing {
     type: ChartType;
     title: string;
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
+    // Display name of the sheet whose data the chart references. For a chart
+    // anchored on the SAME sheet as its data, equals the host sheet's name.
+    // For a cross-sheet chart (`07-chart-cross-sheet.xlsx`), points at the
+    // DATA sheet's name, NOT the chart's host sheet. M17 plumbs this so the
+    // M10 export rebuilds <c:f> formula refs against the original data sheet
+    // rather than the chart-containing sheet (which would silently break
+    // Excel's re-evaluation from cells on cross-sheet charts).
+    sourceSheetName?: string;
     labels: string[];
     datasets: Array<{ label?: string; data: number[] }>;
     anchor: {
@@ -334,6 +342,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     chartId?: string;
                     type?: string;
                     sourceRange?: { startRow?: number; endRow?: number; startColumn?: number; endColumn?: number };
+                    sourceSheetName?: string;
                     title?: string;
                     labels?: unknown[];
                     datasets?: Array<{ label?: string; data?: unknown[] }>;
@@ -385,6 +394,9 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     startColumn: sr.startColumn,
                     endColumn: sr.endColumn,
                 },
+                ...(typeof data.sourceSheetName === 'string' && data.sourceSheetName
+                    ? { sourceSheetName: data.sourceSheetName }
+                    : {}),
                 labels,
                 datasets,
                 anchor: {
@@ -545,10 +557,18 @@ export async function injectChartsIntoZip(
             zip.file(`xl/drawings/_rels/drawing${drawingNum}.xml.rels`, buildDrawingRelsXml(chartFileNumbers));
 
             // 4) Add each chart's xml + style + colors + chart rels.
+            // Cross-sheet (M17): when the chart drawing carries a
+            // sourceSheetName that differs from the host sheet, the <c:f>
+            // formula refs we emit must point at the DATA sheet, not the
+            // chart-containing sheet — otherwise Excel re-evaluates against
+            // the wrong sheet on open and the cached values silently drift.
             for (let i = 0; i < sheetCharts.length; i++) {
                 const c = sheetCharts[i];
                 const chartNum = chartFileNumbers[i];
-                zip.file(`xl/charts/chart${chartNum}.xml`, buildChartXml(c, { sheetName: sheet.name }));
+                const refSheetName = c.sourceSheetName && c.sourceSheetName !== sheet.name
+                    ? c.sourceSheetName
+                    : sheet.name;
+                zip.file(`xl/charts/chart${chartNum}.xml`, buildChartXml(c, { sheetName: refSheetName }));
                 zip.file(`xl/charts/style${chartNum}.xml`, CHART_STYLE_XML);
                 zip.file(`xl/charts/colors${chartNum}.xml`, CHART_COLORS_XML);
                 zip.file(`xl/charts/_rels/chart${chartNum}.xml.rels`, buildChartRelsXml(chartNum));

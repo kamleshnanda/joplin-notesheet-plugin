@@ -111,3 +111,98 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
         return empty;
     }
 }
+
+// Snapshot variant of extractRangeAsChartData. Reads cell values directly
+// out of a Univer snapshot's `sheets[id].cellData[row][col].v` map without
+// booting Univer. Used by:
+//   * src/editorView.tsx populateTrackedChartsFromSnapshot — to rebuild
+//     ChartData for an imported chart at snapshot-load time, before any
+//     edits land.
+//   * src/contentScripts/notesheetRenderer.ts (M17 feature-7) — to drive
+//     static SVG emission inside the markdown-it preview pane.
+//
+// Resolution rules:
+//   * If `range.subUnitId` is supplied, it's looked up in `snapshot.sheets`
+//     directly. If absent or invalid, fall back to the snapshot's first
+//     sheet via sheetOrder[0].
+//   * If a target sheet name (string) is supplied via the `sheetName`
+//     overload arg, find the sheet whose `name === sheetName`. This is what
+//     cross-sheet charts pass — the chart drawing's `sourceSheetName` field
+//     holds the target sheet's display name (NOT the subUnitId).
+export function extractDataFromSnapshot(
+    snapshot: unknown,
+    range: RangeAddress,
+    sheetName?: string,
+): ChartData {
+    const empty: ChartData = { labels: [], datasets: [] };
+    if (!snapshot || typeof snapshot !== 'object' || !range) return empty;
+
+    const snap = snapshot as {
+        sheets?: Record<string, {
+            id?: string;
+            name?: string;
+            cellData?: Record<string, Record<string, { v?: unknown }>>;
+        }>;
+        sheetOrder?: string[];
+    };
+
+    const sheets = snap.sheets ?? {};
+    let sheet: { cellData?: Record<string, Record<string, { v?: unknown }>> } | undefined;
+
+    if (sheetName) {
+        for (const id of Object.keys(sheets)) {
+            if (sheets[id]?.name === sheetName) {
+                sheet = sheets[id];
+                break;
+            }
+        }
+    }
+    if (!sheet && range.subUnitId) sheet = sheets[range.subUnitId];
+    if (!sheet) {
+        const firstId = (snap.sheetOrder ?? [])[0];
+        if (firstId) sheet = sheets[firstId];
+    }
+    if (!sheet?.cellData) return empty;
+
+    // Materialize values[r - startRow][c - startColumn]; cells absent from the
+    // sparse cellData map become null (toNumber → NaN, toLabel → '').
+    const values: unknown[][] = [];
+    for (let r = range.startRow; r <= range.endRow; r++) {
+        const row: unknown[] = [];
+        const cellRow = sheet.cellData[String(r)];
+        for (let c = range.startColumn; c <= range.endColumn; c++) {
+            const cell = cellRow?.[String(c)];
+            row.push(cell?.v ?? null);
+        }
+        values.push(row);
+    }
+
+    if (values.length === 0) return empty;
+    const cols = values[0].length;
+    if (cols === 1) {
+        const data = values.map((row) => toNumber(row[0]));
+        return {
+            labels: data.map((_, i) => String(i + 1)),
+            datasets: [{
+                label: 'Series 1',
+                data,
+                backgroundColor: CHART_PALETTE[0],
+                borderColor: CHART_PALETTE[0],
+            }],
+        };
+    }
+
+    const labels = values.map((row) => toLabel(row[0]));
+    const datasets: ChartData['datasets'] = [];
+    for (let c = 1; c < cols; c++) {
+        const seriesData = values.map((row) => toNumber(row[c]));
+        const color = CHART_PALETTE[(c - 1) % CHART_PALETTE.length];
+        datasets.push({
+            label: 'Series ' + c,
+            data: seriesData,
+            backgroundColor: color,
+            borderColor: color,
+        });
+    }
+    return { labels, datasets };
+}

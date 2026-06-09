@@ -24,6 +24,7 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
+import { CHART_PALETTE } from './charts/extractData';
 import {
     readChartsFromXlsxZip,
     stripChartPartsFromZip,
@@ -2087,31 +2088,136 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // importedChart's sheetIndex (xl/worksheets/sheet{N}.xml index) to the
     // matching `sheet-N` here.
     if (importedCharts.length > 0) {
+        // Pixel geometry constants — must match the defaults Univer's
+        // drawing service uses to compute float-DOM screen positions
+        // (DEFAULT_COL_W=73, DEFAULT_ROW_H=19, ROW_HEADER_W=46,
+        // COL_HEADER_H=20). Univer recomputes `transform` from
+        // `sheetTransform` on load, but supplying it directly lets the
+        // drawing service mount the float-DOM at the right position
+        // before any layout pass — important for the M17 import path
+        // where charts must appear immediately, not after the first
+        // resize event.
+        const DEFAULT_COL_W = 73;
+        const DEFAULT_ROW_H = 19;
+        const ROW_HEADER_W = 46;
+        const COL_HEADER_H = 20;
+
+        // Helper: when the chart XML didn't ship cached labels/values
+        // (older or programmatically-generated workbooks), resolve them
+        // from the data sheet's cellData using the chart's sourceRange.
+        // Convention mirrors extractDataFromSnapshot: column 0 → labels
+        // (skipping the header row), columns 1..N → series.
+        const resolveDataFromCells = (
+            chart: ImportedChartDrawing,
+        ): { labels: string[]; datasets: Array<{ label?: string; data: number[] }> } | null => {
+            const sheetName = chart.sourceSheetName;
+            if (!sheetName) return null;
+            // Find the sheet whose displayed `name` matches sourceSheetName.
+            let target: { cellData?: Record<number, Record<number, { v?: unknown }>> } | undefined;
+            for (const id of Object.keys(sheets)) {
+                if (sheets[id]?.name === sheetName) { target = sheets[id]; break; }
+            }
+            if (!target?.cellData) return null;
+            const sr = chart.sourceRange;
+            const headerRow = sr.startRow;
+            const dataRowStart = sr.startRow + 1;
+            const dataRowEnd = sr.endRow;
+            if (dataRowEnd < dataRowStart) return null;
+            // Categories: first column.
+            const labels: string[] = [];
+            for (let r = dataRowStart; r <= dataRowEnd; r++) {
+                const v = target.cellData[r]?.[sr.startColumn]?.v;
+                labels.push(v == null ? '' : String(v));
+            }
+            // Series: every column past the first. Tag each with the
+            // matching CHART_PALETTE entry so the rendered chart uses
+            // Notesheet's recognisable palette (NotesheetChart reads
+            // backgroundColor from each dataset). Without this the live
+            // Chart.js renderer falls back to its own neutral default
+            // and the chart looks generic.
+            const datasets: Array<{ label?: string; data: number[]; backgroundColor: string; borderColor: string }> = [];
+            for (let c = sr.startColumn + 1; c <= sr.endColumn; c++) {
+                const labelV = target.cellData[headerRow]?.[c]?.v;
+                const data: number[] = [];
+                for (let r = dataRowStart; r <= dataRowEnd; r++) {
+                    const v = target.cellData[r]?.[c]?.v;
+                    const n = typeof v === 'number' ? v : Number(v);
+                    data.push(Number.isFinite(n) ? n : 0);
+                }
+                const seriesIndex = c - (sr.startColumn + 1);
+                const colour = CHART_PALETTE[seriesIndex % CHART_PALETTE.length];
+                datasets.push({
+                    ...(labelV != null ? { label: String(labelV) } : {}),
+                    data,
+                    backgroundColor: colour,
+                    borderColor: colour,
+                });
+            }
+            return { labels, datasets };
+        };
+
         const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> = {};
         for (const chart of importedCharts) {
             const subUnitId = `sheet-${chart.sheetIndex}`;
             // Skip charts whose host sheet didn't survive the import — e.g.
             // a stripped sheet that never reached the eachSheet walk.
             if (!sheets[subUnitId]) continue;
+
+            // Fall back to resolving labels/datasets from the data sheet
+            // if the chart XML's <c:cat>/<c:val> caches were empty
+            // (programmatic workbooks like MultiSheet.xlsx ship formulas
+            // without strCache/numCache).
+            let chartLabels = chart.labels;
+            let chartDatasets = chart.datasets;
+            const cachedLabelsEmpty = chart.labels.length === 0;
+            const cachedDataEmpty = chart.datasets.every((ds) => ds.data.length === 0);
+            if (cachedLabelsEmpty || cachedDataEmpty) {
+                const resolved = resolveDataFromCells(chart);
+                if (resolved) {
+                    if (cachedLabelsEmpty) chartLabels = resolved.labels;
+                    if (cachedDataEmpty) chartDatasets = resolved.datasets;
+                }
+            }
             if (!drawingResource[subUnitId]) {
                 drawingResource[subUnitId] = { data: {}, order: [] };
             }
             const drawingId = chart.chartId;
+            const left = ROW_HEADER_W + chart.anchor.fromCol * DEFAULT_COL_W;
+            const top = COL_HEADER_H + chart.anchor.fromRow * DEFAULT_ROW_H;
+            const right = ROW_HEADER_W + chart.anchor.toCol * DEFAULT_COL_W;
+            const bottom = COL_HEADER_H + chart.anchor.toRow * DEFAULT_ROW_H;
             drawingResource[subUnitId].data[drawingId] = {
                 unitId: 'workbook',
                 subUnitId,
                 drawingId,
-                drawingType: 5,
+                // DRAWING_DOM (8). Univer's drawing-DOM service mounts
+                // float-DOM components keyed by `componentKey`; setting
+                // this to anything else (we used to emit 5 = VIDEO)
+                // makes Univer's render pipeline treat the entry as an
+                // unsupported drawing and skip it.
+                drawingType: 8,
                 componentKey: 'NotesheetChart',
+                allowTransform: true,
                 data: {
                     chartId: chart.chartId,
                     type: chart.type,
                     title: chart.title,
                     sourceRange: chart.sourceRange,
                     ...(chart.sourceSheetName ? { sourceSheetName: chart.sourceSheetName } : {}),
-                    labels: chart.labels,
-                    datasets: chart.datasets,
+                    labels: chartLabels,
+                    datasets: chartDatasets,
                     ...(chart.meta ? { meta: chart.meta } : {}),
+                },
+                transform: {
+                    flipY: false,
+                    flipX: false,
+                    angle: 0,
+                    skewX: 0,
+                    skewY: 0,
+                    left,
+                    top,
+                    width: Math.max(50, right - left),
+                    height: Math.max(50, bottom - top),
                 },
                 sheetTransform: {
                     from: {
