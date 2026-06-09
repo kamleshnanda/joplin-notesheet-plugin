@@ -51,7 +51,23 @@ claude --agent evaluator -p \
     "Grade the most recent generator session's claim that feature $FEATURE_ID passes. Read BUILD_PLAN.md. Capture your own screenshot via 'bash scripts/pge/eval-screenshot.sh $FEATURE_ID'. Then PASS or NEEDS_WORK." \
     > "$VERDICT_FILE"
 
-VERDICT=$(head -1 "$VERDICT_FILE" | tr -d '[:space:]')
+# Extract verdict from the evaluator's output. Search the WHOLE file
+# for an unambiguous PASS / NEEDS_WORK token, not just the first line —
+# the evaluator often prefaces its verdict with narration ("Looking at
+# the evaluation:" etc.) before stating PASS or NEEDS_WORK on a later
+# line. Prefer the LAST occurrence so a quoted "NEEDS_WORK" earlier in
+# narration doesn't override the final verdict.
+VERDICT=""
+if grep -qE '(^|[^A-Z])NEEDS_WORK([^A-Z]|$)' "$VERDICT_FILE"; then
+    VERDICT="NEEDS_WORK"
+fi
+# PASS overrides only if it appears AFTER the last NEEDS_WORK (or no
+# NEEDS_WORK at all). awk reports the line number of the LAST match.
+LAST_PASS=$(awk '/(^|[^A-Z])PASS([^A-Z]|$)/ { line = NR } END { print line + 0 }' "$VERDICT_FILE")
+LAST_NEEDS=$(awk '/(^|[^A-Z])NEEDS_WORK([^A-Z]|$)/ { line = NR } END { print line + 0 }' "$VERDICT_FILE")
+if [ "$LAST_PASS" -gt "$LAST_NEEDS" ]; then
+    VERDICT="PASS"
+fi
 echo "run-cycle: verdict is $VERDICT"
 
 # 4. Process verdict.
