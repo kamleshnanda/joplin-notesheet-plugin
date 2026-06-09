@@ -24,6 +24,11 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
+import {
+    readChartsFromXlsxZip,
+    stripChartPartsFromZip,
+    type ImportedChartDrawing,
+} from './charts/xlsxChartImport';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
@@ -1729,6 +1734,38 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // exceljs accepts Buffer in Node and ArrayBuffer in the browser; both are valid
     // at runtime but the .d.ts only types Buffer. Cast away to satisfy TS.
     //
+    // M17: BEFORE wb.xlsx.load runs, read chart drawings out of the buffer
+    // ourselves and strip them from a copy used for the load. exceljs's
+    // chart-side reconcile loop crashes with the legacy `anchors` reference
+    // error on workbooks with chart drawings; sidestepping that load by
+    // pre-stripping is what unblocks chart-bearing fixtures (MultiSheet.xlsx,
+    // LargeWorkbook.xlsx, every fixture under tests/fixtures/charts/).
+    //
+    // The original buffer is preserved verbatim for the existing post-load
+    // zip-direct readers (readTablesFromXlsxZip / readThemeFont /
+    // readThemeClrScheme / readNamedHyperlinkCells) — those don't read any
+    // chart parts, so the strip step doesn't affect them.
+    let importedCharts: ImportedChartDrawing[] = [];
+    try {
+        importedCharts = await readChartsFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] M17: readChartsFromXlsxZip threw; continuing without chart import', e);
+        importedCharts = [];
+    }
+    // Build a chart-stripped buffer iff there's at least one chart drawing
+    // present. For chart-less workbooks we pass the original buffer through
+    // unchanged so the existing error-classification path stays intact for
+    // non-chart crash classes (e.g. xlsx-multi-table-unsupported).
+    let bufferForLoad: ArrayBuffer | Uint8Array | Buffer = buffer;
+    if (importedCharts.length > 0) {
+        try {
+            bufferForLoad = await stripChartPartsFromZip(buffer);
+        } catch (e) {
+            console.warn('[Notesheet] M17: stripChartPartsFromZip failed; loading original buffer (may crash)', e);
+            bufferForLoad = buffer;
+        }
+    }
+
     // The try/catch around load() catches three reproducible exceljs reconcile
     // crashes: chart drawings whose drawing reference doesn't resolve (`anchors`
     // crash in lib/xlsx/xlsx.js:100) and multi-sheet workbooks with multiple
@@ -1736,8 +1773,13 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // reduce). We classify by stack frame rather than message alone because
     // "name" is too generic to key off — multiple unrelated exceljs paths
     // can produce a "Cannot read properties of undefined (reading 'name')".
+    //
+    // The xlsx-charts-unsupported error class stays defined for future
+    // drawing-related crash classes M17's strip path doesn't cover (e.g. an
+    // image+chart mixed drawing whose strip leaves a dangling ref). The
+    // strip pre-empts the common case but isn't a universal cure.
     try {
-        await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+        await wb.xlsx.load(bufferForLoad as unknown as Parameters<typeof wb.xlsx.load>[0]);
     } catch (err) {
         const e = err as Error;
         const msg = e?.message ?? String(err);
@@ -2035,6 +2077,79 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             name: NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
             data: themeClrScheme.raw,
         });
+    }
+
+    // M17: chart drawings (read pre-load via readChartsFromXlsxZip). Emit
+    // the SHEET_DRAWING_PLUGIN resource in the same shape M10's
+    // readChartsFromSnapshot consumes — `componentKey: 'NotesheetChart'`
+    // + `data` block + `axisAlignSheetTransform`. subUnitId is the
+    // Notesheet-side sheet id (`sheet-<1-based-index>`); we map the
+    // importedChart's sheetIndex (xl/worksheets/sheet{N}.xml index) to the
+    // matching `sheet-N` here.
+    if (importedCharts.length > 0) {
+        const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> = {};
+        for (const chart of importedCharts) {
+            const subUnitId = `sheet-${chart.sheetIndex}`;
+            // Skip charts whose host sheet didn't survive the import — e.g.
+            // a stripped sheet that never reached the eachSheet walk.
+            if (!sheets[subUnitId]) continue;
+            if (!drawingResource[subUnitId]) {
+                drawingResource[subUnitId] = { data: {}, order: [] };
+            }
+            const drawingId = chart.chartId;
+            drawingResource[subUnitId].data[drawingId] = {
+                unitId: 'workbook',
+                subUnitId,
+                drawingId,
+                drawingType: 5,
+                componentKey: 'NotesheetChart',
+                data: {
+                    chartId: chart.chartId,
+                    type: chart.type,
+                    title: chart.title,
+                    sourceRange: chart.sourceRange,
+                    ...(chart.sourceSheetName ? { sourceSheetName: chart.sourceSheetName } : {}),
+                    labels: chart.labels,
+                    datasets: chart.datasets,
+                    ...(chart.meta ? { meta: chart.meta } : {}),
+                },
+                sheetTransform: {
+                    from: {
+                        column: chart.anchor.fromCol,
+                        columnOffset: chart.anchor.fromColOff,
+                        row: chart.anchor.fromRow,
+                        rowOffset: chart.anchor.fromRowOff,
+                    },
+                    to: {
+                        column: chart.anchor.toCol,
+                        columnOffset: chart.anchor.toColOff,
+                        row: chart.anchor.toRow,
+                        rowOffset: chart.anchor.toRowOff,
+                    },
+                },
+                axisAlignSheetTransform: {
+                    from: {
+                        column: chart.anchor.fromCol,
+                        columnOffset: chart.anchor.fromColOff,
+                        row: chart.anchor.fromRow,
+                        rowOffset: chart.anchor.fromRowOff,
+                    },
+                    to: {
+                        column: chart.anchor.toCol,
+                        columnOffset: chart.anchor.toColOff,
+                        row: chart.anchor.toRow,
+                        rowOffset: chart.anchor.toRowOff,
+                    },
+                },
+            };
+            drawingResource[subUnitId].order.push(drawingId);
+        }
+        if (Object.keys(drawingResource).length > 0) {
+            resources.push({
+                name: 'SHEET_DRAWING_PLUGIN',
+                data: JSON.stringify(drawingResource),
+            });
+        }
     }
 
     // Workbook-level default style. Univer cells without an explicit `s`
