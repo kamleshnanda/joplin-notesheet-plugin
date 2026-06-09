@@ -295,6 +295,45 @@ every feature.
 
 (Empty between sessions.)
 
+- **feature-1-m17-chart-import-no-crash** (2026-06-09) — Pre-load chart
+  reader + drawing-stripper architecture. New module
+  `src/charts/xlsxChartImport.ts` exports `readChartsFromXlsxZip(buffer)`
+  (zip+regex chart parser, walks every sheet's drawing rels in document
+  order, parses each `xl/charts/chart{N}.xml` independently of exceljs's
+  thin chart parser) and `stripChartPartsFromZip(buffer)` (drops chart
+  drawing parts + chart xml + sheet rels + content-types overrides;
+  idempotent on chart-less workbooks). Wired into
+  `src/xlsx.ts:xlsxBufferToSnapshot` BEFORE `wb.xlsx.load` — read charts
+  from original buffer, swap to stripped buffer for the load, attach
+  the `SHEET_DRAWING_PLUGIN` resource to the snapshot AFTER post-load
+  readers complete. The four existing post-load readers
+  (`readTablesFromXlsxZip` / `readThemeFont` / `readThemeClrScheme` /
+  `readNamedHyperlinkCells`) continue against the ORIGINAL buffer
+  (their inputs don't include chart parts; the strip is invisible).
+  All 10 hand-crafted fixtures under `tests/fixtures/charts/` import
+  with their charts in the snapshot resource — bar/line/pie/doughnut
+  type fidelity confirmed against source XML; multi-anchor case
+  `06-two-charts-one-sheet.xlsx` walks both `<xdr:twoCellAnchor>`
+  blocks in document order; cross-sheet `07-chart-cross-sheet.xlsx`
+  preserves `sourceSheetName: 'Sheet1'` despite chart living on Sheet2.
+  Test count moved 267 → 279 (12 new tests in
+  `tests/m17ChartImportNoCrash.test.ts`). Generator-evidence
+  screenshot at
+  `screenshots/feature-1-m17-chart-import-no-crash/eval-2026-06-09T06-54-25-634Z.png`
+  (chart-bearing fixture rendered in Joplin Univer canvas, no
+  xlsx-charts-unsupported error). Two M12 pin-downs in
+  `tests/m12ImportRecovery.test.ts:59,84` flipped (forced by criterion
+  5 of feature-1 — the strip path makes the legacy expectations
+  factually wrong; see ## Notes below for the reasoning).
+  `MultiSheet.xlsx` flipped to "→ snapshot with N charts";
+  `LargeWorkbook.xlsx` flipped to "→ xlsx-multi-table-unsupported"
+  because the strip uncovers a SECOND crash class (multi-table reduce
+  in worksheet.js:920) that's beyond M17's scope. Harness:
+  `import-fixture.ts` extended to search both `tests/fixtures/charts/`
+  and the legacy formatting-testdata root; `eval-screenshot.js`
+  TITLE_PREFIX_BY_FEATURE + REGION_BY_FEATURE entries added for the
+  feature.
+
 ## Next
 
 M17 ships chart import from `.xlsx` (drawings + bar/line/pie/doughnut
@@ -1137,3 +1176,103 @@ stripped buffer is passed to exceljs.
   — same pattern other tests in the suite use. The test exercises
   the same renderer code path that a fixture-imported multi-sheet
   snapshot would.
+
+- **M17 feature-1: namespace tolerance is load-bearing.** Drawing XML
+  in xlsx workbooks comes in two flavours: (a) Excel-authored uses the
+  canonical `xdr:` prefix on `<xdr:wsDr>` / `<xdr:twoCellAnchor>` /
+  `<xdr:from>` etc. (b) Programmatically-built workbooks (`MultiSheet.xlsx`,
+  `LargeWorkbook.xlsx`) declare the spreadsheetDrawing namespace as the
+  DEFAULT and emit unprefixed elements. Same for chart parts: Excel
+  emits `<c:barChart>` etc.; programmatic emitters use a default
+  namespace and emit `<barChart>`. Every regex in
+  `src/charts/xlsxChartImport.ts` uses `(?:xdr:)?` / `(?:c:)?` so the
+  parser handles both. Failure mode: parser silently returned 0
+  charts on namespace-less inputs, and the strip path didn't run, so
+  exceljs hit the `anchors` reconcile crash and `xlsxBufferToSnapshot`
+  threw `xlsx-charts-unsupported`. The all-10-fixtures test now
+  exercises both shapes (the project's canonical Excel-authored set
+  uses `c:` prefix; the imported Joplin-shipped MultiSheet/LargeWorkbook
+  use the default-namespace shape via the m12ImportRecovery flips).
+
+- **M17 feature-1: regex `[^/]*` is wrong for attribute strings that
+  contain URLs.** OOXML `<Relationship Type="http://schemas.openxmlformats.org/.../drawing"/>`
+  has many `/` characters inside the Type attribute. Patterns like
+  `<Relationship\b[^/]*Type=...[^/]*Target=...[^/]*\/>` silently fail
+  to match because the URL eats the `[^/]*` ranges. The fix is to use
+  `[^>]*` (everything up to the next `>`) and parse Id/Type/Target
+  independently. Same trap in three places — `parseDrawingRels`,
+  `findSheetDrawingLinks`, and the `<drawing r:id="..."/>` strip in
+  worksheets where some workbooks add `xmlns:r="..."` to the drawing
+  element itself, putting a URL between the tag name and the `r:id`
+  attr.
+
+- **M17 feature-1: walk anchors in DOCUMENT order, not zip-key
+  order.** `06-two-charts-one-sheet.xlsx` packs both charts into ONE
+  `xl/drawings/drawing1.xml` as two consecutive `<xdr:twoCellAnchor>`
+  blocks. Walking by zip key (i.e. iterating `xl/charts/chart{N}.xml`)
+  would associate anchor 0 with chart1 and anchor 1 with chart2 by
+  coincidence — but the load-bearing case is that for a drawing with
+  multiple anchors, you MUST walk anchors in document order and
+  resolve each anchor's `r:id` against
+  `xl/drawings/_rels/drawing{N}.xml.rels` to find its chart part path.
+  This anchors-driven walk is what the implementation does;
+  `tests/m17ChartImportNoCrash.test.ts` pin-downs anchor coordinates
+  on snapshot drawings to source XML, ensuring the document-order
+  invariant holds.
+
+- **M17 feature-1: m12ImportRecovery flips were a forced consequence,
+  not a planned scope creep.** The planner reserved the
+  `tests/m12ImportRecovery.test.ts:59,84` flip for feature-9. But
+  feature-1's criterion 5 requires the suite green — and the strip
+  path makes MultiSheet.xlsx import successfully, so the existing
+  `expect(e.code).toBe('xlsx-charts-unsupported')` for MultiSheet
+  goes from green to red as soon as feature-1 lands. There's no
+  way to ship feature-1 + green suite without flipping this assertion.
+  LargeWorkbook.xlsx is similar but uncovers a SECOND crash class
+  beyond M17's scope (`name` reduce in worksheet.js:920 — the same
+  multi-table-unsupported class FormulasAndStructuredRefs.xlsx
+  exhibits). Flipped its expectation to
+  `xlsx-multi-table-unsupported` rather than positive-import. The
+  M17 README "Known shortcomings" should mention LargeWorkbook still
+  doesn't import — that's docs work for feature-9 or the README PR.
+
+- **M17 feature-1: `oneCellAnchor` synthesizes a `to` of (col+6,
+  row+14).** Excel renders one-cell-anchored charts by laying down
+  the EMU `<xdr:ext>` extent at the from point; for our cell-anchored
+  UI a reasonable approximation is "from + a chart-sized span." The
+  exact span (6 cols / 14 rows ~= 460×270 px @ default cell size) is
+  documented in `walkAnchors`; the synthetic-anchor test pin-down
+  asserts this shape so future tweaks are deliberate. In practice
+  Excel-authored fixtures all use `twoCellAnchor`; oneCellAnchor
+  shows up only in programmatically-generated workbooks (MultiSheet,
+  LargeWorkbook, and one canonical synthetic in the test). The
+  approximation never sees an Excel-authored input where it would
+  need to be EMU-precise.
+
+- **M17 feature-1: source range bounding box. The first `<c:f>` in a
+  series is the SERIES-NAME ref nested in `<c:tx><c:strRef>`, NOT
+  categories.** Categories live in the second `<c:f>` (inside
+  `<c:cat>`); values are the third (inside `<c:val>`). Verified at
+  `01-bar-simple.xlsx`'s chart1.xml: the three `<c:f>` elements are
+  `Sheet1!$B$1` (series name), `Sheet1!$A$2:$A$5` (categories),
+  `Sheet1!$B$2:$B$5` (values). The implementation explicitly scopes
+  to `<c:cat>` and `<c:val>` sub-elements rather than grabbing the
+  first `<c:f>`. Same trap is inverse in M10's export side
+  (`src/charts/xlsxChart.ts:170` emits the series-name ref FIRST in
+  series order). The test's `readSourceTruth` helper does the
+  scoped walk too — the assertion comes from independently parsing
+  the XML, NOT from the snapshot's emit.
+
+- **M17 feature-1: the `xlsx-charts-unsupported` error class stays
+  defined.** The strip path is the common-case fix; it covers the
+  10-fixture set and MultiSheet/LargeWorkbook's chart-bearing
+  drawings. But future drawing-related crash classes that the strip
+  doesn't yet recognize (image+chart mixed drawings, OLE objects,
+  etc.) will still surface from exceljs's reconcile, and the
+  existing wrap path catches them with the same code. The test
+  pins the class definition itself rather than dynamically
+  injecting a crash — `jest.spyOn(importMod, 'readChartsFromXlsxZip')`
+  doesn't work in TS strict-export mode (`Cannot redefine property`),
+  so the test simply asserts the constructor + code constant
+  shape. Acceptable: the wrap is unit-tested by the existing
+  m12ImportRecovery suite for the in-tree crash classes.

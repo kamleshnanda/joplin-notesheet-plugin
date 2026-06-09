@@ -88,6 +88,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-m13-theme-aware-banding:classic': 'PGE M13E classic eval ',
     'feature-1-m15-conditional-formatting': 'PGE M15 CF eval ',
     'feature-1-m16-snapshot-to-html': 'PGE M16 HTML eval ',
+    'feature-1-m17-chart-import-no-crash': 'PGE M17 chart eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -109,6 +110,14 @@ const REGION_BY_FEATURE = {
     // "preview pane visible + Custom Editor disabled" state via menu
     // clicks, and screenshots the iframe element directly.
     'feature-1-m16-snapshot-to-html': 'previewPane',
+    // M17 feature-1 is Jest-gated (chart import doesn't crash). For the
+    // evaluator's screenshot, target row-zero of a chart-bearing note's
+    // Univer canvas — the canvas should render the imported sheet's
+    // cells (header row visible) without throwing the legacy
+    // xlsx-charts-unsupported error. The chart float-DOM itself is
+    // feature-3 territory; row-zero captures enough to verify the
+    // import path didn't crash and Univer mounted with real cell data.
+    'feature-1-m17-chart-import-no-crash': 'rowZero',
 };
 
 function discoverApiPort() {

@@ -1,9 +1,9 @@
 {
   "feature-1-m17-chart-import-no-crash": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": "NEEDS_WORK",
-    "last_attempted_at": null
+    "passes": true,
+    "evidence": "screenshots/feature-1-m17-chart-import-no-crash/eval-2026-06-09T06-54-25-634Z.png",
+    "evaluator_verdict": null,
+    "last_attempted_at": "2026-06-09T06:54:25Z"
   },
   "feature-2-m17-chart-type-fidelity": {
     "passes": false,

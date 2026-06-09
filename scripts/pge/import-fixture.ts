@@ -37,15 +37,24 @@ async function main(): Promise<void> {
     // shell wrapper passes the repo root via PGE_REPO_ROOT so we always
     // resolve fixtures against the source tree, not the compile dir.
     const repoRoot = process.env.PGE_REPO_ROOT || path.resolve(__dirname, '..', '..');
-    const fixturePath = path.join(
-        repoRoot,
-        'tests',
-        'ExcelBaseTestData',
-        'formatting-testdata',
-        fixtureName,
-    );
-    if (!fs.existsSync(fixturePath)) {
-        console.error(`fixture not found: ${fixturePath}`);
+    // Search the canonical fixture roots in order. The first one matching
+    // the requested fixture name wins. M17 added tests/fixtures/charts/ —
+    // chart fixtures live there, the M12-era formatting fixtures live
+    // under tests/ExcelBaseTestData/formatting-testdata/.
+    const fixtureRoots = [
+        path.join(repoRoot, 'tests', 'ExcelBaseTestData', 'formatting-testdata'),
+        path.join(repoRoot, 'tests', 'fixtures', 'charts'),
+    ];
+    let fixturePath: string | null = null;
+    for (const root of fixtureRoots) {
+        const candidate = path.join(root, fixtureName);
+        if (fs.existsSync(candidate)) {
+            fixturePath = candidate;
+            break;
+        }
+    }
+    if (!fixturePath) {
+        console.error(`fixture not found: ${fixtureName} (searched ${fixtureRoots.join(', ')})`);
         process.exit(1);
     }
 
