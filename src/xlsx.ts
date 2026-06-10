@@ -2219,32 +2219,45 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                     width: Math.max(50, right - left),
                     height: Math.max(50, bottom - top),
                 },
+                // sheetTransform's columnOffset/rowOffset are PIXELS in
+                // Univer's drawing service, NOT EMUs. The OOXML
+                // <xdr:colOff>/<xdr:rowOff> elements ship EMUs (English
+                // Metric Units; 9525 EMU = 1 px at 96 DPI). Forwarding
+                // raw EMUs here makes Univer recompute transform with
+                // nonsense pixel values (~370k px wide, off-screen
+                // negative left), which is what produced the
+                // "covers the whole sheet" + "blank canvas" symptoms in
+                // 06 / 10 — the float-DOM mounted with a transform
+                // Chart.js's `responsive` couldn't size against until
+                // a manual resize forced a recompute. We convert EMU
+                // to pixels here so Univer's drawing service produces
+                // the same transform our `transform` block already had.
                 sheetTransform: {
                     from: {
                         column: chart.anchor.fromCol,
-                        columnOffset: chart.anchor.fromColOff,
+                        columnOffset: Math.round(chart.anchor.fromColOff / 9525),
                         row: chart.anchor.fromRow,
-                        rowOffset: chart.anchor.fromRowOff,
+                        rowOffset: Math.round(chart.anchor.fromRowOff / 9525),
                     },
                     to: {
                         column: chart.anchor.toCol,
-                        columnOffset: chart.anchor.toColOff,
+                        columnOffset: Math.round(chart.anchor.toColOff / 9525),
                         row: chart.anchor.toRow,
-                        rowOffset: chart.anchor.toRowOff,
+                        rowOffset: Math.round(chart.anchor.toRowOff / 9525),
                     },
                 },
                 axisAlignSheetTransform: {
                     from: {
                         column: chart.anchor.fromCol,
-                        columnOffset: chart.anchor.fromColOff,
+                        columnOffset: Math.round(chart.anchor.fromColOff / 9525),
                         row: chart.anchor.fromRow,
-                        rowOffset: chart.anchor.fromRowOff,
+                        rowOffset: Math.round(chart.anchor.fromRowOff / 9525),
                     },
                     to: {
                         column: chart.anchor.toCol,
-                        columnOffset: chart.anchor.toColOff,
+                        columnOffset: Math.round(chart.anchor.toColOff / 9525),
                         row: chart.anchor.toRow,
-                        rowOffset: chart.anchor.toRowOff,
+                        rowOffset: Math.round(chart.anchor.toRowOff / 9525),
                     },
                 },
             };
