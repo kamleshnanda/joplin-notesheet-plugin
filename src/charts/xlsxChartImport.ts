@@ -43,6 +43,13 @@ export interface ImportedChartDrawing {
     };
     meta?: {
         unsupportedSourceType?: string;
+        // Bar orientation. Excel's <c:barDir> attribute carries 'bar'
+        // (horizontal) or 'col' (vertical). M17's ChartType union has
+        // only one 'bar', so we surface direction via `meta.barDir` and
+        // route NotesheetChart to set Chart.js's `options.indexAxis` at
+        // render time. M10 export collapses everything to 'col' for now;
+        // documented as a gap in BUILD_PLAN feature-5 + README.
+        barDir?: 'bar' | 'col';
     };
 }
 
@@ -244,6 +251,7 @@ interface ParsedChart {
     labels: string[];
     datasets: Array<{ label?: string; data: number[] }>;
     unsupportedSourceType?: string;
+    barDir?: 'bar' | 'col';
 }
 
 const SUPPORTED_TYPES: Record<string, ChartType> = {
@@ -273,6 +281,17 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
             unsupportedSourceType = typeMatch[1];
             type = 'bar';
         }
+    }
+
+    // Bar orientation. Only meaningful when type === 'bar'. ECMA-376
+    // <c:barDir val="bar"/> = horizontal, val="col" = vertical (the
+    // default Excel emits when the user picks "Column Chart"). When
+    // absent, treat as 'col' since Excel's default chart-of-type-bar
+    // is what Notesheet renders today.
+    let barDir: 'bar' | 'col' | undefined;
+    if (type === 'bar') {
+        const barDirMatch = chartXml.match(/<(?:c:)?barDir\s+val="(bar|col)"/);
+        barDir = barDirMatch ? (barDirMatch[1] as 'bar' | 'col') : 'col';
     }
 
     // Title — first <a:t>...</a:t> inside <c:title><c:tx><c:rich>...
@@ -393,6 +412,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         labels,
         datasets,
         unsupportedSourceType,
+        ...(barDir ? { barDir } : {}),
     };
 }
 
@@ -523,9 +543,14 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
-            if (parsed.unsupportedSourceType) {
-                drawing.meta = { unsupportedSourceType: parsed.unsupportedSourceType };
-                console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);
+            if (parsed.unsupportedSourceType || parsed.barDir) {
+                drawing.meta = {
+                    ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
+                    ...(parsed.barDir ? { barDir: parsed.barDir } : {}),
+                };
+                if (parsed.unsupportedSourceType) {
+                    console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);
+                }
             }
             out.push(drawing);
         }

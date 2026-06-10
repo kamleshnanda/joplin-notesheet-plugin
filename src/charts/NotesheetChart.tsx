@@ -21,6 +21,17 @@ export interface NotesheetChartData {
     title?: string;
     labels?: string[];
     datasets?: ChartData['datasets'];
+    // M17: per-chart metadata that doesn't fit ChartType. Today carries:
+    //   - barDir: 'bar' (horizontal) or 'col' (vertical, the default).
+    //     Source: <c:barDir> in OOXML chart XML, surfaced by xlsxChartImport
+    //     for type === 'bar' fixtures. NotesheetChart routes this to
+    //     Chart.js's `options.indexAxis = 'y'` for horizontal bars.
+    //   - unsupportedSourceType: name of an unsupported chart type
+    //     (radar, scatter, area...) that fell back to 'bar'.
+    meta?: {
+        barDir?: 'bar' | 'col';
+        unsupportedSourceType?: string;
+    };
 }
 
 interface Props {
@@ -51,6 +62,12 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         }];
     }
 
+    // Bar orientation. OOXML <c:barDir val="bar"/> = horizontal,
+    // val="col" = vertical (Excel's default). Chart.js expresses this
+    // via `options.indexAxis`: 'y' = horizontal, 'x' (default) = vertical.
+    // Only meaningful when type === 'bar'.
+    const indexAxis = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'y' : 'x';
+
     return {
         type,
         data: { labels, datasets },
@@ -58,6 +75,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
+            ...(type === 'bar' ? { indexAxis } : {}),
             plugins: {
                 legend: { display: datasets.length > 1 || type === 'pie' || type === 'doughnut' },
                 title: data?.title
