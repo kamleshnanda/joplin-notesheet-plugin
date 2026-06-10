@@ -295,6 +295,50 @@ every feature.
 
 (Empty between sessions.)
 
+- **M17 manual-test fidelity fixes (issues 1/2/3/6/7/11)** (2026-06-10) —
+  Operator re-ran all 11 chart fixtures through import → export →
+  reopen-in-Excel and reported 11 observations. Triaged ALL of them
+  shell-first from chart XML (no image reads). Fixed three root-caused,
+  Jest-anchorable groups this session; deferred the two live-render
+  ones. Test count 346 → 367 (+21).
+  - **Group 1 — axis lines (issues 1, 2, 7).** `categoryAndValueAxes`
+    emitted NO `<c:spPr>` on either axis, so Excel painted its DARK
+    legacy axis line on both — the "introduced axes / vertical line".
+    Every source fixture uses Excel's modern template (light-grey
+    category-axis line, `<a:ln><a:noFill/>` value axis). Now export
+    emits that by default; `meta.catAxisLine`/`meta.valAxisLine`
+    ('grey'|'none') plumbed import→export for non-default charts.
+    `tests/m17ChartAxisLineFidelity.test.ts` (12) anchors to source XML.
+  - **Group 2 — pie slice labels (issues 3, 6).** Excel stores pie
+    label flags (showCatName=1, showPercent=1) on the SERIES-level
+    `<c:ser><c:dLbls>` and writes an all-off chart-level `<c:dLbls>`.
+    The importer read only chart-level → imported "no labels" → export
+    dropped them. Now parses both and falls back to series-level when
+    chart-level shows nothing. `tests/m17ChartPieDataLabels.test.ts`
+    (5). NOTE: this fixes the EXPORTED .xlsx (what the operator
+    reported). Rendering slice labels INSIDE Joplin's live Chart.js
+    canvas still needs `chartjs-plugin-datalabels` (absent) — deferred,
+    see ## Notes.
+  - **Group 5 — column width (issue 11).** exceljs reads
+    `<sheetFormatPr defaultColWidth>` but NOT `baseColWidth`.
+    11-stacked-bar ships `baseColWidth="10"` + only column A explicit,
+    so column B inherited a ~11.5-char default that collapsed to
+    exceljs's 8.43 on export. Added zip-direct `readSheetDefaultColWidths`
+    (defaultColWidth, else baseColWidth+1), carried as
+    `SheetRecord.defaultColWidthChars`, re-emitted via
+    `ws.properties.defaultColWidth`. `tests/m17ColumnDefaultWidth.test.ts`
+    (4). NOT chart-related (this was memory task #25).
+  - **Deferred — Groups 3 + 4 (live-render, need running plugin):**
+    issue 9 (09 percent axis shows decimals in Joplin live render —
+    import meta + tick-formatter wiring LOOK correct from code; needs
+    runtime confirmation) and issue 10 / memory task #24 (trendline
+    bars reversed — Chart.js indexAxis='y' draws first category at top,
+    Excel at bottom; candidate fix `scales.y.reverse`). Both need
+    build + install + screenshot.
+  - **Benign:** the `representedObject is not a
+    WeakPtrToElectronMenuModelAsNSObject` console spam is a macOS
+    Electron menu warning, NOT from the plugin. Ignore.
+
 - **feature-6-m17-programmatic-roundtrip-pack** (2026-06-10) — Added
   `tests/m17ChartProgrammaticRoundTrip.test.ts` (8 tests). A pack of
   in-memory `UniverSnapshot`s authored directly in test code — each
@@ -518,6 +562,18 @@ stripped buffer is passed to exceljs.
 
 ## Notes
 
+- **Pie slice labels render in exported Excel but NOT in Joplin's live
+  canvas.** Chart.js core cannot draw per-slice data labels
+  (category name / percent) — that requires the
+  `chartjs-plugin-datalabels` plugin, which is NOT a dependency. The
+  M17 Group-2 fix (2026-06-10) makes `meta.dLbls.showCatName/showPercent`
+  survive import→export so the re-opened .xlsx shows labels (what the
+  operator reported), and `NotesheetChart` already carries the flags on
+  `data.meta.dLbls`. To also show them in the editor: add
+  `chartjs-plugin-datalabels`, register it, and in `buildConfig` map
+  `meta.dLbls` → `plugins.datalabels` formatter (catName + percent).
+  Deferred because it adds a runtime dep and a bundle-size hit; flag the
+  dep diff to the operator per dependency-hygiene rules before adding.
 - **feature-6 Case D — empty-doughnut PRESERVE-with-placeholder.**
   The spec lets the empty-series doughnut either DROP (0 drawings) or
   PRESERVE (1 drawing). The implementation lands on PRESERVE, but NOT
