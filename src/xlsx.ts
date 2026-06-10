@@ -2167,16 +2167,26 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             // if the chart XML's <c:cat>/<c:val> caches were empty
             // (programmatic workbooks like MultiSheet.xlsx ship formulas
             // without strCache/numCache).
+            //
+            // When meta.categoryAxisType === 'index' the source chart had
+            // no <c:cat> element at all — Excel shows row index 1..N as
+            // the X-axis. Don't synthesize labels from column 0 in that
+            // case; that would make column 0's values appear as the
+            // X-axis labels (the original 11-stacked-bar bug). Leave
+            // labels empty and let NotesheetChart synthesize 1..N at
+            // render time.
             let chartLabels = chart.labels;
             let chartDatasets = chart.datasets;
+            const isIndexAxis = chart.meta?.categoryAxisType === 'index';
             const cachedLabelsEmpty = chart.labels.length === 0;
             const cachedDataEmpty = chart.datasets.every((ds) => ds.data.length === 0);
-            if (cachedLabelsEmpty || cachedDataEmpty) {
+            if (cachedDataEmpty) {
                 const resolved = resolveDataFromCells(chart);
-                if (resolved) {
-                    if (cachedLabelsEmpty) chartLabels = resolved.labels;
-                    if (cachedDataEmpty) chartDatasets = resolved.datasets;
-                }
+                if (resolved) chartDatasets = resolved.datasets;
+            }
+            if (cachedLabelsEmpty && !isIndexAxis) {
+                const resolved = resolveDataFromCells(chart);
+                if (resolved) chartLabels = resolved.labels;
             }
             if (!drawingResource[subUnitId]) {
                 drawingResource[subUnitId] = { data: {}, order: [] };

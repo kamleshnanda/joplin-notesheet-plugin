@@ -50,6 +50,17 @@ export interface ImportedChartDrawing {
         // render time. M10 export collapses everything to 'col' for now;
         // documented as a gap in BUILD_PLAN feature-5 + README.
         barDir?: 'bar' | 'col';
+        // Legend position. Excel's <c:legendPos val="..."/> values: 'r'
+        // (right, default), 'l', 't' (top), 'b' (bottom), 'tr'. Routed
+        // to Chart.js options.plugins.legend.position at render time and
+        // re-emitted by M10 export.
+        legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
+        // 'index' when the source chart had no <c:cat> element — Excel
+        // shows row index 1..N as the X-axis. NotesheetChart synthesizes
+        // labels and treats every column in sourceRange as a values
+        // series (no separate label column). M10 export emits no
+        // <c:cat> for these.
+        categoryAxisType?: 'index' | 'category';
     };
 }
 
@@ -252,6 +263,8 @@ interface ParsedChart {
     datasets: Array<{ label?: string; data: number[] }>;
     unsupportedSourceType?: string;
     barDir?: 'bar' | 'col';
+    legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
+    categoryAxisType?: 'index' | 'category';
 }
 
 const SUPPORTED_TYPES: Record<string, ChartType> = {
@@ -299,6 +312,13 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     const titleMatch = chartXml.match(/<(?:c:)?title\b[\s\S]*?<a:t>([\s\S]*?)<\/a:t>/);
     if (titleMatch) title = decodeXmlEntities(titleMatch[1]);
 
+    // Legend position. <c:legend><c:legendPos val="b|l|r|t|tr"/></c:legend>.
+    // When the legend element is absent, leave undefined (NotesheetChart
+    // applies its own default visibility based on series count).
+    let legendPos: 'r' | 'l' | 't' | 'b' | 'tr' | undefined;
+    const legendPosMatch = chartXml.match(/<(?:c:)?legend\b[\s\S]*?<(?:c:)?legendPos\s+val="(r|l|t|b|tr)"/);
+    if (legendPosMatch) legendPos = legendPosMatch[1] as 'r' | 'l' | 't' | 'b' | 'tr';
+
     // Walk every <c:ser>...</c:ser> in document order. Element name may
     // be `c:ser` or just `ser` depending on namespace shape.
     const serRe = new RegExp(`<${C}ser\\b[^>]*>([\\s\\S]*?)</${C}ser>`, 'g');
@@ -314,6 +334,13 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let labelsRange: DecodedRef | null = null;
     const valRanges: DecodedRef[] = [];
     const datasets: Array<{ label?: string; data: number[] }> = [];
+    // Track whether any series provided a <c:cat>. When NONE do, Excel
+    // shows row index 1..N as the X-axis and treats every column in
+    // the value-refs as a separate values series. We surface this
+    // distinction via meta.categoryAxisType so M10 export can re-emit
+    // a no-<c:cat> chart and NotesheetChart can render synthetic 1..N
+    // labels rather than misinterpreting column 0 as a label column.
+    let anyCatRef = false;
 
     const reTx = new RegExp(`<${C}tx>([\\s\\S]*?)</${C}tx>`);
     const reStrCacheV = new RegExp(`<${C}strCache>[\\s\\S]*?<${C}pt\\b[^>]*>[\\s\\S]*?<${C}v>([\\s\\S]*?)</${C}v>`);
@@ -337,6 +364,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         // Categories — only consume if the series has a <c:cat>.
         const catMatch = ser.match(reCat);
         if (catMatch) {
+            anyCatRef = true;
             const catBody = catMatch[1];
             const catFormula = catBody.match(reF);
             if (catFormula) {
@@ -413,6 +441,8 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         datasets,
         unsupportedSourceType,
         ...(barDir ? { barDir } : {}),
+        ...(legendPos ? { legendPos } : {}),
+        categoryAxisType: anyCatRef ? 'category' : 'index',
     };
 }
 
@@ -543,10 +573,13 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
-            if (parsed.unsupportedSourceType || parsed.barDir) {
+            const hasMeta = parsed.unsupportedSourceType || parsed.barDir || parsed.legendPos || parsed.categoryAxisType;
+            if (hasMeta) {
                 drawing.meta = {
                     ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
                     ...(parsed.barDir ? { barDir: parsed.barDir } : {}),
+                    ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
+                    ...(parsed.categoryAxisType ? { categoryAxisType: parsed.categoryAxisType } : {}),
                 };
                 if (parsed.unsupportedSourceType) {
                     console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);

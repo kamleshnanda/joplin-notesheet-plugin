@@ -31,6 +31,15 @@ export interface NotesheetChartData {
     meta?: {
         barDir?: 'bar' | 'col';
         unsupportedSourceType?: string;
+        // Where the legend sits. Source: <c:legendPos val="..."/> at
+        // import time. Excel values 'r'|'l'|'t'|'b'|'tr' map to Chart.js
+        // 'right'|'left'|'top'|'bottom'|'right' (Chart.js has no 'tr').
+        legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
+        // 'index' when the source chart had no <c:cat> element. We
+        // synthesize 1..N labels to match Excel's "row index as X-axis"
+        // behaviour, and stop interpreting column 0 as a label column
+        // (the import resolver also skips that fallback).
+        categoryAxisType?: 'index' | 'category';
     };
 }
 
@@ -49,8 +58,16 @@ const CONTAINER_STYLE: React.CSSProperties = {
 
 function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     const type = (data?.type ?? 'bar') as ChartType;
-    const labels = data?.labels ?? [];
+    let labels = data?.labels ?? [];
     let datasets = data?.datasets ?? [];
+
+    // No <c:cat> in the source chart: Excel uses row index 1..N as the
+    // X-axis. Synthesize matching labels here. When labels are already
+    // populated this branch is a no-op.
+    if (data?.meta?.categoryAxisType === 'index' && labels.length === 0 && datasets.length > 0) {
+        const n = Math.max(...datasets.map((d) => d.data?.length ?? 0));
+        labels = Array.from({ length: n }, (_, i) => String(i + 1));
+    }
 
     // Pie/doughnut want one dataset whose backgroundColor is an array (one
     // slice per data point). Bar/line use one color per series.
@@ -68,6 +85,18 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // Only meaningful when type === 'bar'.
     const indexAxis = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'y' : 'x';
 
+    // Legend position. Excel cf. <c:legendPos>: r/l/t/b/tr. Chart.js
+    // accepts 'right' | 'left' | 'top' | 'bottom' | 'chartArea'; 'tr'
+    // (Excel's "top-right") collapses to 'right' since Chart.js has no
+    // matching position. Default to 'right' (Excel's default and
+    // Chart.js's default for Notesheet's component).
+    const legendPosMap: Record<string, 'right' | 'left' | 'top' | 'bottom'> = {
+        r: 'right', l: 'left', t: 'top', b: 'bottom', tr: 'right',
+    };
+    const legendPosition = data?.meta?.legendPos
+        ? (legendPosMap[data.meta.legendPos] ?? 'right')
+        : 'right';
+
     return {
         type,
         data: { labels, datasets },
@@ -77,7 +106,10 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             animation: false,
             ...(type === 'bar' ? { indexAxis } : {}),
             plugins: {
-                legend: { display: datasets.length > 1 || type === 'pie' || type === 'doughnut' },
+                legend: {
+                    display: datasets.length > 1 || type === 'pie' || type === 'doughnut',
+                    position: legendPosition,
+                },
                 title: data?.title
                     ? { display: true, text: data.title, font: { size: 14 } }
                     : { display: false },

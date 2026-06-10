@@ -47,6 +47,22 @@ export interface ChartDrawing {
         toCol: number; toColOff: number;
         toRow: number; toRowOff: number;
     };
+    // M17 metadata that doesn't fit the rest of the shape. Mirrors
+    // `ImportedChartDrawing.meta` so a round-trip preserves it.
+    //   - legendPos: 'r'|'l'|'t'|'b'|'tr' (Excel <c:legendPos val="..."/>)
+    //   - categoryAxisType: 'index' when the source chart had no <c:cat>
+    //     element. Export emits no <c:cat> and treats every column in
+    //     sourceRange as a separate values series; otherwise the
+    //     existing "first column = labels, rest = series" convention.
+    //   - barDir / unsupportedSourceType: surfaced for forward
+    //     compatibility; M10 export currently honors barDir only on
+    //     emit (out-of-scope for round-trip per BUILD_PLAN feature-5).
+    meta?: {
+        legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
+        categoryAxisType?: 'index' | 'category';
+        barDir?: 'bar' | 'col';
+        unsupportedSourceType?: string;
+    };
 }
 
 // ─── XML primitives ────────────────────────────────────────────────────────
@@ -162,8 +178,11 @@ function chartSpaceWrap(
         : `<c:autoTitleDeleted val="1"/>`;
 
     const showLegend = c.type === 'pie' || c.type === 'doughnut' || c.datasets.length > 1;
+    // Honor source-XML legend position when it survived round-trip via
+    // meta.legendPos. Falls back to 'r' (Excel's default).
+    const legendPos = c.meta?.legendPos ?? 'r';
     const legendXml = showLegend
-        ? `<c:legend><c:legendPos val="r"/><c:overlay val="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:txPr><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900" b="0" kern="1200"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend>`
+        ? `<c:legend><c:legendPos val="${legendPos}"/><c:overlay val="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:txPr><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900" b="0" kern="1200"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend>`
         : '';
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -172,6 +191,17 @@ function chartSpaceWrap(
 
 // One <c:ser> for bar or line. Element order inside <c:ser> is strict:
 // idx, order, tx, spPr, marker?, invertIfNegative?, cat, val.
+//
+// Two range conventions:
+//   - 'category' (default): first column = labels, rest = series. Each
+//     series picks dataCol = startColumn + 1 + seriesIndex; <c:cat>
+//     points at labelCol.
+//   - 'index' (no <c:cat> in source — see ImportedChartDrawing.meta.
+//     categoryAxisType): every column in sourceRange is its own values
+//     series. dataCol = startColumn + seriesIndex; <c:cat> is omitted.
+//     dataStartRow is sourceRange.startRow itself (no header row to
+//     skip; the header lives one row above and provides the series
+//     name only).
 function buildSeriesXml(
     c: ChartDrawing,
     opts: BuildChartOpts,
@@ -180,17 +210,31 @@ function buildSeriesXml(
     fillHex: string,
     lineSeries = false,
 ): string {
+    const isIndexAxis = c.meta?.categoryAxisType === 'index';
     const labelCol = c.sourceRange.startColumn;
-    const dataCol = c.sourceRange.startColumn + 1 + seriesIndex;
-    const dataStartRow = c.sourceRange.startRow + 1; // skip the header row
+    const dataCol = isIndexAxis
+        ? c.sourceRange.startColumn + seriesIndex
+        : c.sourceRange.startColumn + 1 + seriesIndex;
+    const dataStartRow = isIndexAxis
+        ? c.sourceRange.startRow
+        : c.sourceRange.startRow + 1; // skip the header row
     const dataEndRow = c.sourceRange.endRow;
 
-    // Header cell at the top of the series's column gives the series label.
-    const headerRow = c.sourceRange.startRow;
-    const seriesNameRef = cellRef(opts.sheetName, headerRow, dataCol);
+    // Header cell at the top of the series's column gives the series
+    // label. For category-axis charts the header sits at sourceRange's
+    // startRow (since dataStartRow = startRow + 1). For index-axis
+    // charts the data starts at startRow itself, so the header lives
+    // one row ABOVE — typically row 0 in our normalized snapshot. If
+    // startRow is already 0 there's no header row available; use the
+    // dataset's `label` directly without a sheet ref (Excel renders
+    // the inline strCache value in the legend just fine).
+    const headerRow = isIndexAxis
+        ? c.sourceRange.startRow - 1
+        : c.sourceRange.startRow;
     const seriesName = ds.label ?? `Series ${seriesIndex + 1}`;
-
-    const txXml = `<c:tx><c:strRef><c:f>${seriesNameRef}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${escapeXml(seriesName)}</c:v></c:pt></c:strCache></c:strRef></c:tx>`;
+    const txXml = headerRow >= 0
+        ? `<c:tx><c:strRef><c:f>${cellRef(opts.sheetName, headerRow, dataCol)}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${escapeXml(seriesName)}</c:v></c:pt></c:strCache></c:strRef></c:tx>`
+        : `<c:tx><c:v>${escapeXml(seriesName)}</c:v></c:tx>`;
 
     // Per-series fill (bar) or line stroke (line). Both reference the palette.
     const spPrXml = lineSeries
@@ -199,11 +243,16 @@ function buildSeriesXml(
 
     const markerXml = lineSeries ? `<c:marker><c:symbol val="none"/></c:marker>` : `<c:invertIfNegative val="0"/>`;
 
-    // Categories: the label column (string ref + cache).
-    const labelsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, labelCol);
-    const labelsCacheXml = c.labels.map((v, i) =>
-        `<c:pt idx="${i}"><c:v>${escapeXml(String(v))}</c:v></c:pt>`).join('');
-    const catXml = `<c:cat><c:strRef><c:f>${labelsRef}</c:f><c:strCache><c:ptCount val="${c.labels.length}"/>${labelsCacheXml}</c:strCache></c:strRef></c:cat>`;
+    // Categories: the label column (string ref + cache). Skip entirely
+    // for index-axis charts — Excel infers row index 1..N when <c:cat>
+    // is absent, matching the source workbook's behaviour.
+    let catXml = '';
+    if (!isIndexAxis) {
+        const labelsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, labelCol);
+        const labelsCacheXml = c.labels.map((v, i) =>
+            `<c:pt idx="${i}"><c:v>${escapeXml(String(v))}</c:v></c:pt>`).join('');
+        catXml = `<c:cat><c:strRef><c:f>${labelsRef}</c:f><c:strCache><c:ptCount val="${c.labels.length}"/>${labelsCacheXml}</c:strCache></c:strRef></c:cat>`;
+    }
 
     // Values: this column's range (number ref + cache).
     const valsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, dataCol);
@@ -358,6 +407,12 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     title?: string;
                     labels?: unknown[];
                     datasets?: Array<{ label?: string; data?: unknown[] }>;
+                    meta?: {
+                        legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
+                        categoryAxisType?: 'index' | 'category';
+                        barDir?: 'bar' | 'col';
+                        unsupportedSourceType?: string;
+                    };
                 };
                 axisAlignSheetTransform?: {
                     from?: { column?: number; columnOffset?: number; row?: number; rowOffset?: number };
@@ -421,6 +476,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     toRow: tx.to.row ?? 0,
                     toRowOff: tx.to.rowOffset ?? 0,
                 },
+                ...(data.meta && Object.keys(data.meta).length > 0 ? { meta: data.meta } : {}),
             });
         }
     }
