@@ -68,6 +68,24 @@ export interface NotesheetChartData {
         // ignores them.
         dispBlanksAs?: 'gap' | 'zero' | 'span';
         crossBetween?: 'between' | 'midCat';
+        // Tick mark style on bar/line axes; round-tripped only.
+        tickMark?: 'none' | 'in' | 'out' | 'cross';
+        // Number-format string for value-axis tick labels. Only the
+        // small set of patterns we care about are supported at runtime
+        // (percentages — "0%", "0.00%"; currency dollars; integers).
+        // Anything else falls back to Chart.js's default formatter.
+        valAxisNumFmt?: string;
+        // Chart-level data-label visibility flags. Pie/doughnut slice
+        // labels are the most visible payoff (showVal/showPercent at
+        // chart level). Bar/line series may also pick these up.
+        dLbls?: {
+            showVal?: boolean;
+            showCatName?: boolean;
+            showPercent?: boolean;
+            showSerName?: boolean;
+            showLegendKey?: boolean;
+            showBubbleSize?: boolean;
+        };
     };
 }
 
@@ -83,6 +101,52 @@ const CONTAINER_STYLE: React.CSSProperties = {
     boxSizing: 'border-box',
     padding: '8px',
 };
+
+// Build a Chart.js tick-callback that formats raw numeric values per
+// a small set of Excel-style numFmt strings. Handles only what the
+// project's chart fixtures use today; falls back to default toString
+// for anything unrecognized so a typo or new pattern doesn't blank
+// the axis labels.
+function makeNumFmtFormatter(fmt: string): (value: number | string) => string {
+    // Percentage: "0%", "0.0%", "0.00%". Multiply raw value by 100,
+    // round to N decimals, append "%". Excel convention: a cell with
+    // value 0.05 and format "0%" displays as "5%".
+    const pctMatch = fmt.match(/^0(?:\.(0+))?%$/);
+    if (pctMatch) {
+        const decimals = pctMatch[1] ? pctMatch[1].length : 0;
+        return (v) => {
+            const n = typeof v === 'number' ? v : Number(v);
+            if (!Number.isFinite(n)) return String(v);
+            return `${(n * 100).toFixed(decimals)}%`;
+        };
+    }
+    // Currency dollars: "$0", "$#,##0", "$#,##0.00".
+    const curMatch = fmt.match(/^\$(#,##)?0(?:\.(0+))?$/);
+    if (curMatch) {
+        const useCommas = !!curMatch[1];
+        const decimals = curMatch[2] ? curMatch[2].length : 0;
+        return (v) => {
+            const n = typeof v === 'number' ? v : Number(v);
+            if (!Number.isFinite(n)) return String(v);
+            const fixed = n.toFixed(decimals);
+            if (!useCommas) return `$${fixed}`;
+            const [whole, frac] = fixed.split('.');
+            const withCommas = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            return frac ? `$${withCommas}.${frac}` : `$${withCommas}`;
+        };
+    }
+    // Integer with optional thousands: "0", "#,##0".
+    if (fmt === '0' || fmt === '#,##0') {
+        const useCommas = fmt === '#,##0';
+        return (v) => {
+            const n = typeof v === 'number' ? v : Number(v);
+            if (!Number.isFinite(n)) return String(v);
+            const rounded = Math.round(n).toString();
+            return useCommas ? rounded.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : rounded;
+        };
+    }
+    return (v) => String(v);
+}
 
 function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     const type = (data?.type ?? 'bar') as ChartType;
@@ -184,10 +248,35 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // value axis only. percentStacked normalises to 100% via Chart.js's
     // y.max=100 + a custom tooltip — we keep it simple and just stack;
     // a follow-up could refine percent normalisation.
-    const scales: Record<string, { stacked?: boolean }> | undefined =
-        (isStacked && (type === 'bar' || type === 'line'))
-            ? { x: { stacked: true }, y: { stacked: true } }
-            : undefined;
+    // Value-axis number format. Excel <c:numFmt formatCode="0%"/> on
+    // the valAx (09-bar-percent-axis) means "treat raw 0.05 as 5%."
+    // Chart.js doesn't read OOXML formats — we need a tick callback.
+    // Support a small set of patterns end-users actually ship:
+    //   "0%" / "0.0%" / "0.00%" — percentage, n digits past decimal
+    //   "$0" / "$#,##0" / "$#,##0.00" — currency dollars
+    //   "0" / "#,##0" — integer with optional thousands separator
+    // Anything else falls back to Chart.js's default toString.
+    const valNumFmt = data?.meta?.valAxisNumFmt;
+    const tickFormatter = valNumFmt ? makeNumFmtFormatter(valNumFmt) : null;
+
+    // Bar orientation matters for which axis carries the values.
+    // Vertical bars / lines: y is values. Horizontal bars: x is values.
+    const valAxisKey = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'x' : 'y';
+
+    const scales: Record<string, Record<string, unknown>> | undefined = (() => {
+        const out: Record<string, Record<string, unknown>> = {};
+        if (isStacked && (type === 'bar' || type === 'line')) {
+            out.x = { ...(out.x ?? {}), stacked: true };
+            out.y = { ...(out.y ?? {}), stacked: true };
+        }
+        if (tickFormatter && (type === 'bar' || type === 'line')) {
+            out[valAxisKey] = {
+                ...(out[valAxisKey] ?? {}),
+                ticks: { callback: tickFormatter },
+            };
+        }
+        return Object.keys(out).length > 0 ? out : undefined;
+    })();
 
     // Doughnut hole. Chart.js's `cutout` accepts pixel ints or `"N%"`
     // strings; we use percent so it scales with the chart. Excel's

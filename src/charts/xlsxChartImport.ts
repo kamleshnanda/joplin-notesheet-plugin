@@ -100,6 +100,28 @@ export interface ImportedChartDrawing {
         // crosses between ticks; 'midCat' crosses at tick centres.
         // Affects spacing of the leftmost/rightmost bars or line points.
         crossBetween?: 'between' | 'midCat';
+        // <c:majorTickMark val="none|in|out|cross"/>. Excel default
+        // 'none' for both axes on bar/line charts (every fixture
+        // surveyed). Plumbed for fidelity round-trip.
+        tickMark?: 'none' | 'in' | 'out' | 'cross';
+        // Value-axis number format. <c:valAx><c:numFmt formatCode="..."
+        // sourceLinked="0|1"/>. When sourceLinked="1" Excel reads the
+        // format from the underlying cell; sourceLinked="0" uses the
+        // explicit formatCode. We always preserve the formatCode so
+        // round-trip + render are consistent.
+        valAxisNumFmt?: string;
+        // Chart-level data-label visibility flags from <c:dLbls>.
+        // Each <c:show*> child carries val="0|1". Pie/doughnut slices
+        // and bar/line series read from the chart-level dLbls when no
+        // per-series override exists.
+        dLbls?: {
+            showVal?: boolean;
+            showCatName?: boolean;
+            showPercent?: boolean;
+            showSerName?: boolean;
+            showLegendKey?: boolean;
+            showBubbleSize?: boolean;
+        };
     };
 }
 
@@ -311,6 +333,16 @@ interface ParsedChart {
     lineMarkerOn?: boolean;
     dispBlanksAs?: 'gap' | 'zero' | 'span';
     crossBetween?: 'between' | 'midCat';
+    tickMark?: 'none' | 'in' | 'out' | 'cross';
+    valAxisNumFmt?: string;
+    dLbls?: {
+        showVal?: boolean;
+        showCatName?: boolean;
+        showPercent?: boolean;
+        showSerName?: boolean;
+        showLegendKey?: boolean;
+        showBubbleSize?: boolean;
+    };
 }
 
 const SUPPORTED_TYPES: Record<string, ChartType> = {
@@ -422,6 +454,61 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         const crossMatch = chartXml.match(/<(?:c:)?crossBetween\s+val="(between|midCat)"/);
         if (crossMatch) {
             crossBetween = crossMatch[1] as 'between' | 'midCat';
+        }
+    }
+
+    // Tick marks. We sample <c:majorTickMark> from EITHER axis (they
+    // typically match in source workbooks). Bar/line only.
+    let tickMark: 'none' | 'in' | 'out' | 'cross' | undefined;
+    if (type === 'bar' || type === 'line') {
+        const tickMatch = chartXml.match(/<(?:c:)?majorTickMark\s+val="(none|in|out|cross)"/);
+        if (tickMatch) {
+            tickMark = tickMatch[1] as 'none' | 'in' | 'out' | 'cross';
+        }
+    }
+
+    // Value-axis number format. We scope to the <c:valAx> block to avoid
+    // grabbing the catAx's General format. Bar/line only.
+    let valAxisNumFmt: string | undefined;
+    if (type === 'bar' || type === 'line') {
+        const valAxBlock = chartXml.match(/<(?:c:)?valAx>([\s\S]*?)<\/(?:c:)?valAx>/);
+        if (valAxBlock) {
+            const numFmtMatch = valAxBlock[1].match(/<(?:c:)?numFmt\s+formatCode="([^"]+)"/);
+            if (numFmtMatch) valAxisNumFmt = numFmtMatch[1];
+        }
+    }
+
+    // Chart-level data-label flags from <c:dLbls>. Each <c:show*>
+    // child carries val="0|1". Pie/doughnut especially rely on these
+    // for slice labels; missing dLbls in our export is why 03/06-chart-2
+    // exported without slice labels.
+    let dLbls: ParsedChart['dLbls'] | undefined;
+    // Restrict to the chart's TOP-LEVEL dLbls — not per-series ones
+    // nested inside <c:ser>. We look inside the chart-type element
+    // (e.g. <c:barChart>...<c:dLbls>...</c:dLbls>...</c:barChart>) but
+    // OUTSIDE every <c:ser> block. Crude regex: take the FIRST <c:dLbls>
+    // that appears AFTER the last </c:ser> in the chart-type element,
+    // OR the first one if no series, OR scan with a slice that excludes
+    // <c:ser> blocks. Practical implementation: strip every <c:ser>...
+    // </c:ser> from a copy of the XML and run a single match.
+    {
+        const stripped = chartXml.replace(/<(?:c:)?ser\b[\s\S]*?<\/(?:c:)?ser>/g, '');
+        const dLblsBlock = stripped.match(/<(?:c:)?dLbls>([\s\S]*?)<\/(?:c:)?dLbls>/);
+        if (dLblsBlock) {
+            const body = dLblsBlock[1];
+            const flag = (name: string): boolean | undefined => {
+                const m = body.match(new RegExp(`<(?:c:)?${name}\\s+val="([01])"`));
+                return m ? m[1] === '1' : undefined;
+            };
+            dLbls = {
+                ...(flag('showVal') !== undefined ? { showVal: flag('showVal') } : {}),
+                ...(flag('showCatName') !== undefined ? { showCatName: flag('showCatName') } : {}),
+                ...(flag('showPercent') !== undefined ? { showPercent: flag('showPercent') } : {}),
+                ...(flag('showSerName') !== undefined ? { showSerName: flag('showSerName') } : {}),
+                ...(flag('showLegendKey') !== undefined ? { showLegendKey: flag('showLegendKey') } : {}),
+                ...(flag('showBubbleSize') !== undefined ? { showBubbleSize: flag('showBubbleSize') } : {}),
+            };
+            if (Object.keys(dLbls).length === 0) dLbls = undefined;
         }
     }
 
@@ -577,6 +664,9 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         ...(lineMarkerOn !== undefined ? { lineMarkerOn } : {}),
         ...(dispBlanksAs ? { dispBlanksAs } : {}),
         ...(crossBetween ? { crossBetween } : {}),
+        ...(tickMark ? { tickMark } : {}),
+        ...(valAxisNumFmt ? { valAxisNumFmt } : {}),
+        ...(dLbls ? { dLbls } : {}),
     };
 }
 
@@ -717,7 +807,10 @@ export async function readChartsFromXlsxZip(
                 || parsed.lineSmooth !== undefined
                 || parsed.lineMarkerOn !== undefined
                 || parsed.dispBlanksAs
-                || parsed.crossBetween;
+                || parsed.crossBetween
+                || parsed.tickMark
+                || parsed.valAxisNumFmt
+                || parsed.dLbls;
             if (hasMeta) {
                 drawing.meta = {
                     ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
@@ -731,6 +824,9 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.lineMarkerOn !== undefined ? { lineMarkerOn: parsed.lineMarkerOn } : {}),
                     ...(parsed.dispBlanksAs ? { dispBlanksAs: parsed.dispBlanksAs } : {}),
                     ...(parsed.crossBetween ? { crossBetween: parsed.crossBetween } : {}),
+                    ...(parsed.tickMark ? { tickMark: parsed.tickMark } : {}),
+                    ...(parsed.valAxisNumFmt ? { valAxisNumFmt: parsed.valAxisNumFmt } : {}),
+                    ...(parsed.dLbls ? { dLbls: parsed.dLbls } : {}),
                 };
                 if (parsed.unsupportedSourceType) {
                     console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);

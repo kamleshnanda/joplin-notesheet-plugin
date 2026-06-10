@@ -69,6 +69,25 @@ export interface ChartDrawing {
         lineMarkerOn?: boolean;
         dispBlanksAs?: 'gap' | 'zero' | 'span';
         crossBetween?: 'between' | 'midCat';
+        tickMark?: 'none' | 'in' | 'out' | 'cross';
+        // Number format applied to value-axis tick labels at runtime.
+        // Source XML <c:valAx><c:numFmt formatCode="..."/>. Routed to
+        // Chart.js scales.y.ticks.callback so e.g. "0%" renders as
+        // 5%, 10%, ... instead of 0.05, 0.1, ... (the percent-axis bug
+        // observed on 09-bar-percent-axis).
+        valAxisNumFmt?: string;
+        // Per-chart data-label flags. Source <c:dLbls> ships these as
+        // a set; we forward them so M10 export emits matching <c:dLbls>
+        // and pie/doughnut slices show their values/percentages on
+        // re-open in Excel.
+        dLbls?: {
+            showVal?: boolean;
+            showCatName?: boolean;
+            showPercent?: boolean;
+            showSerName?: boolean;
+            showLegendKey?: boolean;
+            showBubbleSize?: boolean;
+        };
     };
 }
 
@@ -119,6 +138,19 @@ function paletteHex(seriesIndex: number): string {
     return c.replace(/^#/, '').toUpperCase();
 }
 
+// Build the chart-level <c:dLbls> XML from meta.dLbls. Element order
+// inside <c:dLbls> is strict (showLegendKey, showVal, showCatName,
+// showSerName, showPercent, showBubbleSize) — Excel rejects out-of-order.
+// Each <c:show*> defaults to "0" when meta omits it; we always emit all
+// six children since Excel needs a complete shape (matches what every
+// source fixture writes).
+function buildDataLabelsXml(c: ChartDrawing): string {
+    const flags = c.meta?.dLbls;
+    if (!flags) return '';
+    const v = (b: boolean | undefined): string => (b ? '1' : '0');
+    return `<c:dLbls><c:showLegendKey val="${v(flags.showLegendKey)}"/><c:showVal val="${v(flags.showVal)}"/><c:showCatName val="${v(flags.showCatName)}"/><c:showSerName val="${v(flags.showSerName)}"/><c:showPercent val="${v(flags.showPercent)}"/><c:showBubbleSize val="${v(flags.showBubbleSize)}"/></c:dLbls>`;
+}
+
 // ─── chart{N}.xml builders ─────────────────────────────────────────────────
 
 // All four builders return a complete <c:chartSpace> XML document including
@@ -152,7 +184,8 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
         const gapWidth = c.meta?.barGapWidth ?? 150;
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i))).join('');
-        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes(c)}`;
+        const dLblsXml = buildDataLabelsXml(c);
+        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes(c)}`;
     });
 }
 
@@ -170,7 +203,8 @@ export function buildLineChartXml(c: ChartDrawing, opts: BuildChartOpts): string
         const markerOn = c.meta?.lineMarkerOn ? '1' : '0';
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true)).join('');
-        return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:marker val="${markerOn}"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes(c)}`;
+        const dLblsXml = buildDataLabelsXml(c);
+        return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:marker val="${markerOn}"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes(c)}`;
     });
 }
 
@@ -179,7 +213,8 @@ export function buildPieChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
         // Pie has exactly one series — datasets[0] is the data, labels are
         // the category points. Per-data-point colors via <c:dPt> overrides.
         const ds = c.datasets[0] ?? { data: [] };
-        return `<c:pieChart><c:varyColors val="1"/>${buildPieSeriesXml(c, opts, ds, /* doughnut */ false)}<c:firstSliceAng val="0"/></c:pieChart>`;
+        const dLblsXml = buildDataLabelsXml(c);
+        return `<c:pieChart><c:varyColors val="1"/>${buildPieSeriesXml(c, opts, ds, /* doughnut */ false)}${dLblsXml}<c:firstSliceAng val="0"/></c:pieChart>`;
     });
 }
 
@@ -189,7 +224,8 @@ export function buildDoughnutChartXml(c: ChartDrawing, opts: BuildChartOpts): st
         // Hole size: Excel default 50 (half-radius hole); user range 1-90.
         // Source value preserved via meta.holeSize.
         const holeSize = c.meta?.holeSize ?? 50;
-        return `<c:doughnutChart><c:varyColors val="1"/>${buildPieSeriesXml(c, opts, ds, /* doughnut */ true)}<c:firstSliceAng val="0"/><c:holeSize val="${holeSize}"/></c:doughnutChart>`;
+        const dLblsXml = buildDataLabelsXml(c);
+        return `<c:doughnutChart><c:varyColors val="1"/>${buildPieSeriesXml(c, opts, ds, /* doughnut */ true)}${dLblsXml}<c:firstSliceAng val="0"/><c:holeSize val="${holeSize}"/></c:doughnutChart>`;
     });
 }
 
@@ -359,13 +395,47 @@ function buildPieSeriesXml(
     return `<c:ser><c:idx val="0"/><c:order val="0"/>${txXml}${dPtXml}${catXml}${valXml}</c:ser>`;
 }
 
-// Shared cat/val axes block for bar/line. axId pair must match the values
-// used inside the chart-type element above (we hardcode 111111 / 222222 —
-// these are within-chart identifiers, not cross-chart, so reusing constants
-// is safe). crossBetween on the value axis comes from meta when present.
+// Shared cat/val axes block for bar/line. axId pair must match the
+// values used inside the chart-type element above (we reuse 111111 /
+// 222222 — these are within-chart identifiers, not cross-chart, so
+// safe to recycle).
+//
+// Axis position depends on bar orientation:
+//   * Vertical bars/lines (barDir="col" or any line):
+//       catAx (categories) at bottom, valAx (values) on left
+//   * Horizontal bars (barDir="bar"):
+//       catAx (categories) on left, valAx (values) at bottom
+// Earlier we hardcoded the vertical-bar layout; horizontal-bar exports
+// rendered with swapped gridlines and tick positions. Now driven by
+// meta.barDir + the chart type.
+//
+// Gridline color: source workbooks ship explicit
+// <a:lumMod val="15000"/><a:lumOff val="85000"/> (light grey,
+// ~85% white on tx1). My emit previously dropped that styling, so
+// Excel rendered its default darker gridlines. We now embed the same
+// light-grey spPr Excel itself emits so the visible chart matches.
+//
+// Tick marks default to 'none' — every fixture surveyed uses 'none';
+// the previous 'out' hardcode was wrong. Plumb through meta.tickMark
+// for round-trip; default 'none' is also Excel's default for most
+// modern bar/line styles.
 function categoryAndValueAxes(c: ChartDrawing): string {
     const crossBetween = c.meta?.crossBetween ?? 'between';
-    return `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111111"/><c:crosses val="autoZero"/><c:crossBetween val="${crossBetween}"/></c:valAx>`;
+    const isHorizontalBar = c.type === 'bar' && c.meta?.barDir === 'bar';
+    const catAxPos = isHorizontalBar ? 'l' : 'b';
+    const valAxPos = isHorizontalBar ? 'b' : 'l';
+    const tickMark = c.meta?.tickMark ?? 'none';
+    const lightGreyLine = '<a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln>';
+    const majorGridlinesXml = `<c:majorGridlines><c:spPr>${lightGreyLine}<a:effectLst/></c:spPr></c:majorGridlines>`;
+    // Value-axis number format. When source provides a non-General
+    // format (e.g. "0%" on 09-bar-percent-axis) we emit it with
+    // sourceLinked="0" so Excel uses our explicit code instead of
+    // pulling from the cell. catAx stays General — categorical
+    // axis shows label strings, not numbers.
+    const valNumFmt = c.meta?.valAxisNumFmt
+        ? `<c:numFmt formatCode="${escapeXml(c.meta.valAxisNumFmt)}" sourceLinked="0"/>`
+        : `<c:numFmt formatCode="General" sourceLinked="1"/>`;
+    return `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${catAxPos}"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="${tickMark}"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${valAxPos}"/>${majorGridlinesXml}${valNumFmt}<c:majorTickMark val="${tickMark}"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111111"/><c:crosses val="autoZero"/><c:crossBetween val="${crossBetween}"/></c:valAx>`;
 }
 
 // ─── drawing{N}.xml builder ────────────────────────────────────────────────
@@ -476,6 +546,16 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                         lineMarkerOn?: boolean;
                         dispBlanksAs?: 'gap' | 'zero' | 'span';
                         crossBetween?: 'between' | 'midCat';
+                        tickMark?: 'none' | 'in' | 'out' | 'cross';
+                        valAxisNumFmt?: string;
+                        dLbls?: {
+                            showVal?: boolean;
+                            showCatName?: boolean;
+                            showPercent?: boolean;
+                            showSerName?: boolean;
+                            showLegendKey?: boolean;
+                            showBubbleSize?: boolean;
+                        };
                     };
                 };
                 axisAlignSheetTransform?: {
