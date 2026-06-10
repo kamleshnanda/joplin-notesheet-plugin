@@ -61,6 +61,7 @@ export interface ChartDrawing {
         legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
         categoryAxisType?: 'index' | 'category';
         barDir?: 'bar' | 'col';
+        barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
         unsupportedSourceType?: string;
     };
 }
@@ -122,22 +123,41 @@ interface BuildChartOpts {
     sheetName: string;
 }
 
-// Bar/column: <c:barChart> with barDir='col' for our 'bar' type. (barDir='bar'
-// is horizontal — confirmed in spike. Our Chart.js 'bar' is visually a
-// vertical column, matching Excel's "Column Chart" UI.)
+// Bar/column. <c:barDir val="col"/> = vertical (Excel "Column Chart"),
+// val="bar" = horizontal (Excel "Bar Chart"). M17 plumbs source
+// orientation through meta.barDir so a re-imported chart re-renders
+// in the same direction as the original. Likewise meta.barGrouping
+// surfaces 'clustered' (default), 'stacked', or 'percentStacked';
+// 'standard' is line-only and would be invalid here, so we coerce.
+// Stacked bars also need <c:overlap val="100"/> so segments stack
+// flush instead of side-by-side — Excel's default for clustered is
+// 'overlap=-27' (small gap) and for stacked is 'overlap=100'.
 export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string {
     return chartSpaceWrap(c, opts, /* hasAxes */ true, () => {
+        const barDir = c.meta?.barDir ?? 'col';
+        const rawGrouping = c.meta?.barGrouping;
+        const grouping = (rawGrouping === 'stacked' || rawGrouping === 'percentStacked')
+            ? rawGrouping
+            : 'clustered';
+        const overlapXml = grouping === 'clustered' ? '' : '<c:overlap val="100"/>';
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i))).join('');
-        return `<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="182"/><c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes()}`;
+        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="182"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes()}`;
     });
 }
 
+// Line. ECMA-376 line grouping values: 'standard' (default — series
+// drawn separately), 'stacked' (cumulative), 'percentStacked'
+// (cumulative normalised to 100%). Pie/doughnut have no grouping.
 export function buildLineChartXml(c: ChartDrawing, opts: BuildChartOpts): string {
     return chartSpaceWrap(c, opts, /* hasAxes */ true, () => {
+        const rawGrouping = c.meta?.barGrouping;
+        const grouping = (rawGrouping === 'stacked' || rawGrouping === 'percentStacked')
+            ? rawGrouping
+            : 'standard';
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true)).join('');
-        return `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${seriesXml}<c:marker val="0"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes()}`;
+        return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:marker val="0"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes()}`;
     });
 }
 
@@ -411,6 +431,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                         legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
                         categoryAxisType?: 'index' | 'category';
                         barDir?: 'bar' | 'col';
+                        barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
                         unsupportedSourceType?: string;
                     };
                 };

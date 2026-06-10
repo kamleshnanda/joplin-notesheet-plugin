@@ -47,9 +47,19 @@ export interface ImportedChartDrawing {
         // (horizontal) or 'col' (vertical). M17's ChartType union has
         // only one 'bar', so we surface direction via `meta.barDir` and
         // route NotesheetChart to set Chart.js's `options.indexAxis` at
-        // render time. M10 export collapses everything to 'col' for now;
-        // documented as a gap in BUILD_PLAN feature-5 + README.
+        // render time. M10 export reads this back to emit the matching
+        // <c:barDir val="..."/> (was hardcoded 'col' before round-trip
+        // support landed).
         barDir?: 'bar' | 'col';
+        // Bar/line grouping. Excel's <c:grouping val="..."/>:
+        //   'clustered' (Excel default) — series side-by-side
+        //   'stacked' — series stacked on the same X-tick
+        //   'percentStacked' — stacked normalised to 100%
+        //   'standard' (line charts only — equivalent to 'clustered')
+        // Routed to Chart.js's `options.scales.x.stacked` /
+        // `options.scales.y.stacked` for bars, and to dataset
+        // `fill: 'origin' | '-1'` for stacked lines.
+        barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
         // Legend position. Excel's <c:legendPos val="..."/> values: 'r'
         // (right, default), 'l', 't' (top), 'b' (bottom), 'tr'. Routed
         // to Chart.js options.plugins.legend.position at render time and
@@ -263,6 +273,7 @@ interface ParsedChart {
     datasets: Array<{ label?: string; data: number[] }>;
     unsupportedSourceType?: string;
     barDir?: 'bar' | 'col';
+    barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
     legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
     categoryAxisType?: 'index' | 'category';
 }
@@ -305,6 +316,15 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     if (type === 'bar') {
         const barDirMatch = chartXml.match(/<(?:c:)?barDir\s+val="(bar|col)"/);
         barDir = barDirMatch ? (barDirMatch[1] as 'bar' | 'col') : 'col';
+    }
+
+    // Grouping. <c:grouping val="..."/>: 'clustered' (default for bar),
+    // 'stacked', 'percentStacked', 'standard' (line charts).
+    // Pie/doughnut have no grouping element; leave undefined.
+    let barGrouping: 'clustered' | 'stacked' | 'percentStacked' | 'standard' | undefined;
+    if (type === 'bar' || type === 'line') {
+        const groupingMatch = chartXml.match(/<(?:c:)?grouping\s+val="(clustered|stacked|percentStacked|standard)"/);
+        if (groupingMatch) barGrouping = groupingMatch[1] as 'clustered' | 'stacked' | 'percentStacked' | 'standard';
     }
 
     // Title — first <a:t>...</a:t> inside <c:title><c:tx><c:rich>...
@@ -441,6 +461,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         datasets,
         unsupportedSourceType,
         ...(barDir ? { barDir } : {}),
+        ...(barGrouping ? { barGrouping } : {}),
         ...(legendPos ? { legendPos } : {}),
         categoryAxisType: anyCatRef ? 'category' : 'index',
     };
@@ -573,11 +594,12 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
-            const hasMeta = parsed.unsupportedSourceType || parsed.barDir || parsed.legendPos || parsed.categoryAxisType;
+            const hasMeta = parsed.unsupportedSourceType || parsed.barDir || parsed.barGrouping || parsed.legendPos || parsed.categoryAxisType;
             if (hasMeta) {
                 drawing.meta = {
                     ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
                     ...(parsed.barDir ? { barDir: parsed.barDir } : {}),
+                    ...(parsed.barGrouping ? { barGrouping: parsed.barGrouping } : {}),
                     ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
                     ...(parsed.categoryAxisType ? { categoryAxisType: parsed.categoryAxisType } : {}),
                 };

@@ -30,6 +30,12 @@ export interface NotesheetChartData {
     //     (radar, scatter, area...) that fell back to 'bar'.
     meta?: {
         barDir?: 'bar' | 'col';
+        // 'clustered' (default), 'stacked', 'percentStacked', or
+        // 'standard' (line only). For bar charts we set the categorical
+        // axis stacked + dataset.stack='stack0' so series stack on the
+        // same X key. For line charts, 'stacked' makes each dataset
+        // fill from the previous dataset's curve.
+        barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
         unsupportedSourceType?: string;
         // Where the legend sits. Source: <c:legendPos val="..."/> at
         // import time. Excel values 'r'|'l'|'t'|'b'|'tr' map to Chart.js
@@ -85,6 +91,23 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // Only meaningful when type === 'bar'.
     const indexAxis = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'y' : 'x';
 
+    // Grouping. Excel: 'clustered' | 'stacked' | 'percentStacked' |
+    // 'standard'. For bar charts we set the categorical axis stacked
+    // and tag each dataset with `stack: 'stack0'` so Chart.js stacks
+    // all series on the same X (or Y, for horizontal bars) tick.
+    // For line charts, 'stacked' applies via dataset.fill chain.
+    const grouping = data?.meta?.barGrouping;
+    const isStacked = grouping === 'stacked' || grouping === 'percentStacked';
+    if (type === 'bar' && isStacked) {
+        datasets = datasets.map((ds) => ({ ...ds, stack: 'stack0' } as ChartData['datasets'][number] & { stack: string }));
+    }
+    if (type === 'line' && isStacked) {
+        // Chart.js stacked-line: each dataset fills from the curve below
+        // it. First dataset fills from the X-axis (origin); subsequent
+        // datasets fill from the dataset at index-1.
+        datasets = datasets.map((ds, i) => ({ ...ds, fill: i === 0 ? 'origin' : ('-1' as const) } as ChartData['datasets'][number] & { fill: string }));
+    }
+
     // Legend position. Excel cf. <c:legendPos>: r/l/t/b/tr. Chart.js
     // accepts 'right' | 'left' | 'top' | 'bottom' | 'chartArea'; 'tr'
     // (Excel's "top-right") collapses to 'right' since Chart.js has no
@@ -97,6 +120,17 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         ? (legendPosMap[data.meta.legendPos] ?? 'right')
         : 'right';
 
+    // Stacked scales. For bar charts: set both axes stacked when
+    // grouping is stacked/percentStacked (Chart.js needs both, even
+    // though only the value axis actually accumulates). For line:
+    // value axis only. percentStacked normalises to 100% via Chart.js's
+    // y.max=100 + a custom tooltip — we keep it simple and just stack;
+    // a follow-up could refine percent normalisation.
+    const scales: Record<string, { stacked?: boolean }> | undefined =
+        (isStacked && (type === 'bar' || type === 'line'))
+            ? { x: { stacked: true }, y: { stacked: true } }
+            : undefined;
+
     return {
         type,
         data: { labels, datasets },
@@ -105,6 +139,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             maintainAspectRatio: false,
             animation: false,
             ...(type === 'bar' ? { indexAxis } : {}),
+            ...(scales ? { scales } : {}),
             plugins: {
                 legend: {
                     display: datasets.length > 1 || type === 'pie' || type === 'doughnut',
