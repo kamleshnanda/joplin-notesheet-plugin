@@ -518,32 +518,61 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     // for slice labels; missing dLbls in our export is why 03/06-chart-2
     // exported without slice labels.
     let dLbls: ParsedChart['dLbls'] | undefined;
-    // Restrict to the chart's TOP-LEVEL dLbls — not per-series ones
-    // nested inside <c:ser>. We look inside the chart-type element
-    // (e.g. <c:barChart>...<c:dLbls>...</c:dLbls>...</c:barChart>) but
-    // OUTSIDE every <c:ser> block. Crude regex: take the FIRST <c:dLbls>
-    // that appears AFTER the last </c:ser> in the chart-type element,
-    // OR the first one if no series, OR scan with a slice that excludes
-    // <c:ser> blocks. Practical implementation: strip every <c:ser>...
-    // </c:ser> from a copy of the XML and run a single match.
+    // Data-label visibility lives in TWO possible places. Excel often
+    // writes a chart-level <c:dLbls> with everything OFF *and* a
+    // SERIES-level <c:ser><c:dLbls> that turns the actual labels on
+    // (this is exactly how 03-pie-single / 06-chart-2 ship their pie
+    // slice labels: chart-level all-zero, series-level showCatName=1 +
+    // showPercent=1). Reading only the chart-level block — as we used to
+    // — imported "no labels", so the re-exported pie had no slice labels
+    // (issues 3 / 6). We now parse a dLbls body into flags, read the
+    // chart-level block first, and FALL BACK to the first series-level
+    // block when the chart-level one is absent or shows nothing.
+    const parseDLblsBody = (body: string): ParsedChart['dLbls'] | undefined => {
+        const flag = (name: string): boolean | undefined => {
+            const m = body.match(new RegExp(`<(?:c:)?${name}\\s+val="([01])"`));
+            return m ? m[1] === '1' : undefined;
+        };
+        const out = {
+            ...(flag('showVal') !== undefined ? { showVal: flag('showVal') } : {}),
+            ...(flag('showCatName') !== undefined ? { showCatName: flag('showCatName') } : {}),
+            ...(flag('showPercent') !== undefined ? { showPercent: flag('showPercent') } : {}),
+            ...(flag('showSerName') !== undefined ? { showSerName: flag('showSerName') } : {}),
+            ...(flag('showLegendKey') !== undefined ? { showLegendKey: flag('showLegendKey') } : {}),
+            ...(flag('showBubbleSize') !== undefined ? { showBubbleSize: flag('showBubbleSize') } : {}),
+        };
+        return Object.keys(out).length > 0 ? out : undefined;
+    };
+    // "Shows something" = at least one label-content flag is true. Used to
+    // decide whether the chart-level block is meaningful or we should
+    // prefer the series-level one.
+    const dLblsShowsSomething = (d: ParsedChart['dLbls'] | undefined): boolean =>
+        !!d && !!(d.showVal || d.showCatName || d.showPercent || d.showSerName);
     {
+        // Chart-level: strip every <c:ser>...</c:ser> so we read only the
+        // block OUTSIDE the series.
         const stripped = chartXml.replace(/<(?:c:)?ser\b[\s\S]*?<\/(?:c:)?ser>/g, '');
-        const dLblsBlock = stripped.match(/<(?:c:)?dLbls>([\s\S]*?)<\/(?:c:)?dLbls>/);
-        if (dLblsBlock) {
-            const body = dLblsBlock[1];
-            const flag = (name: string): boolean | undefined => {
-                const m = body.match(new RegExp(`<(?:c:)?${name}\\s+val="([01])"`));
-                return m ? m[1] === '1' : undefined;
-            };
-            dLbls = {
-                ...(flag('showVal') !== undefined ? { showVal: flag('showVal') } : {}),
-                ...(flag('showCatName') !== undefined ? { showCatName: flag('showCatName') } : {}),
-                ...(flag('showPercent') !== undefined ? { showPercent: flag('showPercent') } : {}),
-                ...(flag('showSerName') !== undefined ? { showSerName: flag('showSerName') } : {}),
-                ...(flag('showLegendKey') !== undefined ? { showLegendKey: flag('showLegendKey') } : {}),
-                ...(flag('showBubbleSize') !== undefined ? { showBubbleSize: flag('showBubbleSize') } : {}),
-            };
-            if (Object.keys(dLbls).length === 0) dLbls = undefined;
+        const chartLevelBlock = stripped.match(/<(?:c:)?dLbls>([\s\S]*?)<\/(?:c:)?dLbls>/);
+        const chartLevel = chartLevelBlock ? parseDLblsBody(chartLevelBlock[1]) : undefined;
+
+        // Series-level: the FIRST <c:ser>'s own <c:dLbls> (pie/doughnut
+        // have one series; bar/line share the per-series toggle). We scope
+        // the search to inside a <c:ser> block to avoid re-grabbing the
+        // chart-level one.
+        const serBlock = chartXml.match(/<(?:c:)?ser\b[\s\S]*?<\/(?:c:)?ser>/);
+        const serDLblsBlock = serBlock ? serBlock[0].match(/<(?:c:)?dLbls>([\s\S]*?)<\/(?:c:)?dLbls>/) : null;
+        const seriesLevel = serDLblsBlock ? parseDLblsBody(serDLblsBlock[1]) : undefined;
+
+        // Prefer whichever actually turns a label on. If the chart-level
+        // block shows something, keep it; otherwise fall back to the
+        // series-level block when IT shows something; else keep whatever
+        // chart-level had (preserves explicit all-off intent).
+        if (dLblsShowsSomething(chartLevel)) {
+            dLbls = chartLevel;
+        } else if (dLblsShowsSomething(seriesLevel)) {
+            dLbls = seriesLevel;
+        } else {
+            dLbls = chartLevel;
         }
     }
 
