@@ -64,6 +64,11 @@ export interface ChartDrawing {
         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
         barGapWidth?: number;
         unsupportedSourceType?: string;
+        holeSize?: number;
+        lineSmooth?: boolean;
+        lineMarkerOn?: boolean;
+        dispBlanksAs?: 'gap' | 'zero' | 'span';
+        crossBetween?: 'between' | 'midCat';
     };
 }
 
@@ -147,7 +152,7 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
         const gapWidth = c.meta?.barGapWidth ?? 150;
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i))).join('');
-        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes()}`;
+        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes(c)}`;
     });
 }
 
@@ -160,9 +165,12 @@ export function buildLineChartXml(c: ChartDrawing, opts: BuildChartOpts): string
         const grouping = (rawGrouping === 'stacked' || rawGrouping === 'percentStacked')
             ? rawGrouping
             : 'standard';
+        // Chart-level marker on/off. Excel default 0 (off); plumb via
+        // meta.lineMarkerOn so a fixture with markers round-trips.
+        const markerOn = c.meta?.lineMarkerOn ? '1' : '0';
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true)).join('');
-        return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:marker val="0"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes()}`;
+        return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:marker val="${markerOn}"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes(c)}`;
     });
 }
 
@@ -178,7 +186,10 @@ export function buildPieChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
 export function buildDoughnutChartXml(c: ChartDrawing, opts: BuildChartOpts): string {
     return chartSpaceWrap(c, opts, /* hasAxes */ false, () => {
         const ds = c.datasets[0] ?? { data: [] };
-        return `<c:doughnutChart><c:varyColors val="1"/>${buildPieSeriesXml(c, opts, ds, /* doughnut */ true)}<c:firstSliceAng val="0"/><c:holeSize val="50"/></c:doughnutChart>`;
+        // Hole size: Excel default 50 (half-radius hole); user range 1-90.
+        // Source value preserved via meta.holeSize.
+        const holeSize = c.meta?.holeSize ?? 50;
+        return `<c:doughnutChart><c:varyColors val="1"/>${buildPieSeriesXml(c, opts, ds, /* doughnut */ true)}<c:firstSliceAng val="0"/><c:holeSize val="${holeSize}"/></c:doughnutChart>`;
     });
 }
 
@@ -210,8 +221,12 @@ function chartSpaceWrap(
         ? `<c:legend><c:legendPos val="${legendPos}"/><c:overlay val="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:txPr><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900" b="0" kern="1200"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend>`
         : '';
 
+    // dispBlanksAs: 'gap' (default — leave a hole), 'zero' (plot 0),
+    // 'span' (bridge across the blank). Source value via meta.
+    const dispBlanksAs = c.meta?.dispBlanksAs ?? 'gap';
+
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-US"/><c:roundedCorners val="0"/><c:chart>${titleXml}<c:plotArea><c:layout/>${plotAreaInner()}<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>${legendXml}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:printSettings><c:headerFooter/><c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" header="0.3" footer="0.3"/><c:pageSetup/></c:printSettings></c:chartSpace>`;
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-US"/><c:roundedCorners val="0"/><c:chart>${titleXml}<c:plotArea><c:layout/>${plotAreaInner()}<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>${legendXml}<c:plotVisOnly val="1"/><c:dispBlanksAs val="${dispBlanksAs}"/></c:chart><c:spPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:printSettings><c:headerFooter/><c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" header="0.3" footer="0.3"/><c:pageSetup/></c:printSettings></c:chartSpace>`;
 }
 
 // One <c:ser> for bar or line. Element order inside <c:ser> is strict:
@@ -266,7 +281,17 @@ function buildSeriesXml(
         ? `<c:spPr><a:ln w="28575" cap="rnd"><a:solidFill><a:srgbClr val="${fillHex}"/></a:solidFill><a:round/></a:ln><a:effectLst/></c:spPr>`
         : `<c:spPr><a:solidFill><a:srgbClr val="${fillHex}"/></a:solidFill><a:ln><a:noFill/></a:ln><a:effectLst/></c:spPr>`;
 
-    const markerXml = lineSeries ? `<c:marker><c:symbol val="none"/></c:marker>` : `<c:invertIfNegative val="0"/>`;
+    // Per-series marker symbol. For lines: when meta.lineMarkerOn we
+    // emit a generic 'circle' symbol (Chart.js renders dots; Excel
+    // shows the same). When markers are off (default) we explicitly
+    // emit val="none" so Excel doesn't fall back to its own per-style
+    // default (which can be triangles or squares depending on series
+    // index). For bars: <c:invertIfNegative val="0"/> matches Excel's
+    // default — niche feature, no fixture exercises it today, would
+    // be straightforward to plumb if needed.
+    const markerXml = lineSeries
+        ? `<c:marker><c:symbol val="${c.meta?.lineMarkerOn ? 'circle' : 'none'}"/></c:marker>`
+        : `<c:invertIfNegative val="0"/>`;
 
     // Categories: the label column (string ref + cache). Skip entirely
     // for index-axis charts — Excel infers row index 1..N when <c:cat>
@@ -288,7 +313,11 @@ function buildSeriesXml(
     }).join('');
     const valXml = `<c:val><c:numRef><c:f>${valsRef}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${ds.data.length}"/>${valsCacheXml}</c:numCache></c:numRef></c:val>`;
 
-    return `<c:ser><c:idx val="${seriesIndex}"/><c:order val="${seriesIndex}"/>${txXml}${spPrXml}${markerXml}${catXml}${valXml}<c:smooth val="0"/></c:ser>`;
+    // Smoothing: meta.lineSmooth controls per-series. Bar charts
+    // ignore <c:smooth> (it only affects line splines) but Excel
+    // accepts the element for any chart type.
+    const smoothVal = c.meta?.lineSmooth ? '1' : '0';
+    return `<c:ser><c:idx val="${seriesIndex}"/><c:order val="${seriesIndex}"/>${txXml}${spPrXml}${markerXml}${catXml}${valXml}<c:smooth val="${smoothVal}"/></c:ser>`;
 }
 
 // Pie/doughnut have a single series; per-slice color overrides via <c:dPt>.
@@ -331,9 +360,12 @@ function buildPieSeriesXml(
 }
 
 // Shared cat/val axes block for bar/line. axId pair must match the values
-// used inside the chart-type element above (we hardcode 111111 / 222222).
-function categoryAndValueAxes(): string {
-    return `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111111"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>`;
+// used inside the chart-type element above (we hardcode 111111 / 222222 —
+// these are within-chart identifiers, not cross-chart, so reusing constants
+// is safe). crossBetween on the value axis comes from meta when present.
+function categoryAndValueAxes(c: ChartDrawing): string {
+    const crossBetween = c.meta?.crossBetween ?? 'between';
+    return `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111111"/><c:crosses val="autoZero"/><c:crossBetween val="${crossBetween}"/></c:valAx>`;
 }
 
 // ─── drawing{N}.xml builder ────────────────────────────────────────────────
@@ -439,6 +471,11 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
                         barGapWidth?: number;
                         unsupportedSourceType?: string;
+                        holeSize?: number;
+                        lineSmooth?: boolean;
+                        lineMarkerOn?: boolean;
+                        dispBlanksAs?: 'gap' | 'zero' | 'span';
+                        crossBetween?: 'between' | 'midCat';
                     };
                 };
                 axisAlignSheetTransform?: {

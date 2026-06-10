@@ -52,6 +52,22 @@ export interface NotesheetChartData {
         // behaviour, and stop interpreting column 0 as a label column
         // (the import resolver also skips that fallback).
         categoryAxisType?: 'index' | 'category';
+        // Doughnut hole diameter %. Routes to Chart.js's
+        // `options.cutout = "${holeSize}%"`.
+        holeSize?: number;
+        // Line smoothing — applied per-dataset via Chart.js `tension`.
+        // 0 = sharp segments, ~0.4 = a typical smooth spline.
+        lineSmooth?: boolean;
+        // Show data-point markers on lines. Routes to Chart.js's
+        // `pointRadius` per dataset (3 = visible, 0 = hidden).
+        lineMarkerOn?: boolean;
+        // dispBlanksAs ('gap'|'zero'|'span') and crossBetween
+        // ('between'|'midCat') round-trip via export but have no
+        // Chart.js equivalents that materially change the render.
+        // Stored here so M10 export can re-emit them; the runtime
+        // ignores them.
+        dispBlanksAs?: 'gap' | 'zero' | 'span';
+        crossBetween?: 'between' | 'midCat';
     };
 }
 
@@ -129,6 +145,27 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         } as ChartData['datasets'][number] & { categoryPercentage: number; barPercentage: number }));
     }
 
+    // Line smoothing — Chart.js `tension`. 0 = polylines, 0.4 = a
+    // pleasant Bézier spline matching what Excel's "Smoothed Line"
+    // option looks like.
+    if (type === 'line' && data?.meta?.lineSmooth) {
+        datasets = datasets.map((ds) => ({
+            ...ds,
+            tension: 0.4,
+        } as ChartData['datasets'][number] & { tension: number }));
+    }
+
+    // Line markers on/off. Chart.js: pointRadius=0 hides points;
+    // a non-zero value shows them. We pick 3 for "on" (matches
+    // Chart.js's default visible-marker size).
+    if (type === 'line') {
+        const radius = data?.meta?.lineMarkerOn ? 3 : 0;
+        datasets = datasets.map((ds) => ({
+            ...ds,
+            pointRadius: radius,
+        } as ChartData['datasets'][number] & { pointRadius: number }));
+    }
+
     // Legend position. Excel cf. <c:legendPos>: r/l/t/b/tr. Chart.js
     // accepts 'right' | 'left' | 'top' | 'bottom' | 'chartArea'; 'tr'
     // (Excel's "top-right") collapses to 'right' since Chart.js has no
@@ -152,6 +189,14 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             ? { x: { stacked: true }, y: { stacked: true } }
             : undefined;
 
+    // Doughnut hole. Chart.js's `cutout` accepts pixel ints or `"N%"`
+    // strings; we use percent so it scales with the chart. Excel's
+    // value is a 1-90 percent. Default to 50 (Excel and Chart.js's
+    // typical doughnut). Pie charts ignore this.
+    const cutout = type === 'doughnut'
+        ? (typeof data?.meta?.holeSize === 'number' ? `${data.meta.holeSize}%` : '50%')
+        : undefined;
+
     return {
         type,
         data: { labels, datasets },
@@ -161,6 +206,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             animation: false,
             ...(type === 'bar' ? { indexAxis } : {}),
             ...(scales ? { scales } : {}),
+            ...(cutout !== undefined ? { cutout } : {}),
             plugins: {
                 legend: {
                     display: datasets.length > 1 || type === 'pie' || type === 'doughnut',

@@ -77,6 +77,29 @@ export interface ImportedChartDrawing {
         // series (no separate label column). M10 export emits no
         // <c:cat> for these.
         categoryAxisType?: 'index' | 'category';
+        // Doughnut hole diameter, percent of outer radius. Excel
+        // default 50; user-tunable up to 90. <c:holeSize val="N"/>.
+        holeSize?: number;
+        // Line smoothing. <c:smooth val="0|1"/> — applied per series in
+        // the source. We track only chart-level "any series smooth"
+        // since Chart.js doesn't easily mix smooth + non-smooth series
+        // in one chart; mixed cases collapse to "smooth" (true).
+        lineSmooth?: boolean;
+        // Whether the line chart shows data-point markers.
+        // <c:marker val="0|1"/> at chart level. Per-series symbol info
+        // is finer-grained (circle, square, diamond, ...); for now we
+        // surface ON/OFF only. Chart.js per-dataset `pointRadius=0`
+        // hides markers; non-zero shows them.
+        lineMarkerOn?: boolean;
+        // How blank cells render. <c:dispBlanksAs val="gap|zero|span"/>.
+        // 'gap' (default) leaves a hole; 'zero' plots zero; 'span'
+        // bridges the gap. Affects only sparse data.
+        dispBlanksAs?: 'gap' | 'zero' | 'span';
+        // Where the value axis crosses the category axis.
+        // <c:crossBetween val="between|midCat"/>. 'between' (default)
+        // crosses between ticks; 'midCat' crosses at tick centres.
+        // Affects spacing of the leftmost/rightmost bars or line points.
+        crossBetween?: 'between' | 'midCat';
     };
 }
 
@@ -283,6 +306,11 @@ interface ParsedChart {
     barGapWidth?: number;
     legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
     categoryAxisType?: 'index' | 'category';
+    holeSize?: number;
+    lineSmooth?: boolean;
+    lineMarkerOn?: boolean;
+    dispBlanksAs?: 'gap' | 'zero' | 'span';
+    crossBetween?: 'between' | 'midCat';
 }
 
 const SUPPORTED_TYPES: Record<string, ChartType> = {
@@ -342,6 +370,58 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         if (gapMatch) {
             const n = parseInt(gapMatch[1], 10);
             if (Number.isFinite(n)) barGapWidth = n;
+        }
+    }
+
+    // Doughnut hole size. <c:holeSize val="N"/> — percent of outer
+    // radius (Excel default 50; user range 1-90).
+    let holeSize: number | undefined;
+    if (type === 'doughnut') {
+        const holeMatch = chartXml.match(/<(?:c:)?holeSize\s+val="(\d+)"/);
+        if (holeMatch) {
+            const n = parseInt(holeMatch[1], 10);
+            if (Number.isFinite(n)) holeSize = n;
+        }
+    }
+
+    // Line smoothing. <c:smooth val="0|1"/> — appears per-series. We
+    // record "any series smoothed" as the chart-level toggle; Chart.js
+    // applies smoothing per dataset via `tension`.
+    let lineSmooth: boolean | undefined;
+    if (type === 'line') {
+        const smoothMatches = [...chartXml.matchAll(/<(?:c:)?smooth\s+val="([01])"/g)];
+        if (smoothMatches.length > 0) {
+            lineSmooth = smoothMatches.some((m) => m[1] === '1');
+        }
+    }
+
+    // Line marker on/off. Chart-level <c:marker val="0|1"/> applies to
+    // every series unless a per-series <c:marker><c:symbol val="..."/>
+    // overrides. For M17 we read the chart-level toggle only; per-series
+    // symbol shapes are out of scope.
+    let lineMarkerOn: boolean | undefined;
+    if (type === 'line') {
+        const markerMatch = chartXml.match(/<(?:c:)?marker\s+val="([01])"/);
+        if (markerMatch) {
+            lineMarkerOn = markerMatch[1] === '1';
+        }
+    }
+
+    // Disp-blanks-as. <c:dispBlanksAs val="gap|zero|span"/>. Affects
+    // how blank cells render across all chart types.
+    let dispBlanksAs: 'gap' | 'zero' | 'span' | undefined;
+    const dispBlanksMatch = chartXml.match(/<(?:c:)?dispBlanksAs\s+val="(gap|zero|span)"/);
+    if (dispBlanksMatch) {
+        dispBlanksAs = dispBlanksMatch[1] as 'gap' | 'zero' | 'span';
+    }
+
+    // Cross-between. <c:crossBetween val="between|midCat"/> on the
+    // value axis. Bar/line only; pie/doughnut have no axes.
+    let crossBetween: 'between' | 'midCat' | undefined;
+    if (type === 'bar' || type === 'line') {
+        const crossMatch = chartXml.match(/<(?:c:)?crossBetween\s+val="(between|midCat)"/);
+        if (crossMatch) {
+            crossBetween = crossMatch[1] as 'between' | 'midCat';
         }
     }
 
@@ -492,6 +572,11 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         ...(barGapWidth !== undefined ? { barGapWidth } : {}),
         ...(legendPos ? { legendPos } : {}),
         categoryAxisType: anyCatRef ? 'category' : 'index',
+        ...(holeSize !== undefined ? { holeSize } : {}),
+        ...(lineSmooth !== undefined ? { lineSmooth } : {}),
+        ...(lineMarkerOn !== undefined ? { lineMarkerOn } : {}),
+        ...(dispBlanksAs ? { dispBlanksAs } : {}),
+        ...(crossBetween ? { crossBetween } : {}),
     };
 }
 
@@ -627,7 +712,12 @@ export async function readChartsFromXlsxZip(
                 || parsed.barGrouping
                 || parsed.barGapWidth !== undefined
                 || parsed.legendPos
-                || parsed.categoryAxisType;
+                || parsed.categoryAxisType
+                || parsed.holeSize !== undefined
+                || parsed.lineSmooth !== undefined
+                || parsed.lineMarkerOn !== undefined
+                || parsed.dispBlanksAs
+                || parsed.crossBetween;
             if (hasMeta) {
                 drawing.meta = {
                     ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
@@ -636,6 +726,11 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.barGapWidth !== undefined ? { barGapWidth: parsed.barGapWidth } : {}),
                     ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
                     ...(parsed.categoryAxisType ? { categoryAxisType: parsed.categoryAxisType } : {}),
+                    ...(parsed.holeSize !== undefined ? { holeSize: parsed.holeSize } : {}),
+                    ...(parsed.lineSmooth !== undefined ? { lineSmooth: parsed.lineSmooth } : {}),
+                    ...(parsed.lineMarkerOn !== undefined ? { lineMarkerOn: parsed.lineMarkerOn } : {}),
+                    ...(parsed.dispBlanksAs ? { dispBlanksAs: parsed.dispBlanksAs } : {}),
+                    ...(parsed.crossBetween ? { crossBetween: parsed.crossBetween } : {}),
                 };
                 if (parsed.unsupportedSourceType) {
                     console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);
