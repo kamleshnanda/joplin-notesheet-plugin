@@ -121,6 +121,29 @@ const NotesheetChart: React.FC<Props> = ({ data }) => {
         }
     }, [merged]);
 
+    // M17 feature-3 followup: imported charts mount inside Univer's
+    // float-DOM whose container size is 0×0 at the moment React's
+    // create-Chart effect runs (the float-DOM transform settles a beat
+    // later). Chart.js's `responsive: true` only resizes on window
+    // events, NOT on container-only changes — so the chart paints to
+    // a 0×0 surface and stays blank until the user resizes the window
+    // or the float-DOM. Watch the container with a ResizeObserver and
+    // call chart.resize() on every dimension change. Cheap (one-shot
+    // per layout pass) and idempotent.
+    React.useEffect(() => {
+        const canvas = canvasRef.current;
+        const container = canvas?.parentElement ?? null;
+        if (!container) return;
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(() => {
+            if (chartRef.current) {
+                try { chartRef.current.resize(); } catch { /* ignore */ }
+            }
+        });
+        ro.observe(container);
+        return () => { ro.disconnect(); };
+    }, []);
+
     React.useEffect(() => {
         return () => {
             if (chartRef.current) {
