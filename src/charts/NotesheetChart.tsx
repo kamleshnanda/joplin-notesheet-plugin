@@ -36,6 +36,12 @@ export interface NotesheetChartData {
         // same X key. For line charts, 'stacked' makes each dataset
         // fill from the previous dataset's curve.
         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
+        // Excel's gap-between-bar-groups, expressed as a percentage of
+        // bar width. 150 = Excel default (gap = 1.5x bar width). Routes
+        // to Chart.js's `dataset.categoryPercentage` via the formula
+        // 100 / (100 + gapWidth) — so 0 fills the band, 150 makes bars
+        // 0.4 of the band, 500 makes bars 0.17 of the band.
+        barGapWidth?: number;
         unsupportedSourceType?: string;
         // Where the legend sits. Source: <c:legendPos val="..."/> at
         // import time. Excel values 'r'|'l'|'t'|'b'|'tr' map to Chart.js
@@ -106,6 +112,21 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         // it. First dataset fills from the X-axis (origin); subsequent
         // datasets fill from the dataset at index-1.
         datasets = datasets.map((ds, i) => ({ ...ds, fill: i === 0 ? 'origin' : ('-1' as const) } as ChartData['datasets'][number] & { fill: string }));
+    }
+
+    // Bar width. Excel's <c:gapWidth val="N"/> is "gap between bar
+    // groups as a percentage of bar width". Chart.js's
+    // categoryPercentage is "what fraction of the category band the
+    // bars occupy". gap = N% of barWidth means gap + barWidth =
+    // (1 + N/100) * barWidth, so categoryPercentage = 100/(100+N).
+    // Excel default 150 → 0.4 (Chart.js default is 0.8 — much wider).
+    if (type === 'bar' && typeof data?.meta?.barGapWidth === 'number' && data.meta.barGapWidth >= 0) {
+        const cp = 100 / (100 + data.meta.barGapWidth);
+        datasets = datasets.map((ds) => ({
+            ...ds,
+            categoryPercentage: cp,
+            barPercentage: 1.0,
+        } as ChartData['datasets'][number] & { categoryPercentage: number; barPercentage: number }));
     }
 
     // Legend position. Excel cf. <c:legendPos>: r/l/t/b/tr. Chart.js

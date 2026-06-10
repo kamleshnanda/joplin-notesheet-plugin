@@ -62,6 +62,7 @@ export interface ChartDrawing {
         categoryAxisType?: 'index' | 'category';
         barDir?: 'bar' | 'col';
         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
+        barGapWidth?: number;
         unsupportedSourceType?: string;
     };
 }
@@ -140,9 +141,13 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
             ? rawGrouping
             : 'clustered';
         const overlapXml = grouping === 'clustered' ? '' : '<c:overlap val="100"/>';
+        // Default 150 matches Excel's default for bar charts
+        // (gap = 1.5x bar width). Source values from the import path
+        // override.
+        const gapWidth = c.meta?.barGapWidth ?? 150;
         const seriesXml = c.datasets.map((ds, i) =>
             buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i))).join('');
-        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="182"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes()}`;
+        return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes()}`;
     });
 }
 
@@ -432,6 +437,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                         categoryAxisType?: 'index' | 'category';
                         barDir?: 'bar' | 'col';
                         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
+                        barGapWidth?: number;
                         unsupportedSourceType?: string;
                     };
                 };

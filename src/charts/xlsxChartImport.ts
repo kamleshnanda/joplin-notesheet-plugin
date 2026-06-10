@@ -60,6 +60,12 @@ export interface ImportedChartDrawing {
         // `options.scales.y.stacked` for bars, and to dataset
         // `fill: 'origin' | '-1'` for stacked lines.
         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
+        // Excel <c:gapWidth val="..."/> — gap between bar groups,
+        // expressed as a percentage of bar width. Excel default is 150
+        // (gap = 1.5x bar width). Larger values → thinner bars,
+        // smaller → fatter. Routed to Chart.js dataset
+        // categoryPercentage at render and re-emitted on export.
+        barGapWidth?: number;
         // Legend position. Excel's <c:legendPos val="..."/> values: 'r'
         // (right, default), 'l', 't' (top), 'b' (bottom), 'tr'. Routed
         // to Chart.js options.plugins.legend.position at render time and
@@ -274,6 +280,7 @@ interface ParsedChart {
     unsupportedSourceType?: string;
     barDir?: 'bar' | 'col';
     barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
+    barGapWidth?: number;
     legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
     categoryAxisType?: 'index' | 'category';
 }
@@ -327,10 +334,30 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         if (groupingMatch) barGrouping = groupingMatch[1] as 'clustered' | 'stacked' | 'percentStacked' | 'standard';
     }
 
-    // Title — first <a:t>...</a:t> inside <c:title><c:tx><c:rich>...
+    // Gap width. <c:gapWidth val="N"/> where N is a percentage of bar
+    // width. Bar charts only.
+    let barGapWidth: number | undefined;
+    if (type === 'bar') {
+        const gapMatch = chartXml.match(/<(?:c:)?gapWidth\s+val="(\d+)"/);
+        if (gapMatch) {
+            const n = parseInt(gapMatch[1], 10);
+            if (Number.isFinite(n)) barGapWidth = n;
+        }
+    }
+
+    // Title. Excel's <c:title><c:tx><c:rich>...</c:rich></c:tx></c:title>
+    // can contain multiple <a:r><a:t>...</a:t></a:r> runs (one per
+    // formatting variation — e.g. "Investment" + " vs Balance so far"
+    // each as its own run). The displayed title is all runs
+    // concatenated. Earlier we matched only the first <a:t>, which
+    // truncated multi-run titles. Walk every <a:t> inside the title
+    // block and join them.
     let title = '';
-    const titleMatch = chartXml.match(/<(?:c:)?title\b[\s\S]*?<a:t>([\s\S]*?)<\/a:t>/);
-    if (titleMatch) title = decodeXmlEntities(titleMatch[1]);
+    const titleBlock = chartXml.match(/<(?:c:)?title\b[\s\S]*?<\/(?:c:)?title>/);
+    if (titleBlock) {
+        const runs = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
+        title = runs.join('');
+    }
 
     // Legend position. <c:legend><c:legendPos val="b|l|r|t|tr"/></c:legend>.
     // When the legend element is absent, leave undefined (NotesheetChart
@@ -462,6 +489,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         unsupportedSourceType,
         ...(barDir ? { barDir } : {}),
         ...(barGrouping ? { barGrouping } : {}),
+        ...(barGapWidth !== undefined ? { barGapWidth } : {}),
         ...(legendPos ? { legendPos } : {}),
         categoryAxisType: anyCatRef ? 'category' : 'index',
     };
@@ -594,12 +622,18 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
-            const hasMeta = parsed.unsupportedSourceType || parsed.barDir || parsed.barGrouping || parsed.legendPos || parsed.categoryAxisType;
+            const hasMeta = parsed.unsupportedSourceType
+                || parsed.barDir
+                || parsed.barGrouping
+                || parsed.barGapWidth !== undefined
+                || parsed.legendPos
+                || parsed.categoryAxisType;
             if (hasMeta) {
                 drawing.meta = {
                     ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
                     ...(parsed.barDir ? { barDir: parsed.barDir } : {}),
                     ...(parsed.barGrouping ? { barGrouping: parsed.barGrouping } : {}),
+                    ...(parsed.barGapWidth !== undefined ? { barGapWidth: parsed.barGapWidth } : {}),
                     ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
                     ...(parsed.categoryAxisType ? { categoryAxisType: parsed.categoryAxisType } : {}),
                 };
