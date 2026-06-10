@@ -263,6 +263,19 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // Vertical bars / lines: y is values. Horizontal bars: x is values.
     const valAxisKey = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'x' : 'y';
 
+    // Horizontal bars (barDir='bar' → indexAxis='y'): Chart.js draws the
+    // FIRST category at the TOP of the y-axis and counts down; Excel draws
+    // the first category at the BOTTOM and counts up. Left alone, an
+    // imported horizontal-bar chart renders its categories in the
+    // opposite order from the source (issue 10 / task #24 — the
+    // "trend bars totally reversed" report on 10-bar-with-trendline).
+    // Reversing the CATEGORY axis (the y-axis for horizontal bars) puts
+    // the first category back at the bottom, matching Excel. Vertical
+    // bars and line charts are unaffected (their category axis is x and
+    // Chart.js already matches Excel's left-to-right order).
+    const isHorizontalBar = type === 'bar' && data?.meta?.barDir === 'bar';
+    const catAxisKey = isHorizontalBar ? 'y' : 'x';
+
     const scales: Record<string, Record<string, unknown>> | undefined = (() => {
         const out: Record<string, Record<string, unknown>> = {};
         if (isStacked && (type === 'bar' || type === 'line')) {
@@ -274,6 +287,9 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
                 ...(out[valAxisKey] ?? {}),
                 ticks: { callback: tickFormatter },
             };
+        }
+        if (isHorizontalBar) {
+            out[catAxisKey] = { ...(out[catAxisKey] ?? {}), reverse: true };
         }
         return Object.keys(out).length > 0 ? out : undefined;
     })();
