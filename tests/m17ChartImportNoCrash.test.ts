@@ -311,9 +311,17 @@ describe('M17 feature-1: chart import does not crash', () => {
         expect(drawings[0].drawing.data.sourceSheetName).toBe('Sheet1');
     });
 
-    test('all 10 chart fixtures import without throwing', async () => {
-        const fixtures = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith('.xlsx')).sort();
-        expect(fixtures.length).toBe(10);
+    test('all chart fixtures import without throwing', async () => {
+        // Filter out Excel temp-lock files (~$*.xlsx) that appear when a
+        // user has the fixture open in Excel locally — they're not
+        // valid xlsx archives.
+        const fixtures = readdirSync(FIXTURES_DIR)
+            .filter((f) => f.endsWith('.xlsx') && !f.startsWith('~$'))
+            .sort();
+        // Sanity floor: at least the 10 hand-crafted operator fixtures.
+        // Additional regression fixtures (StackedBarChart, etc.) push
+        // this higher and are also expected to import cleanly.
+        expect(fixtures.length).toBeGreaterThanOrEqual(10);
         for (const fixture of fixtures) {
             const buf = readFileSync(path.join(FIXTURES_DIR, fixture));
             const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);

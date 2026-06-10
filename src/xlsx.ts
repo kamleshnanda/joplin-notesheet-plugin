@@ -2563,8 +2563,25 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 const richTextRuns = hyperlinkUrl ? null : extractRichTextRunsFromCellP(data.p);
                 if (data.f) {
                     const formula = data.f.startsWith('=') ? data.f.slice(1) : data.f;
-                    const result = data.v;
-                    cell.value = { formula, result } as ExcelJS.CellFormulaValue;
+                    // Drop formulas that reference external workbooks
+                    // (`[N]!` prefix or `[filename.xlsx]Sheet!` token).
+                    // Notesheet doesn't preserve the source workbook's
+                    // `xl/externalLinks/*` parts on round-trip, so emitting
+                    // these formulas back makes Excel's open-time validator
+                    // strip them and warn the user ("Removed Records:
+                    // Formula from /xl/worksheets/sheet1.xml part"). Better
+                    // to keep just the cached value — Excel opens the file
+                    // cleanly and the cell shows the correct number.
+                    // External-link round-trip is a separate cycle.
+                    const hasExternalRef = /\[\d+\]!|\[[^\]]+\.xlsx?\]/.test(formula);
+                    if (hasExternalRef) {
+                        if (data.v !== undefined && data.v !== null) {
+                            cell.value = data.v;
+                        }
+                    } else {
+                        const result = data.v;
+                        cell.value = { formula, result } as ExcelJS.CellFormulaValue;
+                    }
                 } else if (hyperlinkUrl && data.v !== undefined && data.v !== null) {
                     // Hyperlink-bearing cells use exceljs's { text, hyperlink }
                     // shape — exceljs writes the proper <hyperlinks> block

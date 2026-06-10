@@ -142,8 +142,15 @@ export function buildDoughnutChartXml(c: ChartDrawing, opts: BuildChartOpts): st
 }
 
 // Top-level wrapper shared by all chart types. The element order inside
-// <c:chart> is mandatory: title, autoTitleDeleted, plotArea, plotVisOnly,
-// dispBlanksAs. After </c:chart>, the chartSpace gets a default spPr.
+// <c:chart> is mandatory: title, autoTitleDeleted, plotArea, legend,
+// plotVisOnly, dispBlanksAs. After </c:chart>, the chartSpace gets a
+// default spPr.
+//
+// Legend visibility mirrors what NotesheetChart's runtime config shows:
+// always for pie/doughnut (one slice per category), and for any
+// multi-series chart. Single-series bar/line gets `autoTitleDeleted=1`
+// equivalent for the legend (no <c:legend> element emitted, Excel
+// hides it by default).
 function chartSpaceWrap(
     c: ChartDrawing,
     _opts: BuildChartOpts,
@@ -154,8 +161,13 @@ function chartSpaceWrap(
         ? `<c:title><c:tx><c:rich><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400" b="0" kern="1200"/></a:pPr><a:r><a:rPr lang="en-US"/><a:t>${escapeXml(c.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`
         : `<c:autoTitleDeleted val="1"/>`;
 
+    const showLegend = c.type === 'pie' || c.type === 'doughnut' || c.datasets.length > 1;
+    const legendXml = showLegend
+        ? `<c:legend><c:legendPos val="r"/><c:overlay val="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:txPr><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900" b="0" kern="1200"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend>`
+        : '';
+
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-US"/><c:roundedCorners val="0"/><c:chart>${titleXml}<c:plotArea><c:layout/>${plotAreaInner()}<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:printSettings><c:headerFooter/><c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" header="0.3" footer="0.3"/><c:pageSetup/></c:printSettings></c:chartSpace>`;
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-US"/><c:roundedCorners val="0"/><c:chart>${titleXml}<c:plotArea><c:layout/>${plotAreaInner()}<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>${legendXml}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:printSettings><c:headerFooter/><c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" header="0.3" footer="0.3"/><c:pageSetup/></c:printSettings></c:chartSpace>`;
 }
 
 // One <c:ser> for bar or line. Element order inside <c:ser> is strict:
