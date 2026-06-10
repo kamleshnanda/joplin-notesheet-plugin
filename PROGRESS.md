@@ -295,6 +295,44 @@ every feature.
 
 (Empty between sessions.)
 
+- **feature-6-m17-programmatic-roundtrip-pack** (2026-06-10) — Added
+  `tests/m17ChartProgrammaticRoundTrip.test.ts` (8 tests). A pack of
+  in-memory `UniverSnapshot`s authored directly in test code — each
+  carrying one (or two) `NotesheetChart` drawings in a
+  `SHEET_DRAWING_PLUGIN` resource built in the SAME shape
+  `readChartsFromSnapshot` consumes — driven through the real export
+  (`snapshotToXlsxBuffer`) and import (`xlsxBufferToSnapshot`)
+  pipelines. NO `new ExcelJS.Workbook()` anywhere (criterion 4
+  enforced by a runtime lint-sentinel test that strips comments from
+  this file's own source and asserts the constructor never appears in
+  executable code). Cases:
+  - **A** bar w/ mixed +/− values `[3,-2,5,-1]` — negatives survive.
+  - **B** line w/ single-data-point series — 1-element shape survives.
+  - **C** pie w/ a >30-char category label — survives verbatim.
+  - **D** doughnut w/ empty series — see ## Notes for the PRESERVE
+    decision (it does NOT round-trip to truly-empty arrays).
+  - **E** bar w/ `& < > " '` in title + category + series-label —
+    `escapeXml`/`decodeXmlEntities` confirmed inverse on this set.
+  - **F** cross-sheet (chart on `sheet-2`, `sourceSheetName: 'Sheet1'`)
+    — both survive.
+  - **G** two charts on one sheet — both survive in document order
+    with DISTINCT regenerated `chartId`s.
+  Each case anchors to the ORIGINAL snapshot's drawing fields, not a
+  literal: `expectPinnedFieldsEqual` asserts type/sourceRange/labels/
+  datasets/anchor-col-row equality. `chartId` is excluded by design
+  (import regenerates `chart-imported-<sheet>-<idx>-...`). Anchor
+  offsets authored as 0 because the import resource builder treats
+  `<xdr:colOff>/<xdr:rowOff>` as EMU and divides by 9525 — only a 0
+  offset survives a programmatic round-trip cleanly; col/row indices
+  round-trip exactly. Test count 338 → 346. No source changes —
+  feature-6 is pure characterization of the existing M10+M17 pipeline.
+  Evidence:
+  `screenshots/feature-6-m17-programmatic-roundtrip-pack/jest-result.txt`
+  (per-test pass list). Row flipped `passes: true`,
+  `evaluator_verdict: PENDING` (pure-Jest feature; no rendering
+  dimension for the evaluator to screenshot — the spec's acceptance
+  criteria are all round-trip data assertions).
+
 - **feature-2,3,4,5-m17 (multi-feature cycle)** (2026-06-09) —
   M17's round-trip core landed in one session by treating
   features 2 + 3 + 4 + 5 as interlocked rather than feature-cycling
@@ -480,6 +518,30 @@ stripped buffer is passed to exceljs.
 
 ## Notes
 
+- **feature-6 Case D — empty-doughnut PRESERVE-with-placeholder.**
+  The spec lets the empty-series doughnut either DROP (0 drawings) or
+  PRESERVE (1 drawing). The implementation lands on PRESERVE, but NOT
+  with truly empty arrays. M10 export emits a degenerate chart: the
+  series ref formula collapses to `Sheet1!$A$2:$A$1` (startRow+1 >
+  endRow) with `<c:ptCount val="0"/>` for both `<c:cat>` strCache and
+  `<c:val>` numCache. On re-import, `xlsxChartImport` reconstructs a
+  1-row `sourceRange` (`{startRow:0,endRow:1,...}` — the import widens
+  by +1 because the header sits one row above data), sees the empty
+  caches, and `resolveDataFromCells` (in xlsx.ts) fires: it reads the
+  (empty) cellData over that range and fabricates a SINGLE placeholder
+  point — `labels: ['']`, `datasets: [{data: [0]}]`, plus default
+  `meta` (legendPos:'r', categoryAxisType:'category', holeSize:50,
+  dispBlanksAs:'gap'). So the round-trip does not crash and does not
+  invent MEANINGFUL data, but it is NOT idempotent for the empty case:
+  `[] → ['']` and `[] → [0]`. The test pins exactly this — surviving
+  labels are all `''` and surviving values are all `0`, length ≤ 1 —
+  rather than asserting strict emptiness. If a future cycle wants true
+  idempotence here, the fix is in `resolveDataFromCells`: skip the
+  fallback when the reconstructed data range is degenerate
+  (dataRowEnd < dataRowStart maps to a real zero-row chart), OR have
+  M10 export DROP charts whose datasets are all empty before zip
+  injection. Either is a behaviour change beyond feature-6's
+  characterization scope.
 - **`emptySnapshot()` is the seam.** It's the single function that
   produces a fresh workbook for both the New Spreadsheet command
   (src/index.ts:103) and any "load empty fence" path. Putting the

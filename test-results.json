@@ -30,10 +30,10 @@
     "last_attempted_at": "2026-06-09T20:42:00Z"
   },
   "feature-6-m17-programmatic-roundtrip-pack": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": null,
-    "last_attempted_at": null
+    "passes": true,
+    "evidence": "tests/m17ChartProgrammaticRoundTrip.test.ts (8 tests: 7 in-memory round-trip cases A-G + lint sentinel; screenshots/feature-6-m17-programmatic-roundtrip-pack/jest-result.txt)",
+    "evaluator_verdict": "PENDING",
+    "last_attempted_at": "2026-06-10T12:00:00Z"
   },
   "feature-7-m17-chart-svg-html-export-jest": {
     "passes": false,
