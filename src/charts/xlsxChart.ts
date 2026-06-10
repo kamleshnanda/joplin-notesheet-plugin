@@ -70,6 +70,18 @@ export interface ChartDrawing {
         dispBlanksAs?: 'gap' | 'zero' | 'span';
         crossBetween?: 'between' | 'midCat';
         tickMark?: 'none' | 'in' | 'out' | 'cross';
+        // Axis-line styling. Excel's modern default chart template draws
+        // the CATEGORY axis as a thin light-grey line and the VALUE axis
+        // with NO line (every fixture in tests/fixtures/charts uses this).
+        // When we omit the axis <c:spPr> on export Excel falls back to its
+        // legacy DARK solid line on BOTH axes — which reads as "Joplin
+        // introduced axes / a vertical line that wasn't in the source".
+        // 'grey' = the light-grey modern line; 'none' = <a:ln><a:noFill/>.
+        // Defaults on export (when meta is absent): catAxisLine 'grey',
+        // valAxisLine 'none' — i.e. the modern template, NOT Excel's dark
+        // legacy default.
+        catAxisLine?: 'grey' | 'none';
+        valAxisLine?: 'grey' | 'none';
         // Number format applied to value-axis tick labels at runtime.
         // Source XML <c:valAx><c:numFmt formatCode="..."/>. Routed to
         // Chart.js scales.y.ticks.callback so e.g. "0%" renders as
@@ -427,6 +439,17 @@ function categoryAndValueAxes(c: ChartDrawing): string {
     const tickMark = c.meta?.tickMark ?? 'none';
     const lightGreyLine = '<a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln>';
     const majorGridlinesXml = `<c:majorGridlines><c:spPr>${lightGreyLine}<a:effectLst/></c:spPr></c:majorGridlines>`;
+    // Axis-line <c:spPr>. WITHOUT this Excel paints its legacy DARK solid
+    // line on both axes — the "introduced axes / vertical line" the user
+    // reported on 01/02/07. Default to Excel's modern template (every
+    // source fixture uses it): category axis = light-grey line, value axis
+    // = no line. meta can override per-axis for round-trip faithfulness.
+    const axisSpPr = (style: 'grey' | 'none'): string =>
+        style === 'none'
+            ? '<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln><a:effectLst/></c:spPr>'
+            : `<c:spPr><a:noFill/>${lightGreyLine}<a:effectLst/></c:spPr>`;
+    const catAxisSpPr = axisSpPr(c.meta?.catAxisLine ?? 'grey');
+    const valAxisSpPr = axisSpPr(c.meta?.valAxisLine ?? 'none');
     // Value-axis number format. When source provides a non-General
     // format (e.g. "0%" on 09-bar-percent-axis) we emit it with
     // sourceLinked="0" so Excel uses our explicit code instead of
@@ -435,7 +458,7 @@ function categoryAndValueAxes(c: ChartDrawing): string {
     const valNumFmt = c.meta?.valAxisNumFmt
         ? `<c:numFmt formatCode="${escapeXml(c.meta.valAxisNumFmt)}" sourceLinked="0"/>`
         : `<c:numFmt formatCode="General" sourceLinked="1"/>`;
-    return `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${catAxPos}"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="${tickMark}"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${valAxPos}"/>${majorGridlinesXml}${valNumFmt}<c:majorTickMark val="${tickMark}"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="111111"/><c:crosses val="autoZero"/><c:crossBetween val="${crossBetween}"/></c:valAx>`;
+    return `<c:catAx><c:axId val="111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${catAxPos}"/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="${tickMark}"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>${catAxisSpPr}<c:crossAx val="222222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx><c:valAx><c:axId val="222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${valAxPos}"/>${majorGridlinesXml}${valNumFmt}<c:majorTickMark val="${tickMark}"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>${valAxisSpPr}<c:crossAx val="111111"/><c:crosses val="autoZero"/><c:crossBetween val="${crossBetween}"/></c:valAx>`;
 }
 
 // ─── drawing{N}.xml builder ────────────────────────────────────────────────
@@ -547,6 +570,8 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                         dispBlanksAs?: 'gap' | 'zero' | 'span';
                         crossBetween?: 'between' | 'midCat';
                         tickMark?: 'none' | 'in' | 'out' | 'cross';
+                        catAxisLine?: 'grey' | 'none';
+                        valAxisLine?: 'grey' | 'none';
                         valAxisNumFmt?: string;
                         dLbls?: {
                             showVal?: boolean;

@@ -104,6 +104,12 @@ export interface ImportedChartDrawing {
         // 'none' for both axes on bar/line charts (every fixture
         // surveyed). Plumbed for fidelity round-trip.
         tickMark?: 'none' | 'in' | 'out' | 'cross';
+        // Axis-line presence: 'grey' (light-grey line, Excel's modern
+        // category-axis default) or 'none' (<a:ln><a:noFill/>, the
+        // value-axis default). Re-emitted on export so Excel doesn't
+        // fall back to its dark legacy axis line. Bar/line only.
+        catAxisLine?: 'grey' | 'none';
+        valAxisLine?: 'grey' | 'none';
         // Value-axis number format. <c:valAx><c:numFmt formatCode="..."
         // sourceLinked="0|1"/>. When sourceLinked="1" Excel reads the
         // format from the underlying cell; sourceLinked="0" uses the
@@ -334,6 +340,8 @@ interface ParsedChart {
     dispBlanksAs?: 'gap' | 'zero' | 'span';
     crossBetween?: 'between' | 'midCat';
     tickMark?: 'none' | 'in' | 'out' | 'cross';
+    catAxisLine?: 'grey' | 'none';
+    valAxisLine?: 'grey' | 'none';
     valAxisNumFmt?: string;
     dLbls?: {
         showVal?: boolean;
@@ -476,6 +484,33 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
             const numFmtMatch = valAxBlock[1].match(/<(?:c:)?numFmt\s+formatCode="([^"]+)"/);
             if (numFmtMatch) valAxisNumFmt = numFmtMatch[1];
         }
+    }
+
+    // Axis-line presence. Excel's modern chart template draws the
+    // category axis as a thin light-grey line and the value axis with NO
+    // line. Older/custom charts may differ. We classify each axis's
+    // OWN <c:spPr><a:ln> (the one NOT nested in <c:majorGridlines>) as
+    // 'none' (<a:ln><a:noFill/>) or 'grey' (any visible line). M10 export
+    // re-emits the matching style so the round-trip doesn't swap Excel's
+    // intended light line for its dark legacy default. Bar/line only;
+    // pie/doughnut have no axes.
+    const classifyAxisLine = (axTag: 'catAx' | 'valAx'): 'grey' | 'none' | undefined => {
+        const block = chartXml.match(new RegExp(`<(?:c:)?${axTag}>([\\s\\S]*?)</(?:c:)?${axTag}>`));
+        if (!block) return undefined;
+        // Drop the gridlines block so we read only the axis-line spPr.
+        const body = block[1].replace(/<(?:c:)?majorGridlines>[\s\S]*?<\/(?:c:)?majorGridlines>/g, '');
+        const spPr = body.match(/<(?:c:)?spPr>([\s\S]*?)<\/(?:c:)?spPr>/);
+        if (!spPr) return undefined;
+        // A no-line axis carries <a:ln><a:noFill/></a:ln>.
+        if (/<a:ln>\s*<a:noFill\/>\s*<\/a:ln>/.test(spPr[1])) return 'none';
+        if (/<a:ln\b/.test(spPr[1])) return 'grey';
+        return undefined;
+    };
+    let catAxisLine: 'grey' | 'none' | undefined;
+    let valAxisLine: 'grey' | 'none' | undefined;
+    if (type === 'bar' || type === 'line') {
+        catAxisLine = classifyAxisLine('catAx');
+        valAxisLine = classifyAxisLine('valAx');
     }
 
     // Chart-level data-label flags from <c:dLbls>. Each <c:show*>
@@ -665,6 +700,8 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         ...(dispBlanksAs ? { dispBlanksAs } : {}),
         ...(crossBetween ? { crossBetween } : {}),
         ...(tickMark ? { tickMark } : {}),
+        ...(catAxisLine ? { catAxisLine } : {}),
+        ...(valAxisLine ? { valAxisLine } : {}),
         ...(valAxisNumFmt ? { valAxisNumFmt } : {}),
         ...(dLbls ? { dLbls } : {}),
     };
@@ -809,6 +846,8 @@ export async function readChartsFromXlsxZip(
                 || parsed.dispBlanksAs
                 || parsed.crossBetween
                 || parsed.tickMark
+                || parsed.catAxisLine
+                || parsed.valAxisLine
                 || parsed.valAxisNumFmt
                 || parsed.dLbls;
             if (hasMeta) {
@@ -825,6 +864,8 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.dispBlanksAs ? { dispBlanksAs: parsed.dispBlanksAs } : {}),
                     ...(parsed.crossBetween ? { crossBetween: parsed.crossBetween } : {}),
                     ...(parsed.tickMark ? { tickMark: parsed.tickMark } : {}),
+                    ...(parsed.catAxisLine ? { catAxisLine: parsed.catAxisLine } : {}),
+                    ...(parsed.valAxisLine ? { valAxisLine: parsed.valAxisLine } : {}),
                     ...(parsed.valAxisNumFmt ? { valAxisNumFmt: parsed.valAxisNumFmt } : {}),
                     ...(parsed.dLbls ? { dLbls: parsed.dLbls } : {}),
                 };
