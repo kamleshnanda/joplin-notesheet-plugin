@@ -328,13 +328,22 @@ every feature.
     `SheetRecord.defaultColWidthChars`, re-emitted via
     `ws.properties.defaultColWidth`. `tests/m17ColumnDefaultWidth.test.ts`
     (4). NOT chart-related (this was memory task #25).
-  - **Deferred — Groups 3 + 4 (live-render, need running plugin):**
-    issue 9 (09 percent axis shows decimals in Joplin live render —
-    import meta + tick-formatter wiring LOOK correct from code; needs
-    runtime confirmation) and issue 10 / memory task #24 (trendline
-    bars reversed — Chart.js indexAxis='y' draws first category at top,
-    Excel at bottom; candidate fix `scales.y.reverse`). Both need
-    build + install + screenshot.
+  - **Issue 9 (percent axis) — RESOLVED 2026-06-10, was a STALE BUILD.**
+    The `.jpl` the operator originally tested (Jun 10 00:21) predated the
+    `makeNumFmtFormatter` percent code by ~10h, so the formatter was never
+    in the tested binary. Rebuilt + reinstalled (cache cleared); operator
+    confirmed the bar chart's percent axis renders correctly after import.
+    No code change was needed — the source fix was already correct. Same
+    failure mode as the M13 rotation "bug" (stale build, not a renderer
+    gap). LESSON: when a chart-render bug is reported, FIRST check the
+    installed .jpl's mtime against the relevant commit before debugging.
+  - **Issue 10 / task #24 (trendline bars reversed) — fix committed,
+    AWAITING operator eyeball.** Chart.js indexAxis='y' draws first
+    category at top, Excel at bottom; set `scales.y.reverse=true` for
+    barDir='bar' (committed). Confirmed present in the rebuilt+reinstalled
+    .jpl. Renderer-only, not Jest-testable. Operator to verify 10-bar-with-
+    trendline renders Jan at the bottom (and that the value-axis labels
+    didn't flip side).
   - **Benign:** the `representedObject is not a
     WeakPtrToElectronMenuModelAsNSObject` console spam is a macOS
     Electron menu warning, NOT from the plugin. Ignore.
