@@ -161,6 +161,12 @@ interface SheetRecord {
     mergeData?: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
     rowData?: Record<number, { h?: number }>;
     columnData?: Record<number, { w?: number }>;
+    // Source default column width in Excel "character" units (from
+    // <sheetFormatPr defaultColWidth/baseColWidth>). Carried through so
+    // export can re-emit it; columns without an explicit <col> inherit
+    // this width and would otherwise collapse to exceljs's 8.43 default.
+    // Absent when the source didn't specify one.
+    defaultColWidthChars?: number;
 }
 
 // Mirrors @univerjs/sheets-table's ITableJson. Kept loose (Record<string, unknown>
@@ -1392,6 +1398,51 @@ async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer):
     return result;
 }
 
+// Read each worksheet's effective default column width from its
+// <sheetFormatPr>. exceljs surfaces `defaultColWidth` on ws.properties
+// but NOT `baseColWidth` (the older attribute Excel actually writes —
+// 11-stacked-bar-chart.xlsx ships `baseColWidth="10"` and no
+// defaultColWidth). When neither we capture is present the caller keeps
+// its own fallback. Returns a map: 1-based sheetIndex -> width in Excel
+// "character" units. Excel's effective default when only baseColWidth=N
+// is present is N+1 characters (the +1 accounts for cell padding), which
+// is what makes a column with no explicit <col> render at ~11.5 chars,
+// not 10. Columns WITHOUT an explicit <col> inherit this width; without
+// preserving it, such columns (e.g. column B in 11) collapse to exceljs's
+// 8.43 default on export and render visibly narrower than the source.
+async function readSheetDefaultColWidths(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return result;
+    }
+    for (const fpath of Object.keys(zip.files)) {
+        const m = /^xl\/worksheets\/sheet(\d+)\.xml$/i.exec(fpath);
+        if (!m) continue;
+        const sheetIndex = parseInt(m[1], 10);
+        const xml = await zip.files[fpath].async('string');
+        const fmt = xml.match(/<sheetFormatPr\b[^>]*>/i);
+        if (!fmt) continue;
+        const defW = fmt[0].match(/\bdefaultColWidth="([\d.]+)"/i);
+        if (defW) {
+            result.set(sheetIndex, parseFloat(defW[1]));
+            continue;
+        }
+        const baseW = fmt[0].match(/\bbaseColWidth="([\d.]+)"/i);
+        if (baseW) {
+            // Excel's effective default = baseColWidth + 1 character of
+            // padding (matches the 11.5-char render observed for a
+            // baseColWidth="10" column with no explicit <col>).
+            result.set(sheetIndex, parseFloat(baseW[1]) + 1);
+        }
+    }
+    return result;
+}
+
 // Build ITableJson entries for one worksheet from its corresponding RawTable
 // list. Falls back to exceljs's view if the raw map didn't pick up any
 // tables (e.g. files we couldn't unzip — never happens in practice but
@@ -1820,6 +1871,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // plain string values — we synthesize cell.p from the string so
     // Univer's hyperlink layer treats them as clickable links.
     const namedHyperlinkCellsBySheet = await readNamedHyperlinkCells(buffer);
+    // Per-sheet default column width (Excel "character" units). exceljs
+    // drops baseColWidth, so columns with no explicit <col> would lose
+    // the source's wider default on round-trip — see issue 11.
+    const defaultColWidthBySheet = await readSheetDefaultColWidths(buffer);
 
     const sheetOrder: string[] = [];
     const sheets: Record<string, SheetRecord> = {};
@@ -1982,17 +2037,25 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             }
         }
 
+        const defaultColWidthChars = defaultColWidthBySheet.get(ws.id);
         sheets[sheetId] = {
             id: sheetId,
             name: ws.name,
             cellData,
             rowCount: Math.max(100, maxRow + 1),
             columnCount: Math.max(26, maxCol + 1),
-            defaultColumnWidth: 73,
+            // Convert the source's character-unit default to px with the
+            // same w*7+5 approximation columnData uses (keeps the Univer
+            // canvas default consistent with explicit per-column widths).
+            // Falls back to Univer's 73px default when the source had none.
+            defaultColumnWidth: defaultColWidthChars !== undefined
+                ? Math.round(defaultColWidthChars * 7 + 5)
+                : 73,
             defaultRowHeight: 19,
             mergeData,
             rowData,
             columnData,
+            ...(defaultColWidthChars !== undefined ? { defaultColWidthChars } : {}),
         };
 
         const tablesForSheet = buildTableJsonForSheet(ws, rawTables);
@@ -2556,6 +2619,14 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
         const sheet = sheets[sheetId];
         if (!sheet) continue;
         const ws = wb.addWorksheet(sheet.name || sheetId);
+
+        // Re-emit the source's default column width (issue 11). exceljs
+        // serializes ws.properties.defaultColWidth into <sheetFormatPr>;
+        // columns without an explicit width inherit it instead of
+        // collapsing to exceljs's 8.43 default.
+        if (typeof sheet.defaultColWidthChars === 'number' && sheet.defaultColWidthChars > 0) {
+            (ws.properties as unknown as { defaultColWidth?: number }).defaultColWidth = sheet.defaultColWidthChars;
+        }
 
         const synthForSheet = synthStylesBySheet[sheetId] ?? {};
 
