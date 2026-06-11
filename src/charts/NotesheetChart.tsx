@@ -227,12 +227,13 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // it as a mixed-type 'line' dataset (dashed, no points), matching
     // Excel's dashed accent trendline. We render 'linear' exactly; other
     // fitted types fall back to a straight least-squares line (the type
-    // still round-trips through meta on export). Skipped for horizontal
-    // bars (barDir='bar') — a fit over a category index on a swapped axis
-    // isn't meaningful and Excel doesn't offer it there.
+    // still round-trips through meta on export). For horizontal bars
+    // (barDir='bar', indexAxis='y') the overlaid line shares the same
+    // index axis, so its fit values plot as x-positions at each category
+    // — Chart.js handles the mixed bar(y)+line(y) correctly, matching how
+    // Excel draws the trendline over the bars.
     const tl = data?.meta?.trendline;
-    const horizontalBar = type === 'bar' && data?.meta?.barDir === 'bar';
-    if (tl && (type === 'bar' || type === 'line') && !horizontalBar && datasets.length > 0) {
+    if (tl && (type === 'bar' || type === 'line') && datasets.length > 0) {
         const base = datasets[0].data ?? [];
         const fit = linearFit(base);
         if (fit) {
