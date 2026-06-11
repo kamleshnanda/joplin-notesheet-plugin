@@ -124,7 +124,7 @@ The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable 
 | ✅ | M13/E — Theme-aware banding accuracy | [#22](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/22) |
 | ❌ | M14 — SheetJS Community migration spike (NO-GO; see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)) | [#24](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
 | ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
-| ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) |
+| ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) [#30](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/30) [#31](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/31) |
 | ✅ | M17 — Chart import from `.xlsx` (chart definitions + trendlines + pie leader-line labels) | [#32](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/32) [#33](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/33) |
 | ⏳ | M18 — Image / shape drawings round-trip through `.xlsx`; charts in HTML / PDF export; per-series chart colours; rich-text chart titles | planned |
 
