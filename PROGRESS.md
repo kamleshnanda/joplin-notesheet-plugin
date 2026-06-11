@@ -618,6 +618,22 @@ stripped buffer is passed to exceljs.
 
 ## Notes
 
+- **M17 full regression complete — clean for PR (2026-06-11).** Trendlines
+  shipped (import `<c:trendline>` → meta → least-squares render overlay
+  with eq/R² label → export; PGE-verified dashed line + "y=14.16x+119.6"
+  on fixture 10). Full regression: **Jest 376/376 across 37 suites**;
+  **11/11 chart fixtures** mount+render in live Joplin (bulk-import-check);
+  **12/14 formatting fixtures** mount, the 2 "fails" are the DOCUMENTED
+  `xlsx-multi-table-unsupported` known limitation (LargeWorkbook +
+  FormulasAndStructuredRefs — pinned in m12ImportRecovery.test.ts, clean
+  user-facing error not a crash); **HTML/PDF note export** verified live
+  (BordersAndCellColors preview pane renders all border styles + theme/RGB
+  font + fill). Charts-in-HTML-export remains the one deferred M18 gap
+  (content script has no SVG chart renderer — feature-7, never in M17
+  scope). FOUND + FIXED a tree-hygiene issue: src/charts/trackedCharts.ts
+  (imported by editorView.tsx) + 11 chart test suites + 11-stacked-bar
+  fixture were live in the tree but NEVER committed — now committed so
+  the PR is self-consistent.
 - **Pie thin-slice label overlap → custom leader-line plugin (2026-06-10).**
   Operator found that on 06-two-charts-one-sheet the two small slices
   (Latin America 10%, Middle East & Africa 5%) had their centroid labels
