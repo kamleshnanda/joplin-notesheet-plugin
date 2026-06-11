@@ -219,6 +219,22 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             ...ds,
             backgroundColor: ds.data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
         }];
+    } else if (type === 'bar' || type === 'line') {
+        // Bar/line: assign each series an explicit CHART_PALETTE colour
+        // when the dataset didn't already carry one. Excel-cached charts
+        // (e.g. 10-bar-with-trendline) import WITHOUT a backgroundColor —
+        // they used to rely on Chart.js auto-colouring, but as soon as we
+        // overlay the trendline as a second dataset that auto-cycling
+        // shifts and the bars turn grey. Assigning deterministically keeps
+        // the first series blue regardless of how many datasets follow.
+        datasets = datasets.map((ds, i) => {
+            const colour = CHART_PALETTE[i % CHART_PALETTE.length];
+            return {
+                ...ds,
+                backgroundColor: ds.backgroundColor ?? colour,
+                borderColor: ds.borderColor ?? colour,
+            };
+        });
     }
 
     // Trendline (bar/line only). Excel fits a line over the first series
@@ -233,6 +249,11 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // — Chart.js handles the mixed bar(y)+line(y) correctly, matching how
     // Excel draws the trendline over the bars.
     const tl = data?.meta?.trendline;
+    // Equation/R² annotation text — drawn near the line by the
+    // notesheetPieLabels plugin's sibling logic, NOT shown in the legend
+    // (Excel renders it as a floating chart label, and a single-series bar
+    // chart has no legend at all). Captured here, consumed in options.
+    let trendlineAnnotation: string | null = null;
     if (tl && (type === 'bar' || type === 'line') && datasets.length > 0) {
         const base = datasets[0].data ?? [];
         const fit = linearFit(base);
@@ -240,12 +261,15 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             const fitData = base.map((_, i) => fit.slope * i + fit.intercept);
             const labelParts: string[] = [];
             if (tl.dispEq) labelParts.push(`y = ${fit.slope.toFixed(2)}x + ${fit.intercept.toFixed(2)}`);
-            if (tl.dispRSqr) labelParts.push(`R² = ${fit.r2.toFixed(3)}`);
+            if (tl.dispRSqr) labelParts.push(`R² = ${fit.r2.toFixed(4)}`);
+            trendlineAnnotation = labelParts.length > 0 ? labelParts.join('   ') : null;
             datasets = [
                 ...datasets,
                 {
                     type: 'line',
-                    label: labelParts.length > 0 ? labelParts.join('  ') : 'Trendline',
+                    // No legend entry: Excel doesn't list the trendline in a
+                    // legend. The dataset is filtered out of the legend below.
+                    label: '__trendline__',
                     data: fitData,
                     backgroundColor: 'rgba(0,0,0,0)',
                     borderColor: TREND_COLOR,
@@ -407,7 +431,18 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             showVal: !!dl?.showVal,
             showPercent: !!dl?.showPercent,
         },
+        // Equation/R² text drawn near the trendline (Excel renders it as a
+        // floating chart label, not a legend entry). Null when no trendline.
+        trendlineText: trendlineAnnotation,
     };
+
+    // Real series count EXCLUDES the synthetic trendline dataset. The
+    // legend shows only when there's genuine multi-series ambiguity (or
+    // a pie/doughnut, which always legends its slices) — a single-series
+    // bar chart with a trendline gets NO legend, matching Excel.
+    const realSeriesCount = datasets.filter(
+        (ds) => (ds as { label?: string }).label !== '__trendline__',
+    ).length;
 
     return {
         type,
@@ -426,8 +461,12 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             ...(wantsSliceLabels ? { layout: { padding: { left: 96, right: 96, top: 8 } } } : {}),
             plugins: {
                 legend: {
-                    display: datasets.length > 1 || type === 'pie' || type === 'doughnut',
+                    display: realSeriesCount > 1 || type === 'pie' || type === 'doughnut',
                     position: legendPosition,
+                    // Never list the synthetic trendline dataset in the legend.
+                    labels: {
+                        filter: (item: { text?: string }) => item.text !== '__trendline__',
+                    },
                 },
                 title: data?.title
                     ? { display: true, text: data.title, font: { size: 14 } }

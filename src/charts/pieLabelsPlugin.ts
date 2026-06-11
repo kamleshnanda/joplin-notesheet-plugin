@@ -38,6 +38,11 @@ export interface PieLabelFlags {
 export interface NotesheetPieLabelsOptions {
     enabled: boolean;
     flags: PieLabelFlags;
+    // Optional trendline equation/R² text (bar/line charts). When set, the
+    // plugin draws it as a small floating label near the top of the plot,
+    // matching how Excel shows the trendline equation as a chart label
+    // rather than a legend entry.
+    trendlineText?: string | null;
 }
 
 // Teach Chart.js's typed plugin-options map about our custom plugin so
@@ -121,7 +126,25 @@ export const notesheetPieLabelsPlugin: Plugin = {
         const opts = (chart.options.plugins as Record<string, unknown> | undefined)?.[PLUGIN_ID] as
             | NotesheetPieLabelsOptions
             | undefined;
-        if (!opts?.enabled) return;
+        if (!opts) return;
+
+        // Trendline equation/R² annotation (bar/line). Drawn as a small
+        // grey floating label near the top-right of the plot, independent
+        // of the pie-label path. Matches Excel showing the trendline
+        // equation as a chart label, not a legend entry.
+        if (opts.trendlineText) {
+            const ctx = chart.ctx;
+            const { chartArea } = chart;
+            ctx.save();
+            ctx.font = '11px sans-serif';
+            ctx.fillStyle = '#404040';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillText(opts.trendlineText, chartArea.right - 6, chartArea.top + 4);
+            ctx.restore();
+        }
+
+        if (!opts.enabled) return;
 
         const meta = chart.getDatasetMeta(0);
         if (!meta || !meta.data || meta.data.length === 0) return;
