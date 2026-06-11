@@ -96,6 +96,13 @@ export interface NotesheetChartData {
             showLegendKey?: boolean;
             showBubbleSize?: boolean;
         };
+        trendline?: {
+            type: 'linear' | 'exp' | 'log' | 'poly' | 'power' | 'movingAvg';
+            order?: number;
+            period?: number;
+            dispRSqr?: boolean;
+            dispEq?: boolean;
+        };
     };
 }
 
@@ -158,6 +165,39 @@ function makeNumFmtFormatter(fmt: string): (value: number | string) => string {
     return (v) => String(v);
 }
 
+// Trendline colour — a muted grey-blue that reads as "fitted overlay"
+// against the CHART_PALETTE series colours.
+const TREND_COLOR = '#555555';
+
+// Ordinary least-squares fit of y over the point index x = 0..n-1.
+// Returns slope, intercept, and R² (coefficient of determination), or
+// null when there are fewer than 2 finite points (no line to fit).
+function linearFit(values: number[]): { slope: number; intercept: number; r2: number } | null {
+    const pts: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < values.length; i++) {
+        const y = values[i];
+        if (typeof y === 'number' && Number.isFinite(y)) pts.push({ x: i, y });
+    }
+    const n = pts.length;
+    if (n < 2) return null;
+    let sx = 0, sy = 0, sxy = 0, sxx = 0;
+    for (const p of pts) { sx += p.x; sy += p.y; sxy += p.x * p.y; sxx += p.x * p.x; }
+    const denom = n * sxx - sx * sx;
+    if (denom === 0) return null;
+    const slope = (n * sxy - sx * sy) / denom;
+    const intercept = (sy - slope * sx) / n;
+    // R²: 1 - SS_res/SS_tot.
+    const meanY = sy / n;
+    let ssRes = 0, ssTot = 0;
+    for (const p of pts) {
+        const pred = slope * p.x + intercept;
+        ssRes += (p.y - pred) ** 2;
+        ssTot += (p.y - meanY) ** 2;
+    }
+    const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+    return { slope, intercept, r2 };
+}
+
 function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     const type = (data?.type ?? 'bar') as ChartType;
     let labels = data?.labels ?? [];
@@ -179,6 +219,44 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             ...ds,
             backgroundColor: ds.data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
         }];
+    }
+
+    // Trendline (bar/line only). Excel fits a line over the first series
+    // and (optionally) shows its equation + R². Chart.js core has no
+    // trendline, so we compute a least-squares fit ourselves and overlay
+    // it as a mixed-type 'line' dataset (dashed, no points), matching
+    // Excel's dashed accent trendline. We render 'linear' exactly; other
+    // fitted types fall back to a straight least-squares line (the type
+    // still round-trips through meta on export). Skipped for horizontal
+    // bars (barDir='bar') — a fit over a category index on a swapped axis
+    // isn't meaningful and Excel doesn't offer it there.
+    const tl = data?.meta?.trendline;
+    const horizontalBar = type === 'bar' && data?.meta?.barDir === 'bar';
+    if (tl && (type === 'bar' || type === 'line') && !horizontalBar && datasets.length > 0) {
+        const base = datasets[0].data ?? [];
+        const fit = linearFit(base);
+        if (fit) {
+            const fitData = base.map((_, i) => fit.slope * i + fit.intercept);
+            const labelParts: string[] = [];
+            if (tl.dispEq) labelParts.push(`y = ${fit.slope.toFixed(2)}x + ${fit.intercept.toFixed(2)}`);
+            if (tl.dispRSqr) labelParts.push(`R² = ${fit.r2.toFixed(3)}`);
+            datasets = [
+                ...datasets,
+                {
+                    type: 'line',
+                    label: labelParts.length > 0 ? labelParts.join('  ') : 'Trendline',
+                    data: fitData,
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    borderColor: TREND_COLOR,
+                    borderDash: [5, 4],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    // Keep it on the value axis but out of any stacking group.
+                    stack: undefined,
+                } as unknown as NotesheetChartData['datasets'][number],
+            ];
+        }
     }
 
     // Bar orientation. OOXML <c:barDir val="bar"/> = horizontal,

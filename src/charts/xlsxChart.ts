@@ -100,6 +100,17 @@ export interface ChartDrawing {
             showLegendKey?: boolean;
             showBubbleSize?: boolean;
         };
+        // Per-series trendline. Re-emitted as <c:ser><c:trendline> so a
+        // chart imported with a trendline (10-bar-with-trendline) keeps it
+        // on export. Attached to the FIRST series only (matches import,
+        // which reads the first series' trendline).
+        trendline?: {
+            type: 'linear' | 'exp' | 'log' | 'poly' | 'power' | 'movingAvg';
+            order?: number;
+            period?: number;
+            dispRSqr?: boolean;
+            dispEq?: boolean;
+        };
     };
 }
 
@@ -365,7 +376,28 @@ function buildSeriesXml(
     // ignore <c:smooth> (it only affects line splines) but Excel
     // accepts the element for any chart type.
     const smoothVal = c.meta?.lineSmooth ? '1' : '0';
-    return `<c:ser><c:idx val="${seriesIndex}"/><c:order val="${seriesIndex}"/>${txXml}${spPrXml}${markerXml}${catXml}${valXml}<c:smooth val="${smoothVal}"/></c:ser>`;
+    // Trendline: emit on the FIRST series only (matches import, which reads
+    // a single trendline). OOXML element order inside <c:ser> puts
+    // <c:trendline> AFTER marker/dLbls but BEFORE <c:cat>/<c:val>.
+    const trendlineXml = (seriesIndex === 0) ? buildTrendlineXml(c) : '';
+    return `<c:ser><c:idx val="${seriesIndex}"/><c:order val="${seriesIndex}"/>${txXml}${spPrXml}${markerXml}${trendlineXml}${catXml}${valXml}<c:smooth val="${smoothVal}"/></c:ser>`;
+}
+
+// Build <c:trendline> from meta.trendline. Element order inside is strict:
+// spPr, trendlineType, order (poly), period (movingAvg), dispRSqr, dispEq.
+// Returns '' when no trendline is set. The dashed accent line + R²/equation
+// label flags mirror what Excel emits for a default linear trendline.
+function buildTrendlineXml(c: ChartDrawing): string {
+    const tl = c.meta?.trendline;
+    if (!tl) return '';
+    const spPr = '<c:spPr><a:ln w="19050" cap="rnd"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:prstDash val="sysDot"/></a:ln><a:effectLst/></c:spPr>';
+    const typeXml = `<c:trendlineType val="${tl.type}"/>`;
+    // <c:order> is only meaningful for poly; <c:period> only for movingAvg.
+    const orderXml = (tl.type === 'poly' && typeof tl.order === 'number') ? `<c:order val="${tl.order}"/>` : '';
+    const periodXml = (tl.type === 'movingAvg' && typeof tl.period === 'number') ? `<c:period val="${tl.period}"/>` : '';
+    const rsqrXml = tl.dispRSqr ? '<c:dispRSqr val="1"/>' : '';
+    const eqXml = tl.dispEq ? '<c:dispEq val="1"/>' : '';
+    return `<c:trendline>${spPr}${typeXml}${orderXml}${periodXml}${rsqrXml}${eqXml}</c:trendline>`;
 }
 
 // Pie/doughnut have a single series; per-slice color overrides via <c:dPt>.
@@ -580,6 +612,13 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                             showSerName?: boolean;
                             showLegendKey?: boolean;
                             showBubbleSize?: boolean;
+                        };
+                        trendline?: {
+                            type: 'linear' | 'exp' | 'log' | 'poly' | 'power' | 'movingAvg';
+                            order?: number;
+                            period?: number;
+                            dispRSqr?: boolean;
+                            dispEq?: boolean;
                         };
                     };
                 };

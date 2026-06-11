@@ -128,6 +128,18 @@ export interface ImportedChartDrawing {
             showLegendKey?: boolean;
             showBubbleSize?: boolean;
         };
+        // Per-series trendline (<c:ser><c:trendline>). Excel draws a fitted
+        // line (linear/exp/log/poly/power/movingAvg) over the series, with
+        // optional R²/equation labels. We support the common 'linear' case
+        // for render (compute least-squares fit + draw a synthetic line);
+        // others round-trip the type but render as a straight fit fallback.
+        trendline?: {
+            type: 'linear' | 'exp' | 'log' | 'poly' | 'power' | 'movingAvg';
+            order?: number;   // poly order
+            period?: number;  // movingAvg period
+            dispRSqr?: boolean;
+            dispEq?: boolean;
+        };
     };
 }
 
@@ -350,6 +362,13 @@ interface ParsedChart {
         showSerName?: boolean;
         showLegendKey?: boolean;
         showBubbleSize?: boolean;
+    };
+    trendline?: {
+        type: 'linear' | 'exp' | 'log' | 'poly' | 'power' | 'movingAvg';
+        order?: number;
+        period?: number;
+        dispRSqr?: boolean;
+        dispEq?: boolean;
     };
 }
 
@@ -576,6 +595,30 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         }
     }
 
+    // Trendline (<c:ser><c:trendline>). Per-series; we read the FIRST
+    // series' trendline (the common single-trendline case — 10-bar-with-
+    // trendline). type defaults to 'linear' (Excel's default and the only
+    // one we render exactly; others round-trip + render as a straight fit).
+    let trendline: ParsedChart['trendline'] | undefined;
+    {
+        const tlBlock = chartXml.match(/<(?:c:)?trendline>([\s\S]*?)<\/(?:c:)?trendline>/);
+        if (tlBlock) {
+            const body = tlBlock[1];
+            const typeMatch = body.match(/<(?:c:)?trendlineType\s+val="(linear|exp|log|poly|power|movingAvg)"/);
+            const orderMatch = body.match(/<(?:c:)?order\s+val="(\d+)"/);
+            const periodMatch = body.match(/<(?:c:)?period\s+val="(\d+)"/);
+            const rsqr = /<(?:c:)?dispRSqr\s+val="1"/.test(body);
+            const eq = /<(?:c:)?dispEq\s+val="1"/.test(body);
+            trendline = {
+                type: (typeMatch ? typeMatch[1] : 'linear') as NonNullable<ParsedChart['trendline']>['type'],
+                ...(orderMatch ? { order: parseInt(orderMatch[1], 10) } : {}),
+                ...(periodMatch ? { period: parseInt(periodMatch[1], 10) } : {}),
+                ...(rsqr ? { dispRSqr: true } : {}),
+                ...(eq ? { dispEq: true } : {}),
+            };
+        }
+    }
+
     // Title. Excel's <c:title><c:tx><c:rich>...</c:rich></c:tx></c:title>
     // can contain multiple <a:r><a:t>...</a:t></a:r> runs (one per
     // formatting variation — e.g. "Investment" + " vs Balance so far"
@@ -733,6 +776,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         ...(valAxisLine ? { valAxisLine } : {}),
         ...(valAxisNumFmt ? { valAxisNumFmt } : {}),
         ...(dLbls ? { dLbls } : {}),
+        ...(trendline ? { trendline } : {}),
     };
 }
 
@@ -878,7 +922,8 @@ export async function readChartsFromXlsxZip(
                 || parsed.catAxisLine
                 || parsed.valAxisLine
                 || parsed.valAxisNumFmt
-                || parsed.dLbls;
+                || parsed.dLbls
+                || parsed.trendline;
             if (hasMeta) {
                 drawing.meta = {
                     ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
@@ -897,6 +942,7 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.valAxisLine ? { valAxisLine: parsed.valAxisLine } : {}),
                     ...(parsed.valAxisNumFmt ? { valAxisNumFmt: parsed.valAxisNumFmt } : {}),
                     ...(parsed.dLbls ? { dLbls: parsed.dLbls } : {}),
+                    ...(parsed.trendline ? { trendline: parsed.trendline } : {}),
                 };
                 if (parsed.unsupportedSourceType) {
                     console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);
