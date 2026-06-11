@@ -6,20 +6,21 @@
 
 import * as React from 'react';
 import { Chart, registerables, type ChartConfiguration, type ChartType } from 'chart.js';
-import ChartDataLabels from 'chartjs-plugin-datalabels';
 import type { ChartData, RangeAddress } from './extractData';
 import { CHART_PALETTE } from './extractData';
 import { subscribeChartUpdate } from './dataBus';
+import { notesheetPieLabelsPlugin } from './pieLabelsPlugin';
 
 // registerables covers the core controllers/elements/scales. We register
-// the datalabels plugin SEPARATELY (not globally active) — its `display`
-// defaults to off per-config below, so bar/line charts and pies with
-// labels turned off never paint labels. Excel stores the pie slice-label
-// flags (showCatName/showPercent) on meta.dLbls; Chart.js core can't draw
-// per-slice labels, so this plugin fills the editor-canvas gap (the
-// EXPORTED .xlsx already carries the labels independently).
+// our OWN pie-label plugin separately. It paints pie/doughnut slice labels
+// the way Excel does — roomy slices get an inside centroid label, small/
+// crowded slices get pushed outside with a leader line — driven by
+// meta.dLbls (showCatName/showVal/showPercent). It activates only when
+// options.plugins.notesheetPieLabels.enabled is set (below), so bar/line
+// charts and pies with labels off are untouched. Chart.js core can't draw
+// per-slice labels; the EXPORTED .xlsx carries them independently.
 Chart.register(...registerables);
-Chart.register(ChartDataLabels);
+Chart.register(notesheetPieLabelsPlugin);
 
 export type NotesheetChartType = 'bar' | 'line' | 'pie' | 'doughnut';
 
@@ -312,37 +313,22 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         : undefined;
 
     // Slice data labels (pie/doughnut). Excel keeps these flags on
-    // meta.dLbls (showCatName / showPercent / showVal); Chart.js core
-    // can't draw per-slice labels, so we drive chartjs-plugin-datalabels
-    // here. The plugin is registered globally, so we MUST default it OFF
-    // and only switch it on for pie/doughnut when a label flag is set —
-    // otherwise bar/line charts would gain stray value labels. The
-    // formatter composes the same parts Excel shows: category name, value,
-    // and/or percent of total (matching the source dLbls selection).
+    // meta.dLbls (showCatName / showPercent / showVal). Our custom
+    // notesheetPieLabelsPlugin reads these options and paints inside /
+    // pushed-out-with-leader-line labels like Excel. Enabled only for
+    // pie/doughnut when at least one label flag is set, so bar/line
+    // charts (and pies with labels off) are never touched.
     const dl = data?.meta?.dLbls;
     const wantsSliceLabels = (type === 'pie' || type === 'doughnut')
         && !!dl && !!(dl.showCatName || dl.showPercent || dl.showVal);
-    const datalabelsConfig = wantsSliceLabels
-        ? {
-            display: true,
-            color: '#ffffff',
-            font: { size: 11, weight: 'bold' as const },
-            formatter: (value: number, ctx: { chart: Chart; dataIndex: number }): string => {
-                const parts: string[] = [];
-                if (dl?.showCatName) {
-                    const lbl = ctx.chart.data.labels?.[ctx.dataIndex];
-                    if (lbl != null) parts.push(String(lbl));
-                }
-                if (dl?.showVal) parts.push(String(value));
-                if (dl?.showPercent) {
-                    const ds = ctx.chart.data.datasets[0]?.data as number[] | undefined;
-                    const total = (ds ?? []).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0);
-                    if (total > 0) parts.push(`${Math.round((value / total) * 100)}%`);
-                }
-                return parts.join('\n');
-            },
-        }
-        : { display: false };
+    const pieLabelsConfig = {
+        enabled: wantsSliceLabels,
+        flags: {
+            showCatName: !!dl?.showCatName,
+            showVal: !!dl?.showVal,
+            showPercent: !!dl?.showPercent,
+        },
+    };
 
     return {
         type,
@@ -354,6 +340,11 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
             ...(type === 'bar' ? { indexAxis } : {}),
             ...(scales ? { scales } : {}),
             ...(cutout !== undefined ? { cutout } : {}),
+            // When slice labels are on, reserve horizontal padding so the
+            // pie shrinks and there's a gutter on each side for pushed-out
+            // small-slice labels + their leader lines (they'd otherwise be
+            // clipped at the chart's left/right edge).
+            ...(wantsSliceLabels ? { layout: { padding: { left: 96, right: 96, top: 8 } } } : {}),
             plugins: {
                 legend: {
                     display: datasets.length > 1 || type === 'pie' || type === 'doughnut',
@@ -362,7 +353,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
                 title: data?.title
                     ? { display: true, text: data.title, font: { size: 14 } }
                     : { display: false },
-                datalabels: datalabelsConfig,
+                notesheetPieLabels: pieLabelsConfig,
             },
         },
     };
