@@ -58,7 +58,8 @@ These are pinned by `KNOWN SHORTCOMING` Jest tests so accidental changes are cau
 ### `.xlsx` import / export
 
 - **Theme-tinted borders** (`{theme: N, tint: T}`) resolve against whichever `<a:clrScheme>` is loaded at import time. After round-trip the resolved RGB is fixed in the snapshot, so a later host-side theme change won't update the rendering.
-- **Unsupported chart types** (radar, scatter, area, bubble, 3-D, etc.) import as a `bar` fallback with `meta.unsupportedSourceType` recording the original type; bar / line / pie / doughnut import faithfully. Non-chart drawings (images, shapes) are not yet imported.
+- **Unsupported chart types** (radar, scatter, area, bubble, 3-D, etc.) import as a `bar` fallback with `meta.unsupportedSourceType` recording the original type; bar / line / pie / doughnut import faithfully.
+- **Images / non-chart drawings don't round-trip through `.xlsx` (M18).** You *can* insert an image via the editor's Insert ribbon (Univer's built-in image tool) and it persists in the Notesheet note across save/reload — it's stored in the snapshot's `SHEET_DRAWING_PLUGIN` as a base64 image drawing. But the `.xlsx` layer does not yet read or write image (or shape) drawings: importing an image-bearing workbook drops the picture (the cells import fine, no crash), and exporting a note that contains an inserted image omits it from the `.xlsx`. Chart drawings are the only drawing type that round-trips today. Full image/shape `.xlsx` round-trip is tracked for M18.
 - **Multi-sheet workbooks with a named table on each sheet** trip exceljs's table-reduce — `xlsx-multi-table-unsupported`. Workaround: move all tables onto one sheet.
 - **Other exceljs reconcile failures** surface as `xlsx-import-failed` with the original error preserved in `.cause`.
 
@@ -125,6 +126,7 @@ The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable 
 | ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
 | ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) |
 | ✅ | M17 — Chart import from `.xlsx` (chart definitions + trendlines + pie leader-line labels) | [#32](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/32) |
+| ⏳ | M18 — Image / shape drawings round-trip through `.xlsx`; charts in HTML / PDF export; per-series chart colours; rich-text chart titles | planned |
 
 ### Dependency hygiene
 
