@@ -44,7 +44,7 @@ interface SnapshotShape {
     styles: Record<string, Record<string, unknown>>;
 }
 
-const APTOS = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata', 'FormattingSmorgasboard.xlsx');
+const APTOS = path.join(__dirname, 'fixtures', 'formatting-testdata', 'FormattingSmorgasboard.xlsx');
 
 describe('M16 formula source-of-truth contract', () => {
     test('Aptos fixture: every formula cell has BOTH f and v populated at import', async () => {

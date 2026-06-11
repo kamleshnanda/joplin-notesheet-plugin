@@ -68,7 +68,7 @@ The harness scripts under `scripts/pge/` handle this:
   Joplin's data API. Run after every `npm run dist` rebuild.
 - `scripts/pge/import-fixture.sh <fixture-name>` — creates a new
   Joplin note from the named fixture under
-  `tests/ExcelBaseTestData/formatting-testdata/<fixture-name>` using
+  `tests/fixtures/formatting-testdata/<fixture-name>` using
   the Notesheet plugin's import path, returns the note ID.
 
 If any of these don't exist yet, write them under `scripts/pge/` and

@@ -648,7 +648,7 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
             throw new Error(
                 `Excel reference PNG missing at ${CF_VARIANTS_REF}. ` +
                 `Operator must capture from real Excel: open ` +
-                `tests/ExcelBaseTestData/formatting-testdata/ConditionalFormatting-Variants.xlsx ` +
+                `tests/fixtures/formatting-testdata/ConditionalFormatting-Variants.xlsx ` +
                 `in Excel and screenshot the visible CF columns A..I.`,
             );
         }

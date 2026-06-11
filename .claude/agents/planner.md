@@ -23,7 +23,7 @@ and write a spec the generator can follow without ambiguity.
    repo root, or passed inline.
 2. **Survey what exists.** Read these to ground your plan:
    - `README.md` — current milestones table and known shortcomings
-   - `tests/ExcelBaseTestData/formatting-testdata/README.md` —
+   - `tests/fixtures/formatting-testdata/README.md` —
      fixture catalog
    - The most recent commits (`git log --oneline -20`)
    - Any prior `BUILD_PLAN.md` (this may be a continuation, not a
@@ -47,7 +47,7 @@ and write a spec the generator can follow without ambiguity.
    - **Out of scope** — explicitly call out what this feature does NOT
      cover, so the evaluator doesn't penalize for it
    - **Suggested fixture(s)** — which file(s) under
-     `tests/ExcelBaseTestData/formatting-testdata/` exercise this
+     `tests/fixtures/formatting-testdata/` exercise this
    - **Related risks** — where regressions are most likely (other
      features that share code paths)
 5. **Order features.** Lowest-numbered feature first. Order by

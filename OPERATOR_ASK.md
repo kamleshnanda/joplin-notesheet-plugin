@@ -101,7 +101,7 @@ The evaluator must verify ALL of:
    document the fallback in the chart drawing's `meta.unsupportedSourceType`
    field for evaluator visibility.
 3. **MultiSheet.xlsx import works end-to-end.** The PGE harness
-   imports `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`
+   imports `tests/fixtures/formatting-testdata/MultiSheet.xlsx`
    (currently throws `xlsx-charts-unsupported`) via
    `scripts/pge/import-fixture.sh`, opens the resulting Notesheet
    note, and screenshots the Univer canvas. The screenshot shows:
@@ -309,7 +309,7 @@ Primary anchor (each gets criterion-1 + criterion-2 coverage):
   is dropped (out of scope) but bars render
 
 Smoke fixture (criterion 3 + 8):
-- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx` —
+- `tests/fixtures/formatting-testdata/MultiSheet.xlsx` —
   the original "this crashes import" fixture, already shipped.
   The PGE harness exercises this end-to-end against BOTH the
   Univer canvas (criterion 3) AND the M16 preview pane
@@ -417,7 +417,7 @@ Programmatic round-trip pack (criterion 6):
   for the precedent of a non-canvas region.
 - **`scripts/pge/import-fixture.sh` may need updating** to
   accept fixtures from `tests/fixtures/charts/` (currently
-  hardcodes `tests/ExcelBaseTestData/formatting-testdata/`).
+  hardcodes `tests/fixtures/formatting-testdata/`).
   The harness change is part of the M17 cycle; expand the
   fixture path search rather than copying chart fixtures over.
 - **M16 content-script bundle size discipline.** The M16 bundle
