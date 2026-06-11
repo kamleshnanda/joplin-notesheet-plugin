@@ -27,14 +27,14 @@ A new **"New Spreadsheet"** command (Tools menu, toolbar button, or `Cmd/Ctrl+Sh
 
 ### Anchored charts
 
-Insert ribbon → **Insert Chart** opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via [Chart.js](https://www.chartjs.org/) (MIT). Charts export to native OOXML (`xl/charts/chart*.xml`) — opening the exported file in Excel produces a real Excel chart, not a screenshot.
+Insert ribbon → **Insert Chart** opens a docked panel that mirrors your live cell selection. Charts are drag/resizable, pinned to the grid, and update live when source cells change. Bar / line / pie / doughnut via [Chart.js](https://www.chartjs.org/) (MIT). Charts export to native OOXML (`xl/charts/chart*.xml`) — opening the exported file in Excel produces a real Excel chart, not a screenshot — and **charts authored in Excel import back into Notesheet** and render live in the editor (M17). The round-trip preserves chart type, source range (including cross-sheet references), titles, legend position, axis styling, data labels, bar orientation / grouping / gap width, doughnut hole size, and per-series **trendlines** (linear fit drawn over the series with its equation + R² label). Pie / doughnut slice labels that don't fit inside a slice are pushed outside with leader lines, the way Excel lays them out.
 
 > Univer's own chart packages (`@univerjs-pro/sheets-chart`) are commercial / require a license server. Notesheet ships a custom Chart.js + Univer drawing-preset integration instead so the floating overlay stays open-source.
 
 ### `.xlsx` import / export
 
 - **Import / Export** buttons in the editor view, plus a Tools menu command **"Import .xlsx as Notesheet"** that creates a new note from a `.xlsx` file.
-- Round-trips: values, formulas (including structured references), fonts, fills, alignment, rotation, number formats, borders, merged cells, named tables with built-in style, hyperlinks (both `{text, hyperlink}` cell values and the named-Hyperlink cell style), workbook theme palette (`<a:clrScheme>`), conditional formatting, rich-text runs.
+- Round-trips: values, formulas (including structured references), fonts, fills, alignment, rotation, number formats, borders, merged cells, named tables with built-in style, hyperlinks (both `{text, hyperlink}` cell values and the named-Hyperlink cell style), workbook theme palette (`<a:clrScheme>`), conditional formatting, rich-text runs, **charts** (bar / line / pie / doughnut with their definitions, anchors, and trendlines), workbook default font size, and per-sheet default column width.
 - Workbook theme is preserved on round-trip so the same `TableStyleMediumN` resolves the same accent in the exported file.
 
 ### PDF / HTML export of rendered spreadsheet
@@ -58,7 +58,7 @@ These are pinned by `KNOWN SHORTCOMING` Jest tests so accidental changes are cau
 ### `.xlsx` import / export
 
 - **Theme-tinted borders** (`{theme: N, tint: T}`) resolve against whichever `<a:clrScheme>` is loaded at import time. After round-trip the resolved RGB is fixed in the snapshot, so a later host-side theme change won't update the rendering.
-- **Workbooks with chart drawings** trip exceljs's reconcile pipeline — surfaced as a `NotesheetImportError` with code `xlsx-charts-unsupported`. Workaround: delete charts in Excel and re-save before importing. M17 addresses this.
+- **Unsupported chart types** (radar, scatter, area, bubble, 3-D, etc.) import as a `bar` fallback with `meta.unsupportedSourceType` recording the original type; bar / line / pie / doughnut import faithfully. Non-chart drawings (images, shapes) are not yet imported.
 - **Multi-sheet workbooks with a named table on each sheet** trip exceljs's table-reduce — `xlsx-multi-table-unsupported`. Workaround: move all tables onto one sheet.
 - **Other exceljs reconcile failures** surface as `xlsx-import-failed` with the original error preserved in `.cause`.
 
