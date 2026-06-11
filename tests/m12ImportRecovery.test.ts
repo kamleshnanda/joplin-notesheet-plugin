@@ -41,7 +41,7 @@ import path from 'path';
 
 import { NotesheetImportError, xlsxBufferToSnapshot } from '../src/xlsx';
 
-const FIXTURES_DIR = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata');
+const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 
 async function loadAndCatch(file: string): Promise<unknown> {
     const buf = readFileSync(path.join(FIXTURES_DIR, file));

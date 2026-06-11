@@ -39,7 +39,7 @@ import ExcelJS from 'exceljs';
 
 import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
-const FIXTURE = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata', 'RichTextInOneCell.xlsx');
+const FIXTURE = path.join(__dirname, 'fixtures', 'formatting-testdata', 'RichTextInOneCell.xlsx');
 
 interface Body {
     dataStream?: string;

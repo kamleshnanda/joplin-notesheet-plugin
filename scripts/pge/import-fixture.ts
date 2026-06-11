@@ -13,7 +13,7 @@
 //   ./scripts/pge/import-fixture.sh <fixture-name> [--title <title>]
 //
 // Args (after compile):
-//   $1  fixture-name (file under tests/ExcelBaseTestData/formatting-testdata/)
+//   $1  fixture-name (file under tests/fixtures/formatting-testdata/ or tests/fixtures/charts/)
 //   --title <title>  optional note title (default: fixture name + timestamp)
 
 import * as fs from 'fs';
@@ -38,11 +38,11 @@ async function main(): Promise<void> {
     // resolve fixtures against the source tree, not the compile dir.
     const repoRoot = process.env.PGE_REPO_ROOT || path.resolve(__dirname, '..', '..');
     // Search the canonical fixture roots in order. The first one matching
-    // the requested fixture name wins. M17 added tests/fixtures/charts/ —
-    // chart fixtures live there, the M12-era formatting fixtures live
-    // under tests/ExcelBaseTestData/formatting-testdata/.
+    // the requested fixture name wins. Both live under tests/fixtures/:
+    // chart fixtures in tests/fixtures/charts/, the M12-era formatting
+    // fixtures in tests/fixtures/formatting-testdata/.
     const fixtureRoots = [
-        path.join(repoRoot, 'tests', 'ExcelBaseTestData', 'formatting-testdata'),
+        path.join(repoRoot, 'tests', 'fixtures', 'formatting-testdata'),
         path.join(repoRoot, 'tests', 'fixtures', 'charts'),
     ];
     let fixturePath: string | null = null;

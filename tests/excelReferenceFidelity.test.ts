@@ -89,7 +89,7 @@ import { xlsxBufferToSnapshot } from '../src/xlsx';
 import { decodePng, dominantColor, hexToRgb, rgbDelta } from './util/pngSampler';
 
 const REFERENCES_DIR = path.join(__dirname, '..', 'screenshots', 'excel-reference');
-const FIXTURES_DIR = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata');
+const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 
 const APTOS_PNG = path.join(REFERENCES_DIR, 'FormattingSmorgasboard-Aptos.png');
 const CLASSIC_PNG = path.join(REFERENCES_DIR, 'FormattingSmorgasboard-Classic.png');

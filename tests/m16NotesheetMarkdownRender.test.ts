@@ -24,7 +24,7 @@ import ExcelJS from 'exceljs';
 import { renderNotesheetSnapshot, renderFenceToken } from '../src/contentScripts/notesheetRenderer';
 import { xlsxBufferToSnapshot } from '../src/xlsx';
 
-const FIXTURE_DIR = path.resolve(__dirname, 'ExcelBaseTestData/formatting-testdata');
+const FIXTURE_DIR = path.resolve(__dirname, 'fixtures/formatting-testdata');
 
 function loadFixtureSnapshot(name: string) {
     const buf = fs.readFileSync(path.join(FIXTURE_DIR, name));
@@ -166,7 +166,7 @@ describe('M16 notesheetRenderer — base shape', () => {
 
 describe('M16 notesheetRenderer — multi-sheet (criterion 2)', () => {
     // The shipped MultiSheet.xlsx fixture under
-    // `tests/ExcelBaseTestData/formatting-testdata/` carries chart
+    // `tests/fixtures/formatting-testdata/` carries chart
     // drawings that crash exceljs's reconciliation (a pre-existing
     // shortcoming pinned in `tests/m12ImportRecovery.test.ts`). The
     // M16 multi-sheet test cannot use that fixture without first

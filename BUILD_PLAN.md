@@ -202,7 +202,7 @@ The PGE harness needs three additions for M17:
   `previewPane` regionKind precedent for a non-canvas region.
 - **`scripts/pge/import-fixture.sh` fixture-path expansion.** The
   script currently hardcodes
-  `tests/ExcelBaseTestData/formatting-testdata/`. Expand the fixture-
+  `tests/fixtures/formatting-testdata/`. Expand the fixture-
   path search to ALSO accept `tests/fixtures/charts/` so the chart
   fixtures can be imported via the same harness path.
 - **`samplePreviewPaneInk()` extension** — a new `inlineSvgCount`
@@ -491,7 +491,7 @@ remains the existing four-type union from `src/charts/xlsxChart.ts:24`.
 **Spec**
 
 When the user imports
-`tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx` (the
+`tests/fixtures/formatting-testdata/MultiSheet.xlsx` (the
 original "this crashes import" fixture, currently throwing
 `xlsx-charts-unsupported`) via the Notesheet plugin's "Import .xlsx"
 flow in Joplin, the resulting note opens in the Univer editor with:
@@ -559,7 +559,7 @@ regionKind makes this possible.
 
 **Suggested fixture(s)**
 
-- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx` — the
+- `tests/fixtures/formatting-testdata/MultiSheet.xlsx` — the
   original "this crashes import" fixture, already shipped.
 
 **Related risks**
@@ -571,7 +571,7 @@ regionKind makes this possible.
   div inside `UserWebviewIndex.html`. Use the M16 `previewPane`
   precedent for graceful fallback (try multiple selectors in order).
 - **`import-fixture.sh` fixture-path expansion.** The script currently
-  hardcodes `tests/ExcelBaseTestData/formatting-testdata/`. Extend it
+  hardcodes `tests/fixtures/formatting-testdata/`. Extend it
   to ALSO accept `tests/fixtures/charts/` so future cycles' chart
   fixtures import via the same path.
 - **Window prep.** `prep-joplin-window.sh` must run before the
@@ -1128,7 +1128,7 @@ two screenshot-grades.
 
 **Suggested fixture(s)**
 
-- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx` —
+- `tests/fixtures/formatting-testdata/MultiSheet.xlsx` —
   same fixture as feature-3, exercised through the preview-pane
   region instead of the editor canvas.
 
@@ -1242,7 +1242,7 @@ moves from 267 to ≥ 290 (≥ 23 new Jest tests across features 1, 2,
      numbers may shift slightly as the test bodies grow).
    - **No content edit to any other existing test file in
      `tests/`** — including `tests/util/`, `tests/__mocks__/`,
-     `tests/ExcelBaseTestData/`, and `tests/fixtures/`. The
+     and `tests/fixtures/` (formatting-testdata + charts). The
      mock/util constraint is load-bearing: silently changing what
      a mock returns or what a test util computes shifts existing
      tests' actual values to match new expected values, which is
@@ -1276,8 +1276,8 @@ moves from 267 to ≥ 290 (≥ 23 new Jest tests across features 1, 2,
 
 **Suggested fixture(s)**
 
-- `tests/ExcelBaseTestData/formatting-testdata/MultiSheet.xlsx`
-- `tests/ExcelBaseTestData/formatting-testdata/LargeWorkbook.xlsx`
+- `tests/fixtures/formatting-testdata/MultiSheet.xlsx`
+- `tests/fixtures/formatting-testdata/LargeWorkbook.xlsx`
   (currently throws same error class)
 
 **Related risks**
@@ -1317,7 +1317,7 @@ feature gets:
   penalise for them.
 - **Suggested fixture(s)**: which file(s) under
   `tests/fixtures/charts/` or
-  `tests/ExcelBaseTestData/formatting-testdata/` exercise this.
+  `tests/fixtures/formatting-testdata/` exercise this.
 - **Related risks**: regression hot-spots and prior-bug pointers,
   including pointers into prior PR / commit hashes when prior
   work is the starting point. ALWAYS include the **Untouchable

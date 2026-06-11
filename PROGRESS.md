@@ -106,7 +106,7 @@ every feature.
   the lighter accent. `synthesizeTableStyleAssignments` emits `bd.b`
   on every totals cell, REPLACING the table outline's thin frame.
   Diagnostic asset:
-  `tests/ExcelBaseTestData/formatting-testdata/border-isolation.xlsx`
+  `tests/fixtures/formatting-testdata/border-isolation.xlsx`
   (operator-built fixture with explicit border combinations,
   pixel-probed against Excel to establish ground truth).
 
@@ -1449,7 +1449,7 @@ stripped buffer is passed to exceljs.
 
 - **Multi-sheet test fixture choice — in-memory, not
   MultiSheet.xlsx.** The shipped `MultiSheet.xlsx` fixture under
-  `tests/ExcelBaseTestData/formatting-testdata/` carries chart
+  `tests/fixtures/formatting-testdata/` carries chart
   drawings that crash exceljs's reconcile loop (raised as a
   known shortcoming in M12; pinned in
   `tests/m12ImportRecovery.test.ts`). M16's multi-sheet test

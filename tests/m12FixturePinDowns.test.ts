@@ -13,7 +13,7 @@ jest.mock('@univerjs/sheets-table', () => ({
 // The named "WOULD HAVE CAUGHT" comments reference the actual regressions
 // users reported during 2026-05-30/2026-05-31 manual testing.
 //
-// Anchored on project-owned fixtures in tests/ExcelBaseTestData/formatting-testdata/.
+// Anchored on project-owned fixtures in tests/fixtures/formatting-testdata/.
 // **No personal data, no /Users/ paths, no skipped-on-missing tests.** A
 // future contributor must be able to clone the repo, run `npm test`, and
 // see these pass without fetching anything external.
@@ -28,7 +28,7 @@ import JSZip from 'jszip';
 
 import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
-const FIXTURES_DIR = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata');
+const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 const APTOS = path.join(FIXTURES_DIR, 'FormattingSmorgasboard.xlsx');
 const CLASSIC = path.join(FIXTURES_DIR, 'FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx');
 

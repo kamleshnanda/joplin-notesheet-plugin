@@ -40,7 +40,7 @@ import { readFileSync } from 'fs';
 import ExcelJS from 'exceljs';
 import { xlsxBufferToSnapshot, snapshotToXlsxBuffer } from '../src/xlsx';
 
-const APTOS = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata', 'FormattingSmorgasboard.xlsx');
+const APTOS = path.join(__dirname, 'fixtures', 'formatting-testdata', 'FormattingSmorgasboard.xlsx');
 
 interface SnapshotShape {
     sheetOrder: string[];

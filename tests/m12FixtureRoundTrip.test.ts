@@ -17,7 +17,7 @@
 //     "import: <feature> preserves …" or "round-trip: <feature> survives …"
 //
 // **No personal data, no /Users/ paths.** Anchor only on
-// tests/ExcelBaseTestData/formatting-testdata/.
+// tests/fixtures/formatting-testdata/.
 
 jest.mock('@univerjs/sheets-table', () => ({
     UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
@@ -30,7 +30,7 @@ import JSZip from 'jszip';
 
 import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
-const FIXTURES_DIR = path.join(__dirname, 'ExcelBaseTestData', 'formatting-testdata');
+const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 
 interface SnapshotShape {
     sheetOrder: string[];
