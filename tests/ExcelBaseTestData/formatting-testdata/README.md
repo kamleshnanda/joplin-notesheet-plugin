@@ -113,7 +113,7 @@ Notable structural elements:
 
 ## What's intentionally NOT in these fixtures
 
-- Charts (covered by `tests/ExcelBaseTestData/chart-testdata/`).
+- Charts (covered by `tests/fixtures/charts/`).
 - Cross-sheet references.
 - Pivot tables / slicers / timelines.
 - Comments / notes.

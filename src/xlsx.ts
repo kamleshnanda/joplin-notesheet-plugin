@@ -24,6 +24,12 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from './snapshot';
 import { injectChartsIntoZip } from './charts/xlsxChart';
+import { CHART_PALETTE } from './charts/extractData';
+import {
+    readChartsFromXlsxZip,
+    stripChartPartsFromZip,
+    type ImportedChartDrawing,
+} from './charts/xlsxChartImport';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
@@ -155,6 +161,12 @@ interface SheetRecord {
     mergeData?: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
     rowData?: Record<number, { h?: number }>;
     columnData?: Record<number, { w?: number }>;
+    // Source default column width in Excel "character" units (from
+    // <sheetFormatPr defaultColWidth/baseColWidth>). Carried through so
+    // export can re-emit it; columns without an explicit <col> inherit
+    // this width and would otherwise collapse to exceljs's 8.43 default.
+    // Absent when the source didn't specify one.
+    defaultColWidthChars?: number;
 }
 
 // Mirrors @univerjs/sheets-table's ITableJson. Kept loose (Record<string, unknown>
@@ -676,6 +688,34 @@ async function readThemeFont(buffer: ArrayBuffer | Uint8Array | Buffer): Promise
     const major = /<a:majorFont>[^<]*<a:latin\b[^>]*\btypeface="([^"]+)"/.exec(xml)?.[1];
     if (!minor && !major) return null;
     return { minor, major };
+}
+
+// Read the workbook's DEFAULT font size (points) from xl/styles.xml.
+// The default font is the first <font> in <fonts> (xf index 0 references
+// it); cells with no explicit size inherit it. Excel writes e.g.
+// `<sz val="12"/>` there for an Aptos Narrow 12 workbook. exceljs doesn't
+// surface this, and on export it falls back to its own built-in 11 — so a
+// 12pt source workbook round-tripped to 11pt (the font-shrink bug). We
+// capture it here and patch the exported styles.xml default back. Returns
+// undefined when absent or unparseable (caller keeps exceljs's default).
+async function readDefaultFontSizeFromXlsx(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<number | undefined> {
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return undefined;
+    }
+    const stylesPath = Object.keys(zip.files).find((p) => /^xl\/styles\.xml$/i.test(p));
+    if (!stylesPath) return undefined;
+    const xml = await zip.files[stylesPath].async('string');
+    const fontsBlock = xml.match(/<fonts\b[^>]*>([\s\S]*?)<\/fonts>/);
+    if (!fontsBlock) return undefined;
+    const firstFont = fontsBlock[1].match(/<font>([\s\S]*?)<\/font>/);
+    if (!firstFont) return undefined;
+    const sz = firstFont[1].match(/<sz\s+val="([\d.]+)"/);
+    if (!sz) return undefined;
+    const n = parseFloat(sz[1]);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 // Read xl/theme/theme1.xml's <a:clrScheme>. Excel resolves named colors
@@ -1386,6 +1426,51 @@ async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer):
     return result;
 }
 
+// Read each worksheet's effective default column width from its
+// <sheetFormatPr>. exceljs surfaces `defaultColWidth` on ws.properties
+// but NOT `baseColWidth` (the older attribute Excel actually writes —
+// 11-stacked-bar-chart.xlsx ships `baseColWidth="10"` and no
+// defaultColWidth). When neither we capture is present the caller keeps
+// its own fallback. Returns a map: 1-based sheetIndex -> width in Excel
+// "character" units. Excel's effective default when only baseColWidth=N
+// is present is N+1 characters (the +1 accounts for cell padding), which
+// is what makes a column with no explicit <col> render at ~11.5 chars,
+// not 10. Columns WITHOUT an explicit <col> inherit this width; without
+// preserving it, such columns (e.g. column B in 11) collapse to exceljs's
+// 8.43 default on export and render visibly narrower than the source.
+async function readSheetDefaultColWidths(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return result;
+    }
+    for (const fpath of Object.keys(zip.files)) {
+        const m = /^xl\/worksheets\/sheet(\d+)\.xml$/i.exec(fpath);
+        if (!m) continue;
+        const sheetIndex = parseInt(m[1], 10);
+        const xml = await zip.files[fpath].async('string');
+        const fmt = xml.match(/<sheetFormatPr\b[^>]*>/i);
+        if (!fmt) continue;
+        const defW = fmt[0].match(/\bdefaultColWidth="([\d.]+)"/i);
+        if (defW) {
+            result.set(sheetIndex, parseFloat(defW[1]));
+            continue;
+        }
+        const baseW = fmt[0].match(/\bbaseColWidth="([\d.]+)"/i);
+        if (baseW) {
+            // Excel's effective default = baseColWidth + 1 character of
+            // padding (matches the 11.5-char render observed for a
+            // baseColWidth="10" column with no explicit <col>).
+            result.set(sheetIndex, parseFloat(baseW[1]) + 1);
+        }
+    }
+    return result;
+}
+
 // Build ITableJson entries for one worksheet from its corresponding RawTable
 // list. Falls back to exceljs's view if the raw map didn't pick up any
 // tables (e.g. files we couldn't unzip — never happens in practice but
@@ -1729,6 +1814,38 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // exceljs accepts Buffer in Node and ArrayBuffer in the browser; both are valid
     // at runtime but the .d.ts only types Buffer. Cast away to satisfy TS.
     //
+    // M17: BEFORE wb.xlsx.load runs, read chart drawings out of the buffer
+    // ourselves and strip them from a copy used for the load. exceljs's
+    // chart-side reconcile loop crashes with the legacy `anchors` reference
+    // error on workbooks with chart drawings; sidestepping that load by
+    // pre-stripping is what unblocks chart-bearing fixtures (MultiSheet.xlsx,
+    // LargeWorkbook.xlsx, every fixture under tests/fixtures/charts/).
+    //
+    // The original buffer is preserved verbatim for the existing post-load
+    // zip-direct readers (readTablesFromXlsxZip / readThemeFont /
+    // readThemeClrScheme / readNamedHyperlinkCells) — those don't read any
+    // chart parts, so the strip step doesn't affect them.
+    let importedCharts: ImportedChartDrawing[] = [];
+    try {
+        importedCharts = await readChartsFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] M17: readChartsFromXlsxZip threw; continuing without chart import', e);
+        importedCharts = [];
+    }
+    // Build a chart-stripped buffer iff there's at least one chart drawing
+    // present. For chart-less workbooks we pass the original buffer through
+    // unchanged so the existing error-classification path stays intact for
+    // non-chart crash classes (e.g. xlsx-multi-table-unsupported).
+    let bufferForLoad: ArrayBuffer | Uint8Array | Buffer = buffer;
+    if (importedCharts.length > 0) {
+        try {
+            bufferForLoad = await stripChartPartsFromZip(buffer);
+        } catch (e) {
+            console.warn('[Notesheet] M17: stripChartPartsFromZip failed; loading original buffer (may crash)', e);
+            bufferForLoad = buffer;
+        }
+    }
+
     // The try/catch around load() catches three reproducible exceljs reconcile
     // crashes: chart drawings whose drawing reference doesn't resolve (`anchors`
     // crash in lib/xlsx/xlsx.js:100) and multi-sheet workbooks with multiple
@@ -1736,8 +1853,13 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // reduce). We classify by stack frame rather than message alone because
     // "name" is too generic to key off — multiple unrelated exceljs paths
     // can produce a "Cannot read properties of undefined (reading 'name')".
+    //
+    // The xlsx-charts-unsupported error class stays defined for future
+    // drawing-related crash classes M17's strip path doesn't cover (e.g. an
+    // image+chart mixed drawing whose strip leaves a dangling ref). The
+    // strip pre-empts the common case but isn't a universal cure.
     try {
-        await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+        await wb.xlsx.load(bufferForLoad as unknown as Parameters<typeof wb.xlsx.load>[0]);
     } catch (err) {
         const e = err as Error;
         const msg = e?.message ?? String(err);
@@ -1769,6 +1891,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // fell back to its own default and the imported sheet showed Arial
     // regardless of source.
     const themeFont = await readThemeFont(buffer);
+    // Workbook default font SIZE (points) — exceljs drops it and falls back
+    // to 11, shrinking a 12pt source workbook on export. See issue: font
+    // size 12 → 11.
+    const defaultFontSize = await readDefaultFontSizeFromXlsx(buffer);
     // Captured for export-time replay so the workbook's table-style colors
     // resolve against the same accent palette they did originally.
     const themeClrScheme = await readThemeClrScheme(buffer);
@@ -1777,6 +1903,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // plain string values — we synthesize cell.p from the string so
     // Univer's hyperlink layer treats them as clickable links.
     const namedHyperlinkCellsBySheet = await readNamedHyperlinkCells(buffer);
+    // Per-sheet default column width (Excel "character" units). exceljs
+    // drops baseColWidth, so columns with no explicit <col> would lose
+    // the source's wider default on round-trip — see issue 11.
+    const defaultColWidthBySheet = await readSheetDefaultColWidths(buffer);
 
     const sheetOrder: string[] = [];
     const sheets: Record<string, SheetRecord> = {};
@@ -1939,17 +2069,25 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             }
         }
 
+        const defaultColWidthChars = defaultColWidthBySheet.get(ws.id);
         sheets[sheetId] = {
             id: sheetId,
             name: ws.name,
             cellData,
             rowCount: Math.max(100, maxRow + 1),
             columnCount: Math.max(26, maxCol + 1),
-            defaultColumnWidth: 73,
+            // Convert the source's character-unit default to px with the
+            // same w*7+5 approximation columnData uses (keeps the Univer
+            // canvas default consistent with explicit per-column widths).
+            // Falls back to Univer's 73px default when the source had none.
+            defaultColumnWidth: defaultColWidthChars !== undefined
+                ? Math.round(defaultColWidthChars * 7 + 5)
+                : 73,
             defaultRowHeight: 19,
             mergeData,
             rowData,
             columnData,
+            ...(defaultColWidthChars !== undefined ? { defaultColWidthChars } : {}),
         };
 
         const tablesForSheet = buildTableJsonForSheet(ws, rawTables);
@@ -2037,11 +2175,219 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         });
     }
 
+    // M17: chart drawings (read pre-load via readChartsFromXlsxZip). Emit
+    // the SHEET_DRAWING_PLUGIN resource in the same shape M10's
+    // readChartsFromSnapshot consumes — `componentKey: 'NotesheetChart'`
+    // + `data` block + `axisAlignSheetTransform`. subUnitId is the
+    // Notesheet-side sheet id (`sheet-<1-based-index>`); we map the
+    // importedChart's sheetIndex (xl/worksheets/sheet{N}.xml index) to the
+    // matching `sheet-N` here.
+    if (importedCharts.length > 0) {
+        // Pixel geometry constants — must match the defaults Univer's
+        // drawing service uses to compute float-DOM screen positions
+        // (DEFAULT_COL_W=73, DEFAULT_ROW_H=19, ROW_HEADER_W=46,
+        // COL_HEADER_H=20). Univer recomputes `transform` from
+        // `sheetTransform` on load, but supplying it directly lets the
+        // drawing service mount the float-DOM at the right position
+        // before any layout pass — important for the M17 import path
+        // where charts must appear immediately, not after the first
+        // resize event.
+        const DEFAULT_COL_W = 73;
+        const DEFAULT_ROW_H = 19;
+        const ROW_HEADER_W = 46;
+        const COL_HEADER_H = 20;
+
+        // Helper: when the chart XML didn't ship cached labels/values
+        // (older or programmatically-generated workbooks), resolve them
+        // from the data sheet's cellData using the chart's sourceRange.
+        // Convention mirrors extractDataFromSnapshot: column 0 → labels
+        // (skipping the header row), columns 1..N → series.
+        const resolveDataFromCells = (
+            chart: ImportedChartDrawing,
+        ): { labels: string[]; datasets: Array<{ label?: string; data: number[] }> } | null => {
+            const sheetName = chart.sourceSheetName;
+            if (!sheetName) return null;
+            // Find the sheet whose displayed `name` matches sourceSheetName.
+            let target: { cellData?: Record<number, Record<number, { v?: unknown }>> } | undefined;
+            for (const id of Object.keys(sheets)) {
+                if (sheets[id]?.name === sheetName) { target = sheets[id]; break; }
+            }
+            if (!target?.cellData) return null;
+            const sr = chart.sourceRange;
+            const headerRow = sr.startRow;
+            const dataRowStart = sr.startRow + 1;
+            const dataRowEnd = sr.endRow;
+            if (dataRowEnd < dataRowStart) return null;
+            // Categories: first column.
+            const labels: string[] = [];
+            for (let r = dataRowStart; r <= dataRowEnd; r++) {
+                const v = target.cellData[r]?.[sr.startColumn]?.v;
+                labels.push(v == null ? '' : String(v));
+            }
+            // Series: every column past the first. Tag each with the
+            // matching CHART_PALETTE entry so the rendered chart uses
+            // Notesheet's recognisable palette (NotesheetChart reads
+            // backgroundColor from each dataset). Without this the live
+            // Chart.js renderer falls back to its own neutral default
+            // and the chart looks generic.
+            const datasets: Array<{ label?: string; data: number[]; backgroundColor: string; borderColor: string }> = [];
+            for (let c = sr.startColumn + 1; c <= sr.endColumn; c++) {
+                const labelV = target.cellData[headerRow]?.[c]?.v;
+                const data: number[] = [];
+                for (let r = dataRowStart; r <= dataRowEnd; r++) {
+                    const v = target.cellData[r]?.[c]?.v;
+                    const n = typeof v === 'number' ? v : Number(v);
+                    data.push(Number.isFinite(n) ? n : 0);
+                }
+                const seriesIndex = c - (sr.startColumn + 1);
+                const colour = CHART_PALETTE[seriesIndex % CHART_PALETTE.length];
+                datasets.push({
+                    ...(labelV != null ? { label: String(labelV) } : {}),
+                    data,
+                    backgroundColor: colour,
+                    borderColor: colour,
+                });
+            }
+            return { labels, datasets };
+        };
+
+        const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> = {};
+        for (const chart of importedCharts) {
+            const subUnitId = `sheet-${chart.sheetIndex}`;
+            // Skip charts whose host sheet didn't survive the import — e.g.
+            // a stripped sheet that never reached the eachSheet walk.
+            if (!sheets[subUnitId]) continue;
+
+            // Fall back to resolving labels/datasets from the data sheet
+            // if the chart XML's <c:cat>/<c:val> caches were empty
+            // (programmatic workbooks like MultiSheet.xlsx ship formulas
+            // without strCache/numCache).
+            //
+            // When meta.categoryAxisType === 'index' the source chart had
+            // no <c:cat> element at all — Excel shows row index 1..N as
+            // the X-axis. Don't synthesize labels from column 0 in that
+            // case; that would make column 0's values appear as the
+            // X-axis labels (the original 11-stacked-bar bug). Leave
+            // labels empty and let NotesheetChart synthesize 1..N at
+            // render time.
+            let chartLabels = chart.labels;
+            let chartDatasets = chart.datasets;
+            const isIndexAxis = chart.meta?.categoryAxisType === 'index';
+            const cachedLabelsEmpty = chart.labels.length === 0;
+            const cachedDataEmpty = chart.datasets.every((ds) => ds.data.length === 0);
+            if (cachedDataEmpty) {
+                const resolved = resolveDataFromCells(chart);
+                if (resolved) chartDatasets = resolved.datasets;
+            }
+            if (cachedLabelsEmpty && !isIndexAxis) {
+                const resolved = resolveDataFromCells(chart);
+                if (resolved) chartLabels = resolved.labels;
+            }
+            if (!drawingResource[subUnitId]) {
+                drawingResource[subUnitId] = { data: {}, order: [] };
+            }
+            const drawingId = chart.chartId;
+            const left = ROW_HEADER_W + chart.anchor.fromCol * DEFAULT_COL_W;
+            const top = COL_HEADER_H + chart.anchor.fromRow * DEFAULT_ROW_H;
+            const right = ROW_HEADER_W + chart.anchor.toCol * DEFAULT_COL_W;
+            const bottom = COL_HEADER_H + chart.anchor.toRow * DEFAULT_ROW_H;
+            drawingResource[subUnitId].data[drawingId] = {
+                unitId: 'workbook',
+                subUnitId,
+                drawingId,
+                // DRAWING_DOM (8). Univer's drawing-DOM service mounts
+                // float-DOM components keyed by `componentKey`; setting
+                // this to anything else (we used to emit 5 = VIDEO)
+                // makes Univer's render pipeline treat the entry as an
+                // unsupported drawing and skip it.
+                drawingType: 8,
+                componentKey: 'NotesheetChart',
+                allowTransform: true,
+                data: {
+                    chartId: chart.chartId,
+                    type: chart.type,
+                    title: chart.title,
+                    sourceRange: chart.sourceRange,
+                    ...(chart.sourceSheetName ? { sourceSheetName: chart.sourceSheetName } : {}),
+                    labels: chartLabels,
+                    datasets: chartDatasets,
+                    ...(chart.meta ? { meta: chart.meta } : {}),
+                },
+                transform: {
+                    flipY: false,
+                    flipX: false,
+                    angle: 0,
+                    skewX: 0,
+                    skewY: 0,
+                    left,
+                    top,
+                    width: Math.max(50, right - left),
+                    height: Math.max(50, bottom - top),
+                },
+                // sheetTransform's columnOffset/rowOffset are PIXELS in
+                // Univer's drawing service, NOT EMUs. The OOXML
+                // <xdr:colOff>/<xdr:rowOff> elements ship EMUs (English
+                // Metric Units; 9525 EMU = 1 px at 96 DPI). Forwarding
+                // raw EMUs here makes Univer recompute transform with
+                // nonsense pixel values (~370k px wide, off-screen
+                // negative left), which is what produced the
+                // "covers the whole sheet" + "blank canvas" symptoms in
+                // 06 / 10 — the float-DOM mounted with a transform
+                // Chart.js's `responsive` couldn't size against until
+                // a manual resize forced a recompute. We convert EMU
+                // to pixels here so Univer's drawing service produces
+                // the same transform our `transform` block already had.
+                sheetTransform: {
+                    from: {
+                        column: chart.anchor.fromCol,
+                        columnOffset: Math.round(chart.anchor.fromColOff / 9525),
+                        row: chart.anchor.fromRow,
+                        rowOffset: Math.round(chart.anchor.fromRowOff / 9525),
+                    },
+                    to: {
+                        column: chart.anchor.toCol,
+                        columnOffset: Math.round(chart.anchor.toColOff / 9525),
+                        row: chart.anchor.toRow,
+                        rowOffset: Math.round(chart.anchor.toRowOff / 9525),
+                    },
+                },
+                axisAlignSheetTransform: {
+                    from: {
+                        column: chart.anchor.fromCol,
+                        columnOffset: Math.round(chart.anchor.fromColOff / 9525),
+                        row: chart.anchor.fromRow,
+                        rowOffset: Math.round(chart.anchor.fromRowOff / 9525),
+                    },
+                    to: {
+                        column: chart.anchor.toCol,
+                        columnOffset: Math.round(chart.anchor.toColOff / 9525),
+                        row: chart.anchor.toRow,
+                        rowOffset: Math.round(chart.anchor.toRowOff / 9525),
+                    },
+                },
+            };
+            drawingResource[subUnitId].order.push(drawingId);
+        }
+        if (Object.keys(drawingResource).length > 0) {
+            resources.push({
+                name: 'SHEET_DRAWING_PLUGIN',
+                data: JSON.stringify(drawingResource),
+            });
+        }
+    }
+
     // Workbook-level default style. Univer cells without an explicit `s`
     // inherit from this. We use it to carry the source theme's body font
     // (minorFont) so imported sheets render in Aptos Narrow / Calibri / etc.
-    // instead of Univer's hardcoded fallback.
-    const defaultStyle = themeFont?.minor ? { ff: themeFont.minor } : undefined;
+    // instead of Univer's hardcoded fallback. `fs` carries the workbook
+    // default font size (points) so a 12pt workbook doesn't shrink to
+    // exceljs's 11pt fallback on export.
+    const defaultStyle = (themeFont?.minor || defaultFontSize !== undefined)
+        ? {
+            ...(themeFont?.minor ? { ff: themeFont.minor } : {}),
+            ...(defaultFontSize !== undefined ? { fs: defaultFontSize } : {}),
+        }
+        : undefined;
 
     return {
         id: 'workbook-' + Date.now(),
@@ -2299,6 +2645,16 @@ function readDefaultFontName(snapshot: UniverSnapshot): string | undefined {
     return typeof ff === 'string' && ff ? ff : undefined;
 }
 
+// Workbook default font SIZE (points) from defaultStyle.fs — set on
+// import from styles.xml. Patched back into the exported styles.xml so a
+// 12pt workbook doesn't round-trip to exceljs's 11pt fallback.
+function readDefaultFontSize(snapshot: UniverSnapshot): number | undefined {
+    const ds = (snapshot as { defaultStyle?: unknown }).defaultStyle;
+    if (!ds || typeof ds !== 'object') return undefined;
+    const fs = (ds as { fs?: unknown }).fs;
+    return typeof fs === 'number' && Number.isFinite(fs) && fs > 0 ? fs : undefined;
+}
+
 export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<ArrayBuffer> {
     const wb = new ExcelJS.Workbook();
     const sheetOrder = (snapshot as { sheetOrder?: string[] }).sheetOrder ?? [];
@@ -2312,6 +2668,14 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
         const sheet = sheets[sheetId];
         if (!sheet) continue;
         const ws = wb.addWorksheet(sheet.name || sheetId);
+
+        // Re-emit the source's default column width (issue 11). exceljs
+        // serializes ws.properties.defaultColWidth into <sheetFormatPr>;
+        // columns without an explicit width inherit it instead of
+        // collapsing to exceljs's 8.43 default.
+        if (typeof sheet.defaultColWidthChars === 'number' && sheet.defaultColWidthChars > 0) {
+            (ws.properties as unknown as { defaultColWidth?: number }).defaultColWidth = sheet.defaultColWidthChars;
+        }
 
         const synthForSheet = synthStylesBySheet[sheetId] ?? {};
 
@@ -2329,8 +2693,25 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 const richTextRuns = hyperlinkUrl ? null : extractRichTextRunsFromCellP(data.p);
                 if (data.f) {
                     const formula = data.f.startsWith('=') ? data.f.slice(1) : data.f;
-                    const result = data.v;
-                    cell.value = { formula, result } as ExcelJS.CellFormulaValue;
+                    // Drop formulas that reference external workbooks
+                    // (`[N]!` prefix or `[filename.xlsx]Sheet!` token).
+                    // Notesheet doesn't preserve the source workbook's
+                    // `xl/externalLinks/*` parts on round-trip, so emitting
+                    // these formulas back makes Excel's open-time validator
+                    // strip them and warn the user ("Removed Records:
+                    // Formula from /xl/worksheets/sheet1.xml part"). Better
+                    // to keep just the cached value — Excel opens the file
+                    // cleanly and the cell shows the correct number.
+                    // External-link round-trip is a separate cycle.
+                    const hasExternalRef = /\[\d+\]!|\[[^\]]+\.xlsx?\]/.test(formula);
+                    if (hasExternalRef) {
+                        if (data.v !== undefined && data.v !== null) {
+                            cell.value = data.v;
+                        }
+                    } else {
+                        const result = data.v;
+                        cell.value = { formula, result } as ExcelJS.CellFormulaValue;
+                    }
                 } else if (hyperlinkUrl && data.v !== undefined && data.v !== null) {
                     // Hyperlink-bearing cells use exceljs's { text, hyperlink }
                     // shape — exceljs writes the proper <hyperlinks> block
@@ -2472,6 +2853,10 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     if (defaultFontName) {
         out = await patchThemeFont(out, defaultFontName);
     }
+    const defaultFontSize = readDefaultFontSize(snapshot);
+    if (defaultFontSize !== undefined) {
+        out = await patchDefaultFontSize(out, defaultFontSize);
+    }
     const sourceClrScheme = readSourceClrScheme(snapshot);
     if (sourceClrScheme) {
         out = await patchThemeClrScheme(out, sourceClrScheme);
@@ -2532,6 +2917,38 @@ async function patchThemeFont(buffer: ArrayBuffer, fontName: string): Promise<Ar
         return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
     } catch (e) {
         console.warn('[Notesheet] patchThemeFont failed; theme keeps Calibri default', e);
+        return buffer;
+    }
+}
+
+// Rewrite the DEFAULT font size in the exported xl/styles.xml. exceljs
+// writes the workbook-default <font> with its own 11pt fallback; we
+// replace the first <font>'s <sz val="..."/> (the default that size-less
+// cells inherit) with the size captured on import. Only the first <font>
+// in <fonts> is touched — explicit per-cell font sizes are left alone.
+// Fails soft (returns the input) so a parse miss never corrupts the file.
+async function patchDefaultFontSize(buffer: ArrayBuffer, sizePts: number): Promise<ArrayBuffer> {
+    try {
+        const zip = await JSZip.loadAsync(buffer);
+        const stylesPath = Object.keys(zip.files).find((p) => /^xl\/styles\.xml$/i.test(p));
+        if (!stylesPath) return buffer;
+        const xml = await zip.files[stylesPath].async('string');
+        const fontsBlock = xml.match(/<fonts\b[^>]*>([\s\S]*?)<\/fonts>/);
+        if (!fontsBlock) return buffer;
+        const firstFontMatch = fontsBlock[1].match(/<font>([\s\S]*?)<\/font>/);
+        if (!firstFontMatch) return buffer;
+        const firstFont = firstFontMatch[0];
+        // Replace an existing <sz .../> in the first font, or insert one if
+        // it had none.
+        const patchedFont = /<sz\s+val="[\d.]+"\s*\/>/.test(firstFont)
+            ? firstFont.replace(/<sz\s+val="[\d.]+"\s*\/>/, `<sz val="${sizePts}"/>`)
+            : firstFont.replace(/^<font>/, `<font><sz val="${sizePts}"/>`);
+        if (patchedFont === firstFont) return buffer;
+        const patched = xml.replace(firstFont, patchedFont);
+        zip.file(stylesPath, patched);
+        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+    } catch (e) {
+        console.warn('[Notesheet] patchDefaultFontSize failed; keeping exceljs default size', e);
         return buffer;
     }
 }

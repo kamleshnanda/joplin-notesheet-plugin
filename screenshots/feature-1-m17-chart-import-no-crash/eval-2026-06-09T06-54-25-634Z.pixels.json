@@ -1,0 +1,53 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m17-chart-import-no-crash/eval-2026-06-09T06-54-25-634Z.png",
+  "region": "row-0 (top 80px slab of main canvas)",
+  "regionKind": "rowZero",
+  "dominant": "rgb(234,237,249)",
+  "count": 7562,
+  "sampled": 11754,
+  "top": [
+    [
+      "rgb(234,237,249)",
+      7562
+    ],
+    [
+      "rgb(233,236,248)",
+      1275
+    ],
+    [
+      "rgb(168,176,189)",
+      992
+    ],
+    [
+      "rgb(44,83,241)",
+      412
+    ],
+    [
+      "rgb(214,216,219)",
+      353
+    ],
+    [
+      "rgb(46,85,241)",
+      338
+    ],
+    [
+      "rgb(216,217,217)",
+      185
+    ],
+    [
+      "rgb(204,208,219)",
+      181
+    ]
+  ],
+  "regionWidth": 400,
+  "regionHeight": 80,
+  "inkRows": 80,
+  "inkRowSpread": 1,
+  "redInk": 0,
+  "blueInk": 756,
+  "greenInk": 0,
+  "greyInk": 13,
+  "pinkInk": 0,
+  "lightGreenInk": 0,
+  "yellowInk": 0
+}

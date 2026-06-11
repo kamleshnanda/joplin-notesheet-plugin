@@ -266,7 +266,7 @@ becomes **CONDITIONAL GO with the following conditions**:
    a shared helper module and tested against every multi-run fixture.
 3. **Chart-export round-trip MUST be proven before Phase 2 merges.** Write
    `tests/charts/sheetjsRoundTrip.test.ts` that runs every fixture under
-   `tests/ExcelBaseTestData/chart-testdata/` through
+   `tests/fixtures/charts/` through
    `xlsxBufferToSnapshot` + `snapshotToXlsxBuffer` on the SheetJS path and
    re-imports via `src/xlsx.ts` to verify the post-processor's output
    stays parseable. If `injectChartsIntoZip` doesn't survive the structural
@@ -295,7 +295,7 @@ will validate each:
 | 3 | Univer toolbar formula bar | Manual verification — open a fixture, click into a cell, confirm the formula bar shows the formula. No automated test today; Phase 2 should leave this as-is or add a PGE harness cycle. |
 | 4 | Univer formula evaluation (basic + structured refs) | New Jest: load each fixture under `formatting-testdata/`, walk every cell with a formula, assert `cell.f` round-trips through the new parser. The `tests/golden-snapshots/FormulasAndStructuredRefs.json` is the regression baseline — if any formula text changes, golden test fails. |
 | 5 | Named tables (insert / right-click row+col operations) | Existing tests `tests/exportTableRoundTrip.test.ts` + `tests/m12FixtureRoundTrip.test.ts`. Phase 2 must keep these green. |
-| 6 | Chart insertion + live updates | Existing tests `tests/xlsxChart.test.ts` + the `chart-testdata/` fixtures' golden snapshots. |
+| 6 | Chart insertion + live updates | Existing tests `tests/xlsxChart.test.ts` + the `tests/fixtures/charts/` fixtures' golden snapshots. |
 | 7 | Anchored chart drag/resize | Manual verification on `08-drag-resized.xlsx`. PGE harness cycle is the right place if it becomes a regression hot-spot. |
 | 8 | .xlsx import via Tools menu | Existing `tests/m12FixtureRoundTrip.test.ts` + the new `tests/xlsxParserParity.test.ts` — every fixture roundtrips through the new path. |
 | 9 | .xlsx export via editor button | Existing `tests/exportTableRoundTrip.test.ts` + `tests/exportDebug.test.ts` — Phase 2 keeps these green. |

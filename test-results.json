@@ -1,13 +1,56 @@
 {
-  "feature-1-m16-snapshot-to-html": {
+  "feature-1-m17-chart-import-no-crash": {
     "passes": true,
-    "evidence": [
-      "screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.png",
-      "screenshots/feature-1-m16-snapshot-to-html/eval-2026-06-06T23-46-49-766Z.pixels.json",
-      "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.png",
-      "screenshots/feature-1-m16-snapshot-to-html/generator-evidence.pixels.json"
-    ],
+    "evidence": "screenshots/feature-1-m17-chart-import-no-crash/eval-2026-06-09T06-59-29-150Z.png",
     "evaluator_verdict": "PASS",
-    "last_attempted_at": "2026-06-06T23:55:00Z"
+    "last_attempted_at": "2026-06-09T07:02:20Z"
+  },
+  "feature-2-m17-chart-type-fidelity": {
+    "passes": true,
+    "evidence": "tests/m17ChartTypeFidelity.test.ts (5 tests, anchored to source XML)",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
+  },
+  "feature-3-m17-multisheet-import-editor-canvas": {
+    "passes": true,
+    "evidence": "screenshots/feature-3-m17-multisheet-import-editor-canvas/generator-evidence.png",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
+  },
+  "feature-4-m17-live-update-data-bus": {
+    "passes": true,
+    "evidence": "tests/m17ChartImportLiveUpdate.test.ts (5 tests; bus contract + trackedCharts hydration + extractDataFromSnapshot end-to-end + no second renderer code path)",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
+  },
+  "feature-5-m17-bidirectional-roundtrip-excel-fixtures": {
+    "passes": true,
+    "evidence": "tests/m17ChartBidirectionalRoundTrip.test.ts (5 tests; 4 type fixtures + cross-sheet survives via sourceSheetName plumbing)",
+    "evaluator_verdict": "PASS",
+    "last_attempted_at": "2026-06-09T20:42:00Z"
+  },
+  "feature-6-m17-programmatic-roundtrip-pack": {
+    "passes": true,
+    "evidence": "tests/m17ChartProgrammaticRoundTrip.test.ts (8 tests: 7 in-memory round-trip cases A-G + lint sentinel; screenshots/feature-6-m17-programmatic-roundtrip-pack/jest-result.txt)",
+    "evaluator_verdict": "PENDING",
+    "last_attempted_at": "2026-06-10T12:00:00Z"
+  },
+  "feature-7-m17-chart-svg-html-export-jest": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-8-m17-chart-preview-pane-pge-smoke": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
+  },
+  "feature-9-m17-flip-pin-downs-and-test-count": {
+    "passes": false,
+    "evidence": null,
+    "evaluator_verdict": null,
+    "last_attempted_at": null
   }
 }

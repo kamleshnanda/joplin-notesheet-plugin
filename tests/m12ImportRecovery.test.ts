@@ -56,40 +56,44 @@ async function loadAndCatch(file: string): Promise<unknown> {
 // ─── Crashing fixtures: must reject with NotesheetImportError ─────────
 
 describe('M12 import recovery — crashing fixtures throw typed errors', () => {
-    test('MultiSheet.xlsx → xlsx-charts-unsupported with a friendly message', async () => {
+    test('MultiSheet.xlsx → snapshot with N charts (M17 chart import)', async () => {
+        // M17 (feature-1): MultiSheet.xlsx now imports cleanly via the
+        // pre-load chart strip. The fixture's chart parts are read
+        // independently and re-emitted as a SHEET_DRAWING_PLUGIN
+        // resource on the snapshot; exceljs loads the stripped buffer
+        // without touching the offending drawings. The `xlsx-charts-
+        // unsupported` error class stays defined for future drawing-
+        // related crash classes outside the strip path's coverage.
         const err = await loadAndCatch('MultiSheet.xlsx');
-        expect(err).toBeInstanceOf(NotesheetImportError);
-        const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-charts-unsupported');
-
-        // The user-facing message must NOT carry exceljs's raw stack
-        // shape. The prior cryptic crash text included "anchors",
-        // "undefined", and "TypeError"; the wrapped message must avoid
-        // all three.
-        expect(e.message).not.toMatch(/anchors/i);
-        expect(e.message).not.toMatch(/undefined/i);
-        expect(e.message).not.toMatch(/TypeError/i);
-
-        // Friendly explanation must be present.
-        expect(e.message).toMatch(/chart/i);
-        expect(e.message).toMatch(/Notesheet/);
-
-        // Original error preserved for debugging — keep `cause` populated
-        // so a developer triaging from logs can still see the exceljs
-        // stack via `e.cause`.
-        expect(e.cause).toBeDefined();
-        expect((e.cause as Error).message).toMatch(/anchors/);
+        expect(err).toBeNull();
+        const buf = readFileSync(path.join(FIXTURES_DIR, 'MultiSheet.xlsx'));
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
+        const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+        const drawing = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
+        expect(drawing).toBeDefined();
+        const parsed = JSON.parse(drawing!.data);
+        let chartCount = 0;
+        for (const su of Object.keys(parsed)) {
+            chartCount += Object.keys(parsed[su].data).length;
+        }
+        expect(chartCount).toBeGreaterThanOrEqual(1);
     });
 
-    test('LargeWorkbook.xlsx → xlsx-charts-unsupported (same crash class as MultiSheet)', async () => {
+    test('LargeWorkbook.xlsx → xlsx-multi-table-unsupported (post-M17, second crash class)', async () => {
+        // Pre-M17: this fixture surfaced the `anchors` crash class
+        // (chart-bearing drawing). M17's pre-load chart strip removed
+        // the chart parts; what remains underneath is the multi-table
+        // reduce crash in exceljs's worksheet.js:920 — the same
+        // structural issue FormulasAndStructuredRefs.xlsx exhibits.
+        // The error class flipped from xlsx-charts-unsupported to
+        // xlsx-multi-table-unsupported as a consequence.
         const err = await loadAndCatch('LargeWorkbook.xlsx');
         expect(err).toBeInstanceOf(NotesheetImportError);
         const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-charts-unsupported');
+        expect(e.code).toBe('xlsx-multi-table-unsupported');
         expect(e.message).not.toMatch(/anchors/i);
         expect(e.message).not.toMatch(/undefined/i);
         expect(e.message).not.toMatch(/TypeError/i);
-        expect(e.message).toMatch(/chart/i);
         expect(e.cause).toBeDefined();
     });
 

@@ -167,14 +167,11 @@ async function handleExport(): Promise<void> {
 // sheet, then disposed when the panel closes.
 let chartSelectionDisposable: { dispose: () => void } | null = null;
 
-// Charts inserted in this session, keyed by chartId. Used by SheetEditEnded
+// Charts tracked by the data bus, keyed by chartId. Used by SheetEditEnded
 // to figure out which charts need a fresh data push when a cell changes.
-// We do NOT track positions here — Univer owns those via the snapshot.
-interface TrackedChart {
-    id: string;
-    sourceRange: RangeAddress;
-}
-const trackedCharts = new Map<string, TrackedChart>();
+// Source-range positions live here; Univer owns the chart's anchor via
+// the SHEET_DRAWING_PLUGIN snapshot resource.
+import { populateTrackedChartsFromSnapshot, trackedCharts } from './charts/trackedCharts';
 
 function rangeContainsCell(r: RangeAddress, row: number, col: number): boolean {
     return row >= r.startRow && row <= r.endRow && col >= r.startColumn && col <= r.endColumn;
@@ -652,6 +649,27 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     univer.createUnit(UniverInstanceType.UNIVER_SHEET, snapshot);
     activeUniver = univer;
     activeApi = univerAPI;
+
+    // M17: hydrate the editor's chart-tracking map from the snapshot's
+    // SHEET_DRAWING_PLUGIN resource. Charts that arrived via
+    // xlsxBufferToSnapshot don't otherwise wire into the data bus —
+    // they'd render once with stale data and never refresh on edit.
+    populateTrackedChartsFromSnapshot(snapshot);
+
+    // M17 feature-3: imported chart drawings auto-mount via Univer's
+    // SHEET_DRAWING_PLUGIN resource hook (drawingType: 8 = DRAWING_DOM
+    // + componentKey: 'NotesheetChart' + transform/data block, written
+    // by xlsxBufferToSnapshot). The resource hook walks every entry on
+    // load and dispatches each to the registered float-DOM component.
+    //
+    // This is a quiet but load-bearing contract: the M13-style trap
+    // (chart subscribed to the bus but never visible) only manifests
+    // when the snapshot's drawing entry has the wrong drawingType or
+    // is missing the transform block. Univer silently drops malformed
+    // entries instead of throwing. The Jest tests in
+    // tests/m17ChartImportLiveUpdate.test.ts assert the bus contract
+    // independently of the runtime mount; the runtime gate is
+    // feature-3's screenshot.
 
     // Expose the Univer FUniver facade on `window` so the PGE harness's
     // `eval-screenshot.js` (which evaluates JS inside the
