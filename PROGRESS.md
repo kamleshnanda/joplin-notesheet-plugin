@@ -337,13 +337,39 @@ every feature.
     failure mode as the M13 rotation "bug" (stale build, not a renderer
     gap). LESSON: when a chart-render bug is reported, FIRST check the
     installed .jpl's mtime against the relevant commit before debugging.
-  - **Issue 10 / task #24 (trendline bars reversed) — fix committed,
-    AWAITING operator eyeball.** Chart.js indexAxis='y' draws first
-    category at top, Excel at bottom; set `scales.y.reverse=true` for
-    barDir='bar' (committed). Confirmed present in the rebuilt+reinstalled
-    .jpl. Renderer-only, not Jest-testable. Operator to verify 10-bar-with-
-    trendline renders Jan at the bottom (and that the value-axis labels
-    didn't flip side).
+  - **Issue 10 / task #24 (trendline bars reversed) — RESOLVED
+    2026-06-10.** `scales.y.reverse=true` for barDir='bar' (committed).
+    Operator confirmed 10-bar-with-trendline works. (Trendline itself
+    still not rendered in Joplin OR export — explicitly out of M17 scope,
+    deferred to M18.)
+
+  **Second operator test round (2026-06-10) — 8 of 11 fully pass; 3
+  items still open + 1 NEW bug found:**
+  - **NEW BUG — workbook default font size 12 → 11 on export.** Source
+    workbooks use Aptos Narrow (Body) **12**; exported sheets show **11**.
+    ROOT CAUSE (diagnosed read-only): `readThemeFont` captures only the
+    minorFont *typeface name*, not the default *size*. The default size
+    lives in `xl/styles.xml`'s workbook-default `<font><sz val="12"/>`
+    (cells inherit it; they carry no explicit `sz`). We don't read it, so
+    exceljs falls back to its built-in 11. FIX PLAN (mirror patchThemeFont):
+    read the default `<sz>` from styles.xml at import → carry on
+    `defaultStyle.fs` → patch exported styles.xml default font size on
+    export. NOT yet implemented (operator still testing).
+  - **Issue 3/6 PARTIALLY open — pie labels render in EXPORT but NOT in
+    Joplin's live canvas.** The export fix landed (operator confirmed the
+    exported .xlsx has slice labels). But Joplin's live Chart.js canvas
+    shows no slice labels — this is the known `chartjs-plugin-datalabels`
+    gap (see ## Notes). Needs the dep added + registered + buildConfig
+    wiring. Operator screenshot:
+    ~/Desktop/PieChartLabelsMissingInJoplin.png. Flag dep diff first.
+  - **Issue 7 — RESOLVED (operator re-test correction).** 07-chart-cross-
+    sheet works. A probe confirmed our exported 07 value-axis gridlines
+    match the source byte-for-byte (same light-grey `w="9525"` major
+    gridlines) — nothing spurious; the Group-1 axis-line fix covered it.
+
+  **FINAL second-round verdict: 8/11 fully pass. Three open issues:**
+  pie slice annotations (live-canvas only), workbook default font size,
+  and trendlines.
   - **Benign:** the `representedObject is not a
     WeakPtrToElectronMenuModelAsNSObject` console spam is a macOS
     Electron menu warning, NOT from the plugin. Ignore.
