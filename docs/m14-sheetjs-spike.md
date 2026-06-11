@@ -118,7 +118,7 @@ Three findings from the spike, each independently sufficient to block GO:
 ### 1. Borders are completely dropped from indexed-cellXf cells
 
 For every Microsoft-Excel-generated fixture the spike ran (the entire
-`tests/ExcelBaseTestData/formatting-testdata/` set), `wb.Styles.Borders` is
+`tests/fixtures/formatting-testdata/` set), `wb.Styles.Borders` is
 an array of empty `{}` objects, and the per-cell `c.s` field carries no
 border information. This was verified by reading
 `xl/styles.xml` directly: the file DOES contain
@@ -293,7 +293,7 @@ will validate each:
 | 1 | Snapshot creation via `New Spreadsheet` command | Existing Jest test (`tests/snapshot.test.ts`'s `emptySnapshot` exercises) — Phase 2 runs unchanged. |
 | 2 | Snapshot editing in Univer (cell value changes round-trip) | Existing Jest test (`tests/snapshot.test.ts:wrapSnapshot`/`extractSnapshot` round-trip pin-down) — Phase 2 runs unchanged. |
 | 3 | Univer toolbar formula bar | Manual verification — open a fixture, click into a cell, confirm the formula bar shows the formula. No automated test today; Phase 2 should leave this as-is or add a PGE harness cycle. |
-| 4 | Univer formula evaluation (basic + structured refs) | New Jest: load each fixture under `formatting-testdata/`, walk every cell with a formula, assert `cell.f` round-trips through the new parser. The `tests/golden-snapshots/FormulasAndStructuredRefs.json` is the regression baseline — if any formula text changes, golden test fails. |
+| 4 | Univer formula evaluation (basic + structured refs) | New Jest: load each fixture under `tests/fixtures/formatting-testdata/`, walk every cell with a formula, assert `cell.f` round-trips through the new parser. The `tests/golden-snapshots/FormulasAndStructuredRefs.json` is the regression baseline — if any formula text changes, golden test fails. |
 | 5 | Named tables (insert / right-click row+col operations) | Existing tests `tests/exportTableRoundTrip.test.ts` + `tests/m12FixtureRoundTrip.test.ts`. Phase 2 must keep these green. |
 | 6 | Chart insertion + live updates | Existing tests `tests/xlsxChart.test.ts` + the `tests/fixtures/charts/` fixtures' golden snapshots. |
 | 7 | Anchored chart drag/resize | Manual verification on `08-drag-resized.xlsx`. PGE harness cycle is the right place if it becomes a regression hot-spot. |
@@ -319,7 +319,7 @@ together cover the surface area. Each must stay green for Phase 2 to ship.
 |---|---|---|
 | Parallel parser module | `src/xlsxSheetJS.ts` | Public surface mirrors `src/xlsx.ts`; dead code at runtime; exercised only by the parity test bed. |
 | Parser parity test | `tests/xlsxParserParity.test.ts` | 24 fixtures × 14 dimensions matrix; writes `tests/golden-snapshots/parity-matrix.json`. |
-| Golden snapshots | `tests/golden-snapshots/*.json` | 14 baseline goldens (one per fixture under `formatting-testdata/`) — Phase 2 regression target. |
+| Golden snapshots | `tests/golden-snapshots/*.json` | 14 baseline goldens (one per fixture under `tests/fixtures/formatting-testdata/`) — Phase 2 regression target. |
 | Decision document | `docs/m14-sheetjs-spike.md` | This file. |
 
 ---
