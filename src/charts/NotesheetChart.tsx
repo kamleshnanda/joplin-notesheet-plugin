@@ -6,11 +6,20 @@
 
 import * as React from 'react';
 import { Chart, registerables, type ChartConfiguration, type ChartType } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 import type { ChartData, RangeAddress } from './extractData';
 import { CHART_PALETTE } from './extractData';
 import { subscribeChartUpdate } from './dataBus';
 
+// registerables covers the core controllers/elements/scales. We register
+// the datalabels plugin SEPARATELY (not globally active) — its `display`
+// defaults to off per-config below, so bar/line charts and pies with
+// labels turned off never paint labels. Excel stores the pie slice-label
+// flags (showCatName/showPercent) on meta.dLbls; Chart.js core can't draw
+// per-slice labels, so this plugin fills the editor-canvas gap (the
+// EXPORTED .xlsx already carries the labels independently).
 Chart.register(...registerables);
+Chart.register(ChartDataLabels);
 
 export type NotesheetChartType = 'bar' | 'line' | 'pie' | 'doughnut';
 
@@ -302,6 +311,39 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         ? (typeof data?.meta?.holeSize === 'number' ? `${data.meta.holeSize}%` : '50%')
         : undefined;
 
+    // Slice data labels (pie/doughnut). Excel keeps these flags on
+    // meta.dLbls (showCatName / showPercent / showVal); Chart.js core
+    // can't draw per-slice labels, so we drive chartjs-plugin-datalabels
+    // here. The plugin is registered globally, so we MUST default it OFF
+    // and only switch it on for pie/doughnut when a label flag is set —
+    // otherwise bar/line charts would gain stray value labels. The
+    // formatter composes the same parts Excel shows: category name, value,
+    // and/or percent of total (matching the source dLbls selection).
+    const dl = data?.meta?.dLbls;
+    const wantsSliceLabels = (type === 'pie' || type === 'doughnut')
+        && !!dl && !!(dl.showCatName || dl.showPercent || dl.showVal);
+    const datalabelsConfig = wantsSliceLabels
+        ? {
+            display: true,
+            color: '#ffffff',
+            font: { size: 11, weight: 'bold' as const },
+            formatter: (value: number, ctx: { chart: Chart; dataIndex: number }): string => {
+                const parts: string[] = [];
+                if (dl?.showCatName) {
+                    const lbl = ctx.chart.data.labels?.[ctx.dataIndex];
+                    if (lbl != null) parts.push(String(lbl));
+                }
+                if (dl?.showVal) parts.push(String(value));
+                if (dl?.showPercent) {
+                    const ds = ctx.chart.data.datasets[0]?.data as number[] | undefined;
+                    const total = (ds ?? []).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0);
+                    if (total > 0) parts.push(`${Math.round((value / total) * 100)}%`);
+                }
+                return parts.join('\n');
+            },
+        }
+        : { display: false };
+
     return {
         type,
         data: { labels, datasets },
@@ -320,6 +362,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
                 title: data?.title
                     ? { display: true, text: data.title, font: { size: 14 } }
                     : { display: false },
+                datalabels: datalabelsConfig,
             },
         },
     };
