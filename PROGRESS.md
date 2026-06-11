@@ -618,6 +618,23 @@ stripped buffer is passed to exceljs.
 
 ## Notes
 
+- **Pie thin-slice label overlap → custom leader-line plugin (2026-06-10).**
+  Operator found that on 06-two-charts-one-sheet the two small slices
+  (Latin America 10%, Middle East & Africa 5%) had their centroid labels
+  overlapping in Joplin, vs Excel pushing them out with leader lines.
+  No Chart.js v4 leader-line plugin exists (only a 2.x `outlabels`), so
+  hand-rolled `src/charts/pieLabelsPlugin.ts`: inside centroid labels for
+  roomy slices, pushed-outside + leader line + per-side vertical
+  de-overlap + word-wrap for small/crowded ones. REPLACED
+  chartjs-plugin-datalabels (now removed — no dead dep). KNOWN-OPEN: the
+  float-DOM chart canvas is only ~461px wide (probed at runtime), so long
+  wrapped labels still clip at the container's left edge. The mechanism
+  works; the fit in a narrow box needs more tuning (options: shrink pie /
+  cap categories to a short form / widen container). Iterate against
+  ~/Desktop/ExcelPie.png. Screenshots: screenshots/m17-pie-datalabels/.
+  Harness: scripts/pge/screenshot-pie.js scrolls Univer to a far column
+  (charts anchored off the initial viewport) via window.__notesheetUniverAPI
+  then screenshots — pass the target column as arg 3.
 - **PGE install/launch ORDER matters: quit → install → launch.**
   `install-plugin.sh` UNINSTALLS then reinstalls. If Joplin is already
   RUNNING when it runs, the live session processes the uninstall and the
