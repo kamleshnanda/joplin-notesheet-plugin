@@ -124,7 +124,7 @@ The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable 
 | ❌ | M14 — SheetJS Community migration spike (NO-GO; see [`docs/m14-sheetjs-spike.md`](./docs/m14-sheetjs-spike.md)) | [#24](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/24) |
 | ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
 | ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) |
-| ⏳ | M17 — Chart import from `.xlsx` (drawings + chart definitions) | planned |
+| ✅ | M17 — Chart import from `.xlsx` (chart definitions + trendlines + pie leader-line labels) | [#32](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/32) |
 
 ### Dependency hygiene
 
