@@ -690,6 +690,34 @@ async function readThemeFont(buffer: ArrayBuffer | Uint8Array | Buffer): Promise
     return { minor, major };
 }
 
+// Read the workbook's DEFAULT font size (points) from xl/styles.xml.
+// The default font is the first <font> in <fonts> (xf index 0 references
+// it); cells with no explicit size inherit it. Excel writes e.g.
+// `<sz val="12"/>` there for an Aptos Narrow 12 workbook. exceljs doesn't
+// surface this, and on export it falls back to its own built-in 11 — so a
+// 12pt source workbook round-tripped to 11pt (the font-shrink bug). We
+// capture it here and patch the exported styles.xml default back. Returns
+// undefined when absent or unparseable (caller keeps exceljs's default).
+async function readDefaultFontSizeFromXlsx(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<number | undefined> {
+    let zip: JSZip;
+    try {
+        zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    } catch {
+        return undefined;
+    }
+    const stylesPath = Object.keys(zip.files).find((p) => /^xl\/styles\.xml$/i.test(p));
+    if (!stylesPath) return undefined;
+    const xml = await zip.files[stylesPath].async('string');
+    const fontsBlock = xml.match(/<fonts\b[^>]*>([\s\S]*?)<\/fonts>/);
+    if (!fontsBlock) return undefined;
+    const firstFont = fontsBlock[1].match(/<font>([\s\S]*?)<\/font>/);
+    if (!firstFont) return undefined;
+    const sz = firstFont[1].match(/<sz\s+val="([\d.]+)"/);
+    if (!sz) return undefined;
+    const n = parseFloat(sz[1]);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 // Read xl/theme/theme1.xml's <a:clrScheme>. Excel resolves named colors
 // like "accent1" through this scheme — and the same TableStyle (e.g.
 // TableStyleMedium4) renders different hues depending on which theme is
@@ -1863,6 +1891,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // fell back to its own default and the imported sheet showed Arial
     // regardless of source.
     const themeFont = await readThemeFont(buffer);
+    // Workbook default font SIZE (points) — exceljs drops it and falls back
+    // to 11, shrinking a 12pt source workbook on export. See issue: font
+    // size 12 → 11.
+    const defaultFontSize = await readDefaultFontSizeFromXlsx(buffer);
     // Captured for export-time replay so the workbook's table-style colors
     // resolve against the same accent palette they did originally.
     const themeClrScheme = await readThemeClrScheme(buffer);
@@ -2347,8 +2379,15 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // Workbook-level default style. Univer cells without an explicit `s`
     // inherit from this. We use it to carry the source theme's body font
     // (minorFont) so imported sheets render in Aptos Narrow / Calibri / etc.
-    // instead of Univer's hardcoded fallback.
-    const defaultStyle = themeFont?.minor ? { ff: themeFont.minor } : undefined;
+    // instead of Univer's hardcoded fallback. `fs` carries the workbook
+    // default font size (points) so a 12pt workbook doesn't shrink to
+    // exceljs's 11pt fallback on export.
+    const defaultStyle = (themeFont?.minor || defaultFontSize !== undefined)
+        ? {
+            ...(themeFont?.minor ? { ff: themeFont.minor } : {}),
+            ...(defaultFontSize !== undefined ? { fs: defaultFontSize } : {}),
+        }
+        : undefined;
 
     return {
         id: 'workbook-' + Date.now(),
@@ -2606,6 +2645,16 @@ function readDefaultFontName(snapshot: UniverSnapshot): string | undefined {
     return typeof ff === 'string' && ff ? ff : undefined;
 }
 
+// Workbook default font SIZE (points) from defaultStyle.fs — set on
+// import from styles.xml. Patched back into the exported styles.xml so a
+// 12pt workbook doesn't round-trip to exceljs's 11pt fallback.
+function readDefaultFontSize(snapshot: UniverSnapshot): number | undefined {
+    const ds = (snapshot as { defaultStyle?: unknown }).defaultStyle;
+    if (!ds || typeof ds !== 'object') return undefined;
+    const fs = (ds as { fs?: unknown }).fs;
+    return typeof fs === 'number' && Number.isFinite(fs) && fs > 0 ? fs : undefined;
+}
+
 export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<ArrayBuffer> {
     const wb = new ExcelJS.Workbook();
     const sheetOrder = (snapshot as { sheetOrder?: string[] }).sheetOrder ?? [];
@@ -2804,6 +2853,10 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     if (defaultFontName) {
         out = await patchThemeFont(out, defaultFontName);
     }
+    const defaultFontSize = readDefaultFontSize(snapshot);
+    if (defaultFontSize !== undefined) {
+        out = await patchDefaultFontSize(out, defaultFontSize);
+    }
     const sourceClrScheme = readSourceClrScheme(snapshot);
     if (sourceClrScheme) {
         out = await patchThemeClrScheme(out, sourceClrScheme);
@@ -2864,6 +2917,38 @@ async function patchThemeFont(buffer: ArrayBuffer, fontName: string): Promise<Ar
         return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
     } catch (e) {
         console.warn('[Notesheet] patchThemeFont failed; theme keeps Calibri default', e);
+        return buffer;
+    }
+}
+
+// Rewrite the DEFAULT font size in the exported xl/styles.xml. exceljs
+// writes the workbook-default <font> with its own 11pt fallback; we
+// replace the first <font>'s <sz val="..."/> (the default that size-less
+// cells inherit) with the size captured on import. Only the first <font>
+// in <fonts> is touched — explicit per-cell font sizes are left alone.
+// Fails soft (returns the input) so a parse miss never corrupts the file.
+async function patchDefaultFontSize(buffer: ArrayBuffer, sizePts: number): Promise<ArrayBuffer> {
+    try {
+        const zip = await JSZip.loadAsync(buffer);
+        const stylesPath = Object.keys(zip.files).find((p) => /^xl\/styles\.xml$/i.test(p));
+        if (!stylesPath) return buffer;
+        const xml = await zip.files[stylesPath].async('string');
+        const fontsBlock = xml.match(/<fonts\b[^>]*>([\s\S]*?)<\/fonts>/);
+        if (!fontsBlock) return buffer;
+        const firstFontMatch = fontsBlock[1].match(/<font>([\s\S]*?)<\/font>/);
+        if (!firstFontMatch) return buffer;
+        const firstFont = firstFontMatch[0];
+        // Replace an existing <sz .../> in the first font, or insert one if
+        // it had none.
+        const patchedFont = /<sz\s+val="[\d.]+"\s*\/>/.test(firstFont)
+            ? firstFont.replace(/<sz\s+val="[\d.]+"\s*\/>/, `<sz val="${sizePts}"/>`)
+            : firstFont.replace(/^<font>/, `<font><sz val="${sizePts}"/>`);
+        if (patchedFont === firstFont) return buffer;
+        const patched = xml.replace(firstFont, patchedFont);
+        zip.file(stylesPath, patched);
+        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+    } catch (e) {
+        console.warn('[Notesheet] patchDefaultFontSize failed; keeping exceljs default size', e);
         return buffer;
     }
 }
