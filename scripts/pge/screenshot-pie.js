@@ -3,7 +3,15 @@
 // into view, then screenshot the editor webview frame. Used to visually
 // verify the custom pie leader-line label plugin against Excel.
 //
-// usage: node screenshot-pie.js <noteId> [outPath] [scrollX]
+// IMPORTANT: this runs `prep-joplin-window.sh` FIRST (maximize via
+// Window > Fill + hide sidebar + note list), exactly like the real
+// eval-screenshot.sh harness. Skipping that prep was a real trap: the
+// sidebar + note list eat ~500-700px on the left, pushing the chart box
+// partly out of frame — which reads as "labels clipped" when the chart
+// is actually fine. Always prep before capturing.
+//
+// usage: node screenshot-pie.js <noteId> [outPath] [scrollCol]
+const path = require('path');
 const playwright = require('playwright');
 const { execFileSync } = require('child_process');
 
@@ -11,7 +19,16 @@ async function main() {
     const noteId = process.argv[2];
     const outPath = process.argv[3] || `/tmp/pie-${Date.now()}.png`;
     const scrollX = parseInt(process.argv[4] || '700', 10);
-    if (!noteId) { console.error('usage: screenshot-pie.js <noteId> [outPath] [scrollX]'); process.exit(2); }
+    if (!noteId) { console.error('usage: screenshot-pie.js <noteId> [outPath] [scrollCol]'); process.exit(2); }
+
+    // Prep the window the same way eval-screenshot.sh does (maximize +
+    // hide sidebar + note list + close DevTools). Without this the left
+    // panes crop the chart and the capture misleads.
+    try {
+        execFileSync('bash', [path.join(__dirname, 'prep-joplin-window.sh')], { stdio: 'inherit' });
+    } catch (e) {
+        console.error('screenshot-pie: prep-joplin-window.sh failed (continuing, capture may be cropped):', e.message);
+    }
 
     execFileSync('open', [`joplin://x-callback-url/openNote?id=${noteId}`]);
     await new Promise((r) => setTimeout(r, 2500));
