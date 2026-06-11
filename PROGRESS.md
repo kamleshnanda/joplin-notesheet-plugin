@@ -370,6 +370,27 @@ every feature.
   **FINAL second-round verdict: 8/11 fully pass. Three open issues:**
   pie slice annotations (live-canvas only), workbook default font size,
   and trendlines.
+
+  - **Font size 12→11 — RESOLVED 2026-06-10, operator-confirmed.**
+    `readDefaultFontSizeFromXlsx` reads the first `<font><sz>` in
+    styles.xml at import → `defaultStyle.fs` → `patchDefaultFontSize`
+    rewrites the exported styles.xml default font back. No new dep.
+    `tests/m17DefaultFontSize.test.ts` (4). Full suite 371/371.
+    Remaining: pie live-canvas labels (needs chartjs-plugin-datalabels)
+    + trendlines (M18 scope).
+  - **Pie/doughnut slice labels in Joplin canvas (issues 3/6) — DONE
+    2026-06-10, operator-approved dep + PGE-verified.** Added
+    `chartjs-plugin-datalabels@^2.2.0` (MIT, 0 transitive deps,
+    chart.js>=3 peer, +12.8KB editor bundle). Registered globally but
+    `display:false` by default; enabled only for pie/doughnut when
+    meta.dLbls has showCatName/showVal/showPercent. Formatter composes
+    catName/value/percent. Verified by ME via PGE (screenshots under
+    `screenshots/m17-pie-datalabels/`): pie renders A/40% B/30% C/20%
+    D/10%; bar chart confirmed label-free (no stray-label regression) AND
+    re-confirmed issue-10 bar order (Q1 bottom) + clean axes in the same
+    shot. Full suite 371/371. The exported .xlsx already had labels (prior
+    import fix); this closes the live-canvas gap. ONLY trendlines remain
+    (explicitly M18 scope).
   - **Benign:** the `representedObject is not a
     WeakPtrToElectronMenuModelAsNSObject` console spam is a macOS
     Electron menu warning, NOT from the plugin. Ignore.
@@ -597,18 +618,21 @@ stripped buffer is passed to exceljs.
 
 ## Notes
 
-- **Pie slice labels render in exported Excel but NOT in Joplin's live
-  canvas.** Chart.js core cannot draw per-slice data labels
-  (category name / percent) — that requires the
-  `chartjs-plugin-datalabels` plugin, which is NOT a dependency. The
-  M17 Group-2 fix (2026-06-10) makes `meta.dLbls.showCatName/showPercent`
-  survive import→export so the re-opened .xlsx shows labels (what the
-  operator reported), and `NotesheetChart` already carries the flags on
-  `data.meta.dLbls`. To also show them in the editor: add
-  `chartjs-plugin-datalabels`, register it, and in `buildConfig` map
-  `meta.dLbls` → `plugins.datalabels` formatter (catName + percent).
-  Deferred because it adds a runtime dep and a bundle-size hit; flag the
-  dep diff to the operator per dependency-hygiene rules before adding.
+- **PGE install/launch ORDER matters: quit → install → launch.**
+  `install-plugin.sh` UNINSTALLS then reinstalls. If Joplin is already
+  RUNNING when it runs, the live session processes the uninstall and the
+  plugin vanishes for that session (symptom: eval-screenshot warns
+  "UserWebviewIndex frame did not appear", note opens with no Notesheet
+  editor, and the .jpl can even disappear from the plugins dir due to a
+  held lock). Burned a cycle on this 2026-06-10. ALWAYS: `osascript -e
+  'quit app "Joplin"'` → `install-plugin.sh` → `launch-joplin.sh` →
+  re-import the fixture into the FRESH session (old note's editor
+  association is stale). See [[feedback-stale-build-first-suspect]].
+- **Pie slice labels — RESOLVED 2026-06-10.** Now rendered in the editor
+  via `chartjs-plugin-datalabels` (registered global, display:false
+  default, enabled per-config for pie/doughnut from meta.dLbls). The
+  exported .xlsx already carried the labels via the import→export dLbls
+  fix. Both paths now show labels.
 - **feature-6 Case D — empty-doughnut PRESERVE-with-placeholder.**
   The spec lets the empty-series doughnut either DROP (0 drawings) or
   PRESERVE (1 drawing). The implementation lands on PRESERVE, but NOT
