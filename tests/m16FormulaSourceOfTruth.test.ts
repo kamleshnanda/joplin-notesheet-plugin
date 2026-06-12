@@ -38,18 +38,31 @@ import { xlsxBufferToSnapshot } from '../src/xlsx';
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, { f?: string; v?: unknown; t?: number; s?: string }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<
+                number,
+                Record<number, { f?: string; v?: unknown; t?: number; s?: string }>
+            >;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
 }
 
-const APTOS = path.join(__dirname, 'fixtures', 'formatting-testdata', 'FormattingSmorgasboard.xlsx');
+const APTOS = path.join(
+    __dirname,
+    'fixtures',
+    'formatting-testdata',
+    'FormattingSmorgasboard.xlsx',
+);
 
 describe('M16 formula source-of-truth contract', () => {
     test('Aptos fixture: every formula cell has BOTH f and v populated at import', async () => {
         const buf = readFileSync(APTOS);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+        const snap = (await xlsxBufferToSnapshot(
+            buf as unknown as Buffer,
+        )) as unknown as SnapshotShape;
 
         let formulaCount = 0;
         let withV = 0;
@@ -84,7 +97,9 @@ describe('M16 formula source-of-truth contract', () => {
         ws.getCell('B1').value = { formula: 'SUM(A1:A3)', result: 999 };
 
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+        const snap = (await xlsxBufferToSnapshot(
+            buf as unknown as Buffer,
+        )) as unknown as SnapshotShape;
 
         const b1 = snap.sheets[snap.sheetOrder[0]].cellData[0]?.[1];
         expect(b1?.f).toBe('=SUM(A1:A3)');
@@ -95,12 +110,14 @@ describe('M16 formula source-of-truth contract', () => {
         expect(b1?.v).toBe(999);
     });
 
-    test('Aptos fixture: synthesizeTableStyleAssignments does not touch formula cells\' v or f', async () => {
+    test("Aptos fixture: synthesizeTableStyleAssignments does not touch formula cells' v or f", async () => {
         // The totals row has formulas (=SUBTOTAL(...)). The synth
         // applies bd.t (DOUBLE, header colour) + bd.b (MEDIUM, lighter
         // accent) overlays. It must NOT modify v or f on those cells.
         const buf = readFileSync(APTOS);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+        const snap = (await xlsxBufferToSnapshot(
+            buf as unknown as Buffer,
+        )) as unknown as SnapshotShape;
 
         // Totals row is row 9 (0-indexed) in ProjectTracker A1:G10.
         // C9 (col 2, 0-indexed) has =SUBTOTAL(109, ProjectTracker[Budget]).
@@ -116,9 +133,12 @@ describe('M16 formula source-of-truth contract', () => {
         expect(totalsBudget?.s).toBeDefined();
         const totalsStyle = snap.styles[totalsBudget!.s!];
         expect(totalsStyle.bd).toBeDefined();
-        const bd = totalsStyle.bd as { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } };
-        expect(bd.t?.s).toBe(7);  // DOUBLE
-        expect(bd.b?.s).toBe(8);  // MEDIUM
+        const bd = totalsStyle.bd as {
+            t?: { s: number; cl: { rgb: string } };
+            b?: { s: number; cl: { rgb: string } };
+        };
+        expect(bd.t?.s).toBe(7); // DOUBLE
+        expect(bd.b?.s).toBe(8); // MEDIUM
     });
 
     test('renderer contract: HTML output of a formula cell shows cell.v, not cell.f', () => {

@@ -8,7 +8,7 @@ This document describes the technical design for a Joplin plugin that integrates
 
 ### 2.1 High-Level Architecture
 
-```
+````
 ┌─────────────────────────────────────────────────────────┐
 │                    Joplin Application                    │
 │  ┌───────────────────────────────────────────────────┐  │
@@ -41,23 +41,26 @@ This document describes the technical design for a Joplin plugin that integrates
 │  { "id": "...", "sheets": {...}, "cellData": {...} }    │
 │  ```                                                     │
 └─────────────────────────────────────────────────────────┘
-```
+````
 
 ### 2.2 Component Breakdown
 
 #### 2.2.1 Plugin Main Module (`src/index.ts`)
+
 - Registers plugin with Joplin API
 - Creates toolbar button, menu items, and keyboard shortcuts
 - Registers content script for note rendering
 - Handles "Insert Spreadsheet" command
 
 #### 2.2.2 Content Script (`src/contentScript.ts`)
+
 - Intercepts Markdown rendering
 - Detects `univer-sheet` fence blocks
 - Initializes Univer instances in the DOM
 - Manages lifecycle of spreadsheet components
 
 #### 2.2.3 Univer Manager (`src/univerSheet.ts`)
+
 - Encapsulates Univer SDK initialization
 - Manages workbook data structure
 - Provides serialization/deserialization methods
@@ -69,7 +72,7 @@ This document describes the technical design for a Joplin plugin that integrates
 
 Spreadsheets are stored as JSON within Markdown fence blocks:
 
-```markdown
+````markdown
 ```univer-sheet
 {
   "id": "workbook-1234567890",
@@ -100,7 +103,9 @@ Spreadsheets are stored as JSON within Markdown fence blocks:
   }
 }
 ```
-```
+````
+
+````
 
 ### 3.2 Cell Data Structure
 
@@ -232,18 +237,18 @@ New spreadsheets are initialized with:
   "react": "^18.3.1",
   "react-dom": "^18.3.1"
 }
-```
+````
 
 ### 6.2 Development Dependencies
 
 ```json
 {
-  "typescript": "^5.0.0",
-  "webpack": "^5.0.0",
-  "webpack-cli": "^5.0.0",
-  "ts-loader": "^9.0.0",
-  "@types/react": "^18.0.0",
-  "@types/react-dom": "^18.0.0"
+    "typescript": "^5.0.0",
+    "webpack": "^5.0.0",
+    "webpack-cli": "^5.0.0",
+    "ts-loader": "^9.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0"
 }
 ```
 
@@ -253,20 +258,17 @@ New spreadsheets are initialized with:
 
 ```typescript
 class UniverSheetManager {
-  // Initialize Univer instance in container
-  async initialize(
-    container: HTMLElement, 
-    initialData?: WorkbookData
-  ): Promise<FUniver>
-  
-  // Get current workbook data for saving
-  getWorkbookData(): WorkbookData | null
-  
-  // Clean up and dispose instance
-  dispose(): void
-  
-  // Get default workbook structure
-  private getDefaultWorkbookData(): WorkbookData
+    // Initialize Univer instance in container
+    async initialize(container: HTMLElement, initialData?: WorkbookData): Promise<FUniver>;
+
+    // Get current workbook data for saving
+    getWorkbookData(): WorkbookData | null;
+
+    // Clean up and dispose instance
+    dispose(): void;
+
+    // Get default workbook structure
+    private getDefaultWorkbookData(): WorkbookData;
 }
 ```
 
@@ -277,7 +279,7 @@ export default function(context: any) {
   return {
     // Markdown-it plugin
     plugin: function(markdownIt: any, options: any)
-    
+
     // CSS assets to load
     assets: function(): Array<{name: string}>
   }
@@ -291,10 +293,10 @@ joplin.plugins.register({
   onStart: async function() {
     // Register content script
     await joplin.contentScripts.register(...)
-    
+
     // Register commands
     await joplin.commands.register(...)
-    
+
     // Create UI elements
     await joplin.views.toolbarButtons.create(...)
     await joplin.views.menuItems.create(...)
@@ -305,16 +307,19 @@ joplin.plugins.register({
 ## 8. Security Considerations
 
 ### 8.1 Input Validation
+
 - Validate JSON structure before parsing
 - Sanitize cell values to prevent XSS
 - Limit spreadsheet dimensions to prevent DoS
 
 ### 8.2 Resource Limits
+
 - Maximum spreadsheet size: 1000 rows × 100 columns
 - Maximum cell content length: 10KB
 - Maximum workbook JSON size: 5MB
 
 ### 8.3 Formula Security
+
 - Formulas execute in sandboxed environment
 - No access to file system or network
 - No eval() or code execution
@@ -322,16 +327,19 @@ joplin.plugins.register({
 ## 9. Performance Considerations
 
 ### 9.1 Rendering Optimization
+
 - Lazy initialization of Univer instances
 - Virtual scrolling for large spreadsheets
 - Debounced save operations
 
 ### 9.2 Memory Management
+
 - Dispose Univer instances when notes close
 - Limit concurrent spreadsheet instances
 - Clear unused workbook data
 
 ### 9.3 Sync Optimization
+
 - Compress JSON where possible
 - Delta updates for large spreadsheets (future)
 - Throttle save operations
@@ -339,16 +347,19 @@ joplin.plugins.register({
 ## 10. Testing Strategy
 
 ### 10.1 Unit Tests
+
 - UniverSheetManager initialization
 - Data serialization/deserialization
 - Default workbook generation
 
 ### 10.2 Integration Tests
+
 - Plugin registration with Joplin
 - Content script rendering
 - Command execution
 
 ### 10.3 Manual Testing
+
 - Create spreadsheet in note
 - Edit cells and formulas
 - Save and reload note
@@ -358,18 +369,21 @@ joplin.plugins.register({
 ## 11. Future Enhancements
 
 ### 11.1 Phase 2 Features
+
 - Auto-save with configurable interval
 - Import/export Excel files
 - Custom cell formatting
 - Chart support
 
 ### 11.2 Phase 3 Features
+
 - Collaborative editing indicators
 - Spreadsheet templates
 - Advanced formula library
 - Mobile optimization
 
 ### 11.3 Phase 4 Features
+
 - Real-time collaboration
 - Cloud-based calculation
 - Plugin API for extensions
@@ -378,6 +392,7 @@ joplin.plugins.register({
 ## 12. Deployment
 
 ### 12.1 Build Process
+
 ```bash
 npm install          # Install dependencies
 npm run dist         # Build plugin
@@ -388,14 +403,17 @@ Output: `publish/com.kamleshnanda.joplin-univer-plugin.jpl`
 ### 12.2 Installation Methods
 
 **Development Mode**:
+
 - Add plugin directory to Joplin development plugins
 - Restart Joplin
 
 **Production Mode**:
+
 - Install .jpl file via Joplin plugin manager
 - Restart Joplin
 
 ### 12.3 Distribution
+
 - Publish to npm with `joplin-plugin-` prefix
 - Include keywords: `joplin-plugin`, `Excel`, `Spreadsheet`, `Univer`, `Kamlesh`
 - Automatic inclusion in Joplin plugin repository
@@ -403,16 +421,19 @@ Output: `publish/com.kamleshnanda.joplin-univer-plugin.jpl`
 ## 13. Maintenance
 
 ### 13.1 Version Management
+
 - Follow semantic versioning
 - Update manifest.json and package.json in sync
 - Use `npm run updateVersion` script
 
 ### 13.2 Dependency Updates
+
 - Monitor Univer SDK releases
 - Test compatibility before upgrading
 - Document breaking changes
 
 ### 13.3 Issue Tracking
+
 - GitHub issues for bug reports
 - Feature requests via discussions
 - Security issues via private disclosure

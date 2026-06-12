@@ -114,11 +114,14 @@
 > **`SHEET_DRAWING_PLUGIN` snapshot resource shape (from
 > `src/charts/xlsxChart.ts:310` — `readChartsFromSnapshot`).** The
 > resource's `data` field is a JSON-stringified map:
+>
 > ```
 > { [subUnitId]: { data: { [drawingId]: ISheetDrawing }, order: string[] } }
 > ```
+>
 > Each `ISheetDrawing` filtered by `componentKey === 'NotesheetChart'`
 > carries:
+>
 > ```
 > {
 >   componentKey: 'NotesheetChart',
@@ -136,6 +139,7 @@
 >   },
 > }
 > ```
+>
 > M10's export pipeline (`readChartsFromSnapshot`) already documents
 > this shape. M17's import path writes the SAME shape directly into
 > the snapshot's `resources` array — we are outside Univer's command
@@ -154,7 +158,7 @@
 > `src/charts/extractData.ts` directly drags `chart.js` types and the
 > data-extraction logic into the bundle. An **8-entry hex array**
 > (`['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
-> '#06b6d4', '#84cc16']` — verified at `src/charts/extractData.ts:11-20`)
+'#06b6d4', '#84cc16']` — verified at `src/charts/extractData.ts:11-20`)
 > with a comment (`// MUST match src/charts/extractData.ts:CHART_PALETTE`)
 > is simpler and stays under M16's bundle target.
 >
@@ -249,63 +253,54 @@ The evaluator must verify ALL of the following from a fresh context:
    Jest test `tests/m17ChartImportNoCrash.test.ts` loads each file
    under `tests/fixtures/charts/01-bar-simple.xlsx` through
    `10-bar-with-trendline.xlsx` via `xlsxBufferToSnapshot()` and
-   asserts:
-   - No exception thrown.
-   - Returned snapshot is a valid object with non-empty `sheetOrder`.
-   - Snapshot has a `resources` array containing an entry whose
-     `name === 'SHEET_DRAWING_PLUGIN'`.
-   - Parsing that resource's `data` JSON via the M10 reader pattern
-     (`readChartsFromSnapshot(snapshot)`) returns at least 1 chart
-     drawing for every fixture except `06-two-charts-one-sheet.xlsx`,
-     which returns exactly 2.
-   - **Multi-anchor walk discipline.**
-     `06-two-charts-one-sheet.xlsx` packs BOTH charts into a SINGLE
-     `xl/drawings/drawing1.xml` with two `<xdr:twoCellAnchor>`
-     blocks (verified via `unzip -p
-     tests/fixtures/charts/06-two-charts-one-sheet.xlsx
-     xl/drawings/drawing1.xml`). For each
-     `xl/drawings/drawingN.xml`, the implementation MUST walk
-     its `<xdr:twoCellAnchor>` / `<xdr:oneCellAnchor>` /
-     `<xdr:absoluteAnchor>` elements **in document order**. For
-     each anchor, look up its `r:id` against
-     `xl/drawings/_rels/drawingN.xml.rels` to resolve the chart
-     part path, then parse THAT chart's xml. Walking
-     `xl/charts/chart{N}.xml` in zip-key order is **wrong** — it
-     mis-aligns charts with anchors when one drawing has multiple
-     anchors. Pin-down: assert
-     `06-two-charts-one-sheet.xlsx`'s drawing has chart1.xml
-     mapped to anchor 0 (the FIRST `<xdr:twoCellAnchor>` block in
-     `drawing1.xml`) and chart2.xml mapped to anchor 1 (the
-     SECOND block). The exact `<xdr:from>`/`<xdr:to>` coordinates
-     for each anchor are read from the source XML for assertion —
-     **NOT hardcoded in the test** (the M13/E our-own-emit trap;
-     parse them at test time so a future re-saved fixture flows
-     through).
+   asserts: - No exception thrown. - Returned snapshot is a valid object with non-empty `sheetOrder`. - Snapshot has a `resources` array containing an entry whose
+   `name === 'SHEET_DRAWING_PLUGIN'`. - Parsing that resource's `data` JSON via the M10 reader pattern
+   (`readChartsFromSnapshot(snapshot)`) returns at least 1 chart
+   drawing for every fixture except `06-two-charts-one-sheet.xlsx`,
+   which returns exactly 2. - **Multi-anchor walk discipline.**
+   `06-two-charts-one-sheet.xlsx` packs BOTH charts into a SINGLE
+   `xl/drawings/drawing1.xml` with two `<xdr:twoCellAnchor>`
+   blocks (verified via `unzip -p
+tests/fixtures/charts/06-two-charts-one-sheet.xlsx
+xl/drawings/drawing1.xml`). For each
+   `xl/drawings/drawingN.xml`, the implementation MUST walk
+   its `<xdr:twoCellAnchor>` / `<xdr:oneCellAnchor>` /
+   `<xdr:absoluteAnchor>` elements **in document order**. For
+   each anchor, look up its `r:id` against
+   `xl/drawings/_rels/drawingN.xml.rels` to resolve the chart
+   part path, then parse THAT chart's xml. Walking
+   `xl/charts/chart{N}.xml` in zip-key order is **wrong** — it
+   mis-aligns charts with anchors when one drawing has multiple
+   anchors. Pin-down: assert
+   `06-two-charts-one-sheet.xlsx`'s drawing has chart1.xml
+   mapped to anchor 0 (the FIRST `<xdr:twoCellAnchor>` block in
+   `drawing1.xml`) and chart2.xml mapped to anchor 1 (the
+   SECOND block). The exact `<xdr:from>`/`<xdr:to>` coordinates
+   for each anchor are read from the source XML for assertion —
+   **NOT hardcoded in the test** (the M13/E our-own-emit trap;
+   parse them at test time so a future re-saved fixture flows
+   through).
 2. **Chart fields match source XML — anchored upstream.** The same
    test parses `xl/charts/chart{N}.xml` and `xl/drawings/drawing{N}.xml`
    directly from the fixture's zip (using `JSZip` + regex or
    stdlib XML reading — same pattern as `tests/util/pngSampler.ts`,
    pure-stdlib, no new deps) and asserts the snapshot's chart drawing
-   matches the source XML on:
-   - `type` (parsed from `<c:barChart>` / `<c:lineChart>` / `<c:pieChart>`
-     / `<c:doughnutChart>` element name).
-   - `sourceRange` — parsed from the `<c:f>` CHILD of
-     `<c:cat><c:strRef>` (categories ref) AND the `<c:f>` CHILD of
-     `<c:val><c:numRef>` (values ref). The bounding box of cat-ref
-     unioned with val-ref across all `<c:ser>` is the source range.
-     **The FIRST `<c:f>` in the chart XML is the series-name ref
-     nested inside `<c:tx><c:strRef>`, NOT the categories ref —
-     verified by `unzip -p tests/fixtures/charts/01-bar-simple.xlsx
-     xl/charts/chart1.xml | grep '<c:f>'` (returns `Sheet1!$B$1`,
-     `Sheet1!$A$2:$A$5`, `Sheet1!$B$2:$B$5` in that order — the
-     categories ref is the SECOND, not the first). Same shape in
-     03-pie-single, 09-bar-percent-axis, 07-chart-cross-sheet.**
-     Row/col indices decoded from the `Sheet!$A$1:$B$5` ref string.
-   - `anchor` (parsed from the drawing XML's
-     `<xdr:from>`/`<xdr:to>` `<xdr:col>`/`<xdr:row>` numbers).
-   - `chartId` is non-empty (we don't pin a specific id format —
-     either a synthetic uuid or a normalized form from the drawing
-     part is acceptable).
+   matches the source XML on: - `type` (parsed from `<c:barChart>` / `<c:lineChart>` / `<c:pieChart>`
+   / `<c:doughnutChart>` element name). - `sourceRange` — parsed from the `<c:f>` CHILD of
+   `<c:cat><c:strRef>` (categories ref) AND the `<c:f>` CHILD of
+   `<c:val><c:numRef>` (values ref). The bounding box of cat-ref
+   unioned with val-ref across all `<c:ser>` is the source range.
+   **The FIRST `<c:f>` in the chart XML is the series-name ref
+   nested inside `<c:tx><c:strRef>`, NOT the categories ref —
+   verified by `unzip -p tests/fixtures/charts/01-bar-simple.xlsx
+xl/charts/chart1.xml | grep '<c:f>'` (returns `Sheet1!$B$1`,
+   `Sheet1!$A$2:$A$5`, `Sheet1!$B$2:$B$5` in that order — the
+   categories ref is the SECOND, not the first). Same shape in
+   03-pie-single, 09-bar-percent-axis, 07-chart-cross-sheet.**
+   Row/col indices decoded from the `Sheet!$A$1:$B$5` ref string. - `anchor` (parsed from the drawing XML's
+   `<xdr:from>`/`<xdr:to>` `<xdr:col>`/`<xdr:row>` numbers). - `chartId` is non-empty (we don't pin a specific id format —
+   either a synthetic uuid or a normalized form from the drawing
+   part is acceptable).
    The expected values come from the source XML, NEVER from what
    `xlsxBufferToSnapshot` produces. Per `feedback_pge_fidelity_test_gap.md`.
 3. **Synthetic robustness cases — drawing-shape coverage beyond
@@ -313,26 +308,26 @@ The evaluator must verify ALL of the following from a fresh context:
    simple `<xdr:twoCellAnchor>` + non-empty `<c:cat>` + the standard
    drawing-rels shape. The Jest test additionally covers (built
    in-memory in the test, NOT checked-in fixtures):
-   - **`<xdr:oneCellAnchor>` drawing.** A synthetic .xlsx with a
-     chart anchored via `oneCellAnchor` (one corner, plus an
-     EMU `<xdr:ext>` extent). Asserts: import does NOT throw;
-     produces 1 chart drawing with `anchor.fromCol/fromRow`
-     populated and either an inferred `to` (e.g. `from + ext`
-     converted to cell coords) or null `to` — pin one shape and
-     document the choice in `## Notes`.
-   - **Missing chart-target rels.** A synthetic .xlsx with a
-     drawing whose `_rels/drawing1.xml.rels` points at a
-     `chartZ.xml` that doesn't exist in `xl/charts/`. This is
-     the original 'anchors' crash class exceljs's reconcile loop
-     trips on. Asserts: import does NOT throw; produces 0 chart
-     drawings (the dangling reference is silently dropped); a
-     `console.warn` is logged with the missing target path.
-   - **`<c:cat>` omitted (numeric-axis chart shape).** Synthetic
-     chart XML with only `<c:val>` and no `<c:cat>` — Excel emits
-     this for numeric scatter / X-Y plots. Asserts: import does
-     NOT throw; the chart is dropped with a warn (M17's
-     ChartType union doesn't include 'scatter'; document the
-     drop in `## Notes`).
+    - **`<xdr:oneCellAnchor>` drawing.** A synthetic .xlsx with a
+      chart anchored via `oneCellAnchor` (one corner, plus an
+      EMU `<xdr:ext>` extent). Asserts: import does NOT throw;
+      produces 1 chart drawing with `anchor.fromCol/fromRow`
+      populated and either an inferred `to` (e.g. `from + ext`
+      converted to cell coords) or null `to` — pin one shape and
+      document the choice in `## Notes`.
+    - **Missing chart-target rels.** A synthetic .xlsx with a
+      drawing whose `_rels/drawing1.xml.rels` points at a
+      `chartZ.xml` that doesn't exist in `xl/charts/`. This is
+      the original 'anchors' crash class exceljs's reconcile loop
+      trips on. Asserts: import does NOT throw; produces 0 chart
+      drawings (the dangling reference is silently dropped); a
+      `console.warn` is logged with the missing target path.
+    - **`<c:cat>` omitted (numeric-axis chart shape).** Synthetic
+      chart XML with only `<c:val>` and no `<c:cat>` — Excel emits
+      this for numeric scatter / X-Y plots. Asserts: import does
+      NOT throw; the chart is dropped with a warn (M17's
+      ChartType union doesn't include 'scatter'; document the
+      drop in `## Notes`).
 4. **The `xlsx-charts-unsupported` error class stays defined.** The
    `NotesheetImportError` class is still exported, the
    `xlsx-charts-unsupported` code is still a recognized literal, and
@@ -390,8 +385,8 @@ The evaluator must verify ALL of the following from a fresh context:
 - Don't symptom-patch test failures. If a typecheck or test regresses
   after wiring the import path, run `git diff package-lock.json` first
   per `feedback_dependency_hygiene.md`. The new path uses only stdlib
-  + JSZip + the existing chart utilities — no new dependency should
-  appear.
+    - JSZip + the existing chart utilities — no new dependency should
+      appear.
 - **Untouchable test files**: this feature MUST NOT edit any of:
   `m13RotatedText.test.ts`, `m13RichText.test.ts`,
   `m12FixturePinDowns.test.ts`, `m12FixtureRoundTrip.test.ts`,
@@ -429,15 +424,15 @@ remains the existing four-type union from `src/charts/xlsxChart.ts:24`.
 **Acceptance criteria**
 
 1. **Type round-trip — Jest test `tests/m17ChartTypeFidelity.test.ts`.**
-   - `01-bar-simple.xlsx` imports as a chart with `type === 'bar'`.
-   - `02-line-multi-series.xlsx` imports as `type === 'line'`.
-   - `03-pie-single.xlsx` imports as `type === 'pie'`.
-   - `04-doughnut.xlsx` imports as `type === 'doughnut'`.
-   The expected `type` value comes from independently parsing the
-   source `xl/charts/chart{N}.xml`'s top-level chart-type element name
-   (`<c:barChart>` / `<c:lineChart>` / `<c:pieChart>` /
-   `<c:doughnutChart>`) — anchored UPSTREAM, not pinned to our own
-   emit literal.
+    - `01-bar-simple.xlsx` imports as a chart with `type === 'bar'`.
+    - `02-line-multi-series.xlsx` imports as `type === 'line'`.
+    - `03-pie-single.xlsx` imports as `type === 'pie'`.
+    - `04-doughnut.xlsx` imports as `type === 'doughnut'`.
+      The expected `type` value comes from independently parsing the
+      source `xl/charts/chart{N}.xml`'s top-level chart-type element name
+      (`<c:barChart>` / `<c:lineChart>` / `<c:pieChart>` /
+      `<c:doughnutChart>`) — anchored UPSTREAM, not pinned to our own
+      emit literal.
 2. **Multi-series count for line.** `02-line-multi-series.xlsx`'s
    imported drawing has `datasets.length === 3` (the source XML has
    three `<c:ser>` elements; the test parses the source to confirm
@@ -519,14 +514,14 @@ regionKind makes this possible.
    The screenshot's `floatDomChart` regionKind targets the outer
    Univer container (NOT just the main canvas — that would crop
    off the chart). The screenshot shows:
-   - At least one rendered table region (cells from the imported
-     sheet — confirmed by visible row/col headers in the canvas).
-   - At least one Chart.js float-DOM visible at its anchor (the user
-     would recognise it as a chart — bars, lines, or pie slices
-     visible).
-   - The chart's title text visible.
-   - No raw "Cannot read properties of undefined (reading 'anchors')"
-     error shown anywhere in the UI.
+    - At least one rendered table region (cells from the imported
+      sheet — confirmed by visible row/col headers in the canvas).
+    - At least one Chart.js float-DOM visible at its anchor (the user
+      would recognise it as a chart — bars, lines, or pie slices
+      visible).
+    - The chart's title text visible.
+    - No raw "Cannot read properties of undefined (reading 'anchors')"
+      error shown anywhere in the UI.
 3. **Pixel sidecar `eval-*.pixels.json` includes** at least one
    non-background colour from the `CHART_PALETTE` array (which is
    an **8-entry hex array**, verified at
@@ -604,25 +599,25 @@ must already be subscribed to render at all).
 
 1. **Jest test
    `tests/m17ChartImportLiveUpdate.test.ts`** asserts:
-   - Import `01-bar-simple.xlsx` to a snapshot via
-     `xlsxBufferToSnapshot()`.
-   - The snapshot has exactly one chart drawing in the
-     `SHEET_DRAWING_PLUGIN` resource.
-   - The chart drawing's `chartId` is a non-empty string.
-   - Calling **`extractDataFromSnapshot(snapshot, sourceRange)`**
-     (a NEW production helper M17 adds to
-     `src/charts/extractData.ts` — the existing exported function
-     is `extractRangeAsChartData(workbook, range)` which takes a
-     Univer FWorkbook, NOT a snapshot — verified at
-     `src/charts/extractData.ts:60`; M17 needs the snapshot variant
-     for the M16 content-script renderer (feature-7) to extract
-     chart data without booting Univer) against the imported chart's
-     `sourceRange` returns labels and dataset values matching
-     what the source `xl/charts/chart{N}.xml` declared. Expected
-     values come from independently parsing the source XML's
-     `<c:cat><c:strRef><c:strCache><c:pt><c:v>` and
-     `<c:val><c:numRef><c:numCache><c:pt><c:v>` elements — NOT from
-     `xlsxBufferToSnapshot`'s output.
+    - Import `01-bar-simple.xlsx` to a snapshot via
+      `xlsxBufferToSnapshot()`.
+    - The snapshot has exactly one chart drawing in the
+      `SHEET_DRAWING_PLUGIN` resource.
+    - The chart drawing's `chartId` is a non-empty string.
+    - Calling **`extractDataFromSnapshot(snapshot, sourceRange)`**
+      (a NEW production helper M17 adds to
+      `src/charts/extractData.ts` — the existing exported function
+      is `extractRangeAsChartData(workbook, range)` which takes a
+      Univer FWorkbook, NOT a snapshot — verified at
+      `src/charts/extractData.ts:60`; M17 needs the snapshot variant
+      for the M16 content-script renderer (feature-7) to extract
+      chart data without booting Univer) against the imported chart's
+      `sourceRange` returns labels and dataset values matching
+      what the source `xl/charts/chart{N}.xml` declared. Expected
+      values come from independently parsing the source XML's
+      `<c:cat><c:strRef><c:strCache><c:pt><c:v>` and
+      `<c:val><c:numRef><c:numCache><c:pt><c:v>` elements — NOT from
+      `xlsxBufferToSnapshot`'s output.
 2. **Bus-id parity.** The test confirms that the imported chart's
    `chartId` is what a `subscribeChartUpdate(chartId, listener)` call
    would key off. (Concretely: the test reads the chart-drawing
@@ -654,16 +649,16 @@ must already be subscribed to render at all).
    the harness was built to prevent.**
 4. **End-to-end live update through trackedCharts.** Builds on
    criterion 3. The Jest test:
-   - Imports a snapshot with one chart.
-   - Calls the snapshot-load population helper.
-   - Subscribes a listener to the imported chart's `chartId`.
-   - Simulates an edit to a cell inside the chart's source range
-     (modify `cell.v`, then trigger whatever function `editorView.tsx`
-     uses to fan out source-range edits to chart subscribers — at
-     `editorView.tsx:200` today it iterates `trackedCharts.values()`
-     and calls `pushChartUpdate(chart.id, fresh)` per chart whose
-     range contains the edited cell).
-   - Asserts the listener fires with new data reflecting the edit.
+    - Imports a snapshot with one chart.
+    - Calls the snapshot-load population helper.
+    - Subscribes a listener to the imported chart's `chartId`.
+    - Simulates an edit to a cell inside the chart's source range
+      (modify `cell.v`, then trigger whatever function `editorView.tsx`
+      uses to fan out source-range edits to chart subscribers — at
+      `editorView.tsx:200` today it iterates `trackedCharts.values()`
+      and calls `pushChartUpdate(chart.id, fresh)` per chart whose
+      range contains the edited cell).
+    - Asserts the listener fires with new data reflecting the edit.
 5. **No second renderer code path.** Static-analysis sentinel: a
    `grep` test (or simple file-content check) asserts that
    `src/editorView.tsx`'s chart-mount logic doesn't grow a second
@@ -706,26 +701,19 @@ must already be subscribed to render at all).
 A chart imported from one of the hand-crafted fixtures and then
 exported back through Notesheet's existing M10 pipeline produces an
 xlsx that re-imports with the same chart drawing. This pins import
-+ export are inverse operations on the chart subset, parallel to
-how M9 (tables) and M15 (CF) already pin inverse round-trip on their
-respective subsets.
+
+- export are inverse operations on the chart subset, parallel to
+  how M9 (tables) and M15 (CF) already pin inverse round-trip on their
+  respective subsets.
 
 **Acceptance criteria**
 
 1. **Jest test `tests/m17ChartBidirectionalRoundTrip.test.ts`**
    asserts for each of the four type-anchor fixtures
    (`01-bar-simple.xlsx`, `02-line-multi-series.xlsx`,
-   `03-pie-single.xlsx`, `04-doughnut.xlsx`):
-   - Import the fixture to a snapshot via `xlsxBufferToSnapshot()`.
-   - Export the snapshot via `snapshotToXlsxBuffer()` (M10 path).
-   - Re-import the resulting buffer via `xlsxBufferToSnapshot()`.
-   - The second snapshot's chart drawing matches the first snapshot's
-     chart drawing on:
-     - `type` (string equality).
-     - `sourceRange` (deep equality on `{startRow, endRow, startColumn,
-       endColumn}`).
-     - `labels` (array equality).
-     - `datasets[*].label` and `datasets[*].data` (deep equality).
+   `03-pie-single.xlsx`, `04-doughnut.xlsx`): - Import the fixture to a snapshot via `xlsxBufferToSnapshot()`. - Export the snapshot via `snapshotToXlsxBuffer()` (M10 path). - Re-import the resulting buffer via `xlsxBufferToSnapshot()`. - The second snapshot's chart drawing matches the first snapshot's
+   chart drawing on: - `type` (string equality). - `sourceRange` (deep equality on `{startRow, endRow, startColumn,
+endColumn}`). - `labels` (array equality). - `datasets[*].label` and `datasets[*].data` (deep equality).
    The expected values come from the FIRST snapshot, NOT from a
    hardcoded literal — this is a snapshot-vs-snapshot inverseness
    test (fundamentally the M9 pattern, not the M13/E pattern). It
@@ -746,19 +734,19 @@ respective subsets.
    sheet field; on cross-sheet imports that's wrong. M17 plumbs
    `sourceSheetId` through both M10 export and M17 import, then
    feature-5's cross-sheet test:
-   - Imports `07-chart-cross-sheet.xlsx` and asserts the
-     chart's `sourceSheetId` resolves to Sheet1 (data sheet),
-     not Sheet2 (chart sheet). The expected sheet name comes
-     from the source XML (`<c:f>Sheet1!$A$2:$A$5</c:f>`),
-     parsed independently.
-   - After M10 export + re-import, asserts the round-tripped
-     chart's `sourceSheetId` STILL resolves to Sheet1. Catches
-     "M10 silently rebuilds the formula prefix as the chart's
-     containing sheet" — which would let the cached labels/values
-     pass equality but break Excel's re-evaluation from cells.
-   - Asserts the EXPORTED xlsx's `xl/charts/chart1.xml`'s
-     `<c:f>` formula prefix is still `Sheet1!`, not `Sheet2!`
-     (verify via JSZip + regex on the exported buffer).
+    - Imports `07-chart-cross-sheet.xlsx` and asserts the
+      chart's `sourceSheetId` resolves to Sheet1 (data sheet),
+      not Sheet2 (chart sheet). The expected sheet name comes
+      from the source XML (`<c:f>Sheet1!$A$2:$A$5</c:f>`),
+      parsed independently.
+    - After M10 export + re-import, asserts the round-tripped
+      chart's `sourceSheetId` STILL resolves to Sheet1. Catches
+      "M10 silently rebuilds the formula prefix as the chart's
+      containing sheet" — which would let the cached labels/values
+      pass equality but break Excel's re-evaluation from cells.
+    - Asserts the EXPORTED xlsx's `xl/charts/chart1.xml`'s
+      `<c:f>` formula prefix is still `Sheet1!`, not `Sheet2!`
+      (verify via JSZip + regex on the exported buffer).
 
 **Out of scope**
 
@@ -811,7 +799,7 @@ respective subsets.
 - **`07-chart-cross-sheet.xlsx` is misnamed.** The fixture has the
   chart anchored on Sheet2 referencing Sheet1 data (verified via
   `unzip -p tests/fixtures/charts/07-chart-cross-sheet.xlsx
-  xl/charts/chart1.xml | grep '<c:f>'` → all three formula refs
+xl/charts/chart1.xml | grep '<c:f>'` → all three formula refs
   resolve to `Sheet1!`, `Sheet1!$A$2:$A$5`, `Sheet1!$B$2:$B$5`).
   But BOTH the categories ref AND the values ref are on Sheet1 —
   they're not split across DIFFERENT sheets. So this fixture
@@ -843,35 +831,35 @@ the operator cares about (`type`, `sourceRange`, `anchor`, `labels`,
 
 1. **Jest test `tests/m17ChartProgrammaticRoundTrip.test.ts` covers
    the following cases at minimum:**
-   - **Case A — bar chart with negative values.** Datasets contain
-     mixed positive and negative numbers (e.g. `[3, -2, 5, -1]`).
-     Round-trip preserves all values including negatives.
-   - **Case B — line chart with single-data-point series.** Labels
-     length 1, datasets[0].data length 1. Round-trip preserves the
-     1-element shape.
-   - **Case C — pie chart with very long category labels.** At
-     least one label > 30 chars. Round-trip preserves the label
-     string verbatim.
-   - **Case D — doughnut chart with empty series (zero rows of
-     data).** Labels length 0, datasets[0].data length 0. Round-trip
-     does NOT crash; the resulting drawing is either preserved with
-     empty arrays, or silently dropped — the test accepts either
-     outcome (DROP results in zero chart drawings; PRESERVE results
-     in one chart drawing with empty arrays). Document which path
-     the implementation takes in `## Notes`.
-   - **Case E — bar chart with special chars in title and category
-     names.** Title contains `&`, `<`, `>`, `"`, `'`. Category names
-     contain `&`, `<`, `>`. Round-trip preserves the strings
-     verbatim. (This pins the M10 `escapeXml` + the M17 reverse-
-     unescape are inverse on the supported character set.)
-   - **Case F — cross-sheet chart.** A snapshot with two sheets;
-     chart on Sheet2 references data on Sheet1. Round-trip preserves
-     the cross-sheet reference. (Parallels `07-chart-cross-sheet.xlsx`
-     but generated, so the test is self-contained.)
-   - **Case G — two charts on one sheet.** Two chart drawings in
-     `SHEET_DRAWING_PLUGIN` for the same `subUnitId`. Round-trip
-     preserves both with distinct `chartId`s. (Parallels
-     `06-two-charts-one-sheet.xlsx` but generated.)
+    - **Case A — bar chart with negative values.** Datasets contain
+      mixed positive and negative numbers (e.g. `[3, -2, 5, -1]`).
+      Round-trip preserves all values including negatives.
+    - **Case B — line chart with single-data-point series.** Labels
+      length 1, datasets[0].data length 1. Round-trip preserves the
+      1-element shape.
+    - **Case C — pie chart with very long category labels.** At
+      least one label > 30 chars. Round-trip preserves the label
+      string verbatim.
+    - **Case D — doughnut chart with empty series (zero rows of
+      data).** Labels length 0, datasets[0].data length 0. Round-trip
+      does NOT crash; the resulting drawing is either preserved with
+      empty arrays, or silently dropped — the test accepts either
+      outcome (DROP results in zero chart drawings; PRESERVE results
+      in one chart drawing with empty arrays). Document which path
+      the implementation takes in `## Notes`.
+    - **Case E — bar chart with special chars in title and category
+      names.** Title contains `&`, `<`, `>`, `"`, `'`. Category names
+      contain `&`, `<`, `>`. Round-trip preserves the strings
+      verbatim. (This pins the M10 `escapeXml` + the M17 reverse-
+      unescape are inverse on the supported character set.)
+    - **Case F — cross-sheet chart.** A snapshot with two sheets;
+      chart on Sheet2 references data on Sheet1. Round-trip preserves
+      the cross-sheet reference. (Parallels `07-chart-cross-sheet.xlsx`
+      but generated, so the test is self-contained.)
+    - **Case G — two charts on one sheet.** Two chart drawings in
+      `SHEET_DRAWING_PLUGIN` for the same `subUnitId`. Round-trip
+      preserves both with distinct `chartId`s. (Parallels
+      `06-two-charts-one-sheet.xlsx` but generated.)
 2. **Each case anchors to its ORIGINAL snapshot, NOT to the
    re-imported snapshot or to a hardcoded literal.** The test reads
    the original snapshot's chart-drawing fields, runs the round-trip,
@@ -939,53 +927,53 @@ default renderer.
 
 1. **Jest test `tests/m17ChartInHtmlExport.test.ts` covers FIVE
    distinct render cases:**
-   - **Bar chart fixture.** Builds a programmatic bar-chart snapshot
-     in-memory (using the same `buildChartSnapshot` helper feature-6
-     introduces, or an inline equivalent). Runs the M16 renderer
-     on the snapshot. Asserts the resulting HTML contains exactly
-     one `<svg>` element AND the count of `<rect>` elements inside
-     that SVG equals the dataset's `data.length`. **Structural
-     floors (prevent the "0 rects, valid input, still passes"
-     degenerate-emit hole):** every `<rect>` MUST have
-     `width > 0` AND `height > 0`. The dataset's data length MUST
-     be ≥ 1 (the test's input has 4 points; assert `rectCount >= 1`
-     in addition to `rectCount === data.length`).
-   - **Line chart fixture.** Programmatic line-chart snapshot.
-     Renders an `<svg>` containing at least one `<polyline>` OR one
-     `<path>` element per dataset. The count of polylines+paths
-     dedicated to data lines (excluding axis lines / titles) equals
-     `datasets.length`. **Structural floor:** each line element's
-     `points` attr (or `d` attr for path) parses to ≥ 2
-     comma-separated coordinate pairs (a "line" with 1 point is
-     degenerate).
-   - **Pie chart fixture.** Programmatic pie-chart snapshot. Renders
-     an `<svg>` containing one `<path>` per slice (one per data
-     point in `datasets[0].data`). The pie sweep angles approximate
-     the data proportions within ±3° (tolerance accounts for
-     `pathArcCommand` rounding). The test independently computes the
-     expected sweep angles from the input data
-     (`angle_i = data[i] / sum(data) * 360`) and parses each
-     `<path>`'s `d` attribute to extract the sweep — same M13/E
-     "expected from input, NOT from emit" discipline. **Structural
-     floors:** sum of all sweep angles is within ±1° of 360, AND
-     no individual sweep angle is exactly 0.
-   - **No-charts fall-through.** A snapshot with NO
-     `SHEET_DRAWING_PLUGIN` resource (M16's existing test-case
-     shape) renders as a table-only HTML with NO `<svg>` elements.
-     The M16 base test cases still pass — feature-7 implementation
-     does NOT regress them.
-   - **CF + chart on the same sheet.** A snapshot with both a
-     `SHEET_CONDITIONAL_FORMATTING_PLUGIN` resource (one cellIs
-     rule painting B2:B5 pink) AND a `SHEET_DRAWING_PLUGIN`
-     resource (one bar chart anchored at B2:F20). Renders to
-     HTML containing BOTH the CF-coloured `<td>` (the cellIs
-     paint flows through M16's existing CF evaluator) AND the
-     chart `<svg>`, in document order: the `<table>` block
-     first, then the `<svg>`. No `position:absolute` /
-     `z-index` styling — the chart sits AFTER the table, never
-     overlaid. (Hand-authored SVG inline in HTML can't easily
-     layer over a colour-painted `<td>`; the explicit non-overlay
-     behaviour avoids inventing a layout system.)
+    - **Bar chart fixture.** Builds a programmatic bar-chart snapshot
+      in-memory (using the same `buildChartSnapshot` helper feature-6
+      introduces, or an inline equivalent). Runs the M16 renderer
+      on the snapshot. Asserts the resulting HTML contains exactly
+      one `<svg>` element AND the count of `<rect>` elements inside
+      that SVG equals the dataset's `data.length`. **Structural
+      floors (prevent the "0 rects, valid input, still passes"
+      degenerate-emit hole):** every `<rect>` MUST have
+      `width > 0` AND `height > 0`. The dataset's data length MUST
+      be ≥ 1 (the test's input has 4 points; assert `rectCount >= 1`
+      in addition to `rectCount === data.length`).
+    - **Line chart fixture.** Programmatic line-chart snapshot.
+      Renders an `<svg>` containing at least one `<polyline>` OR one
+      `<path>` element per dataset. The count of polylines+paths
+      dedicated to data lines (excluding axis lines / titles) equals
+      `datasets.length`. **Structural floor:** each line element's
+      `points` attr (or `d` attr for path) parses to ≥ 2
+      comma-separated coordinate pairs (a "line" with 1 point is
+      degenerate).
+    - **Pie chart fixture.** Programmatic pie-chart snapshot. Renders
+      an `<svg>` containing one `<path>` per slice (one per data
+      point in `datasets[0].data`). The pie sweep angles approximate
+      the data proportions within ±3° (tolerance accounts for
+      `pathArcCommand` rounding). The test independently computes the
+      expected sweep angles from the input data
+      (`angle_i = data[i] / sum(data) * 360`) and parses each
+      `<path>`'s `d` attribute to extract the sweep — same M13/E
+      "expected from input, NOT from emit" discipline. **Structural
+      floors:** sum of all sweep angles is within ±1° of 360, AND
+      no individual sweep angle is exactly 0.
+    - **No-charts fall-through.** A snapshot with NO
+      `SHEET_DRAWING_PLUGIN` resource (M16's existing test-case
+      shape) renders as a table-only HTML with NO `<svg>` elements.
+      The M16 base test cases still pass — feature-7 implementation
+      does NOT regress them.
+    - **CF + chart on the same sheet.** A snapshot with both a
+      `SHEET_CONDITIONAL_FORMATTING_PLUGIN` resource (one cellIs
+      rule painting B2:B5 pink) AND a `SHEET_DRAWING_PLUGIN`
+      resource (one bar chart anchored at B2:F20). Renders to
+      HTML containing BOTH the CF-coloured `<td>` (the cellIs
+      paint flows through M16's existing CF evaluator) AND the
+      chart `<svg>`, in document order: the `<table>` block
+      first, then the `<svg>`. No `position:absolute` /
+      `z-index` styling — the chart sits AFTER the table, never
+      overlaid. (Hand-authored SVG inline in HTML can't easily
+      layer over a colour-painted `<td>`; the explicit non-overlay
+      behaviour avoids inventing a layout system.)
 2. **`CHART_PALETTE` colour parity.** At least one case asserts the
    first dataset's primary colour in the SVG output matches
    `CHART_PALETTE[0]` — currently `#3b82f6` (the actual first entry
@@ -996,7 +984,7 @@ default renderer.
    silently if the source format shifts) so a future palette change
    updates both the runtime AND the test atomically.
 3. **No new visualization-library dependency added.** `git diff
-   package.json package-lock.json` after the implementation lands
+package.json package-lock.json` after the implementation lands
    shows no new entry for `chart.js`, `d3`, `victory`, or any
    visualization lib in the content-script's transitive set.
    (Verification: `npm ls --json | jq` over the content-script
@@ -1088,22 +1076,22 @@ two screenshot-grades.
    `prep-joplin-window.sh` fills the window with preview-pane visible.
    Re-uses M16's `previewPane` regionKind from `eval-screenshot.js`.
    The screenshot shows:
-   - The rendered HTML table with cells from each sheet (M16's
-     existing render path — confirmed by `<table>` + cell-bg
-     visible).
-   - At least one inline `<svg>` chart element at the chart's anchor
-     position.
-   - The chart's title text (the SVG `<title>` content or a `<text>`
-     element with the title string) visible.
-   - No raw JSON `{"id":...}` leak text shown in the preview.
+    - The rendered HTML table with cells from each sheet (M16's
+      existing render path — confirmed by `<table>` + cell-bg
+      visible).
+    - At least one inline `<svg>` chart element at the chart's anchor
+      position.
+    - The chart's title text (the SVG `<title>` content or a `<text>`
+      element with the title string) visible.
+    - No raw JSON `{"id":...}` leak text shown in the preview.
 2. **Pixel sidecar `eval-*.pixels.json`** carries
    `inlineSvgCount ≥ 1` (new sampler signal added to
    `samplePreviewPaneInk()`). The existing M16 signals are still
    present:
-   - `tableCount ≥ 1` (the M16 base render still works).
-   - `rawJsonLeak === false` (the renderer still ran).
-   - `sheetHeadings.length ≥ 1` (multi-sheet headings still
-     emit).
+    - `tableCount ≥ 1` (the M16 base render still works).
+    - `rawJsonLeak === false` (the renderer still ran).
+    - `sheetHeadings.length ≥ 1` (multi-sheet headings still
+      emit).
 3. **The `ensurePreviewPaneVisible()` harness routine still works.**
    M16's window-prep + layout-toggling routine drives Joplin from
    any starting state into "preview pane visible" via the AppleScript-
@@ -1180,13 +1168,13 @@ moves from 267 to ≥ 290 (≥ 23 new Jest tests across features 1, 2,
 
 1. **`tests/m12ImportRecovery.test.ts:59`** is the ONLY content edit
    to that file. The flipped test asserts:
-   - `MultiSheet.xlsx` imports without throwing.
-   - The returned snapshot has a non-empty `SHEET_DRAWING_PLUGIN`
-     resource.
-   - The number of chart drawings in that resource is ≥ 1 (the
-     test reads the expected count from the source XML — counting
-     `xl/charts/chart{N}.xml` files inside the zip — and asserts
-     equality).
+    - `MultiSheet.xlsx` imports without throwing.
+    - The returned snapshot has a non-empty `SHEET_DRAWING_PLUGIN`
+      resource.
+    - The number of chart drawings in that resource is ≥ 1 (the
+      test reads the expected count from the source XML — counting
+      `xl/charts/chart{N}.xml` files inside the zip — and asserts
+      equality).
 2. **`tests/m12ImportRecovery.test.ts:84`** is the ONLY content edit
    to the second flipped test. Same shape as criterion 1 but for
    `LargeWorkbook.xlsx`.
@@ -1209,54 +1197,49 @@ moves from 267 to ≥ 290 (≥ 23 new Jest tests across features 1, 2,
    expansion (10 fixtures × 2 assertions = 20 "tests" before any
    substantive feature work).** So the count floor is paired with
    a **cardinality floor on distinct surfaces**:
-   - feature-1's test file has at least one `test()` call covering
-     each of: bar / line / pie / doughnut chart types + the
-     multi-anchor case (06) + the cross-sheet case (07) + the
-     missing-chart-target synthetic + the oneCellAnchor synthetic
-     + the no-`<c:cat>` synthetic = **at least 9 distinct cases**.
-   - feature-2 has at least 1 positive case per chart type
-     (4 cases) + at least 1 fallback case = **5 distinct cases**.
-   - feature-4 has the 5 distinct asserts in criterion 1, 2, 3, 4,
-     5 = **5 distinct test cases minimum**.
-   - feature-5 has at least 1 round-trip case per chart type +
-     the cross-sheet-survives case = **5 distinct cases minimum**.
-   - feature-6's programmatic round-trip pack = **at least 5
-     distinct cases** (operator brief says 5–7).
-   - feature-7's SVG export = **5 distinct cases** (bar / line /
-     pie / no-charts-fall-through / CF-plus-chart).
-   The evaluator counts distinct `test()` calls per file and
-   confirms each minimum.
+    - feature-1's test file has at least one `test()` call covering
+      each of: bar / line / pie / doughnut chart types + the
+      multi-anchor case (06) + the cross-sheet case (07) + the
+      missing-chart-target synthetic + the oneCellAnchor synthetic
+        - the no-`<c:cat>` synthetic = **at least 9 distinct cases**.
+    - feature-2 has at least 1 positive case per chart type
+      (4 cases) + at least 1 fallback case = **5 distinct cases**.
+    - feature-4 has the 5 distinct asserts in criterion 1, 2, 3, 4,
+      5 = **5 distinct test cases minimum**.
+    - feature-5 has at least 1 round-trip case per chart type +
+      the cross-sheet-survives case = **5 distinct cases minimum**.
+    - feature-6's programmatic round-trip pack = **at least 5
+      distinct cases** (operator brief says 5–7).
+    - feature-7's SVG export = **5 distinct cases** (bar / line /
+      pie / no-charts-fall-through / CF-plus-chart).
+      The evaluator counts distinct `test()` calls per file and
+      confirms each minimum.
 5. **`git diff tests/` shows ONLY a strict subset of the
    following.** No other addition or deletion is permitted in
-   `tests/`:
-   - **NEW files matching `tests/m17*.test.ts`** (the seven new
-     test files from features 1, 2, 4, 5, 6, 7).
-   - **NEW files at `tests/util/m17*.ts`** (helpers shared
-     between the m17 tests, e.g. `m17ChartPaletteSync.ts`,
-     `m17BuildChartSnapshot.ts`).
-   - **The two flipped lines in
-     `tests/m12ImportRecovery.test.ts:59,84`** (specifically: the
-     `expect(e.code).toBe('xlsx-charts-unsupported')` assertions
-     replaced with the positive `MultiSheet.xlsx → snapshot with
-     N charts` / `LargeWorkbook.xlsx → ...` assertions; line
-     numbers may shift slightly as the test bodies grow).
-   - **No content edit to any other existing test file in
-     `tests/`** — including `tests/util/`, `tests/__mocks__/`,
-     and `tests/fixtures/` (formatting-testdata + charts). The
-     mock/util constraint is load-bearing: silently changing what
-     a mock returns or what a test util computes shifts existing
-     tests' actual values to match new expected values, which is
-     the M13/E silent-modify failure mode wearing a disguise.
-   - **No new file at any path that LOOKS like an existing
-     untouchable file's name** — specifically forbidden: any new
-     file named `tests/m15*.test.ts`, `tests/borders.test.ts`,
-     `tests/hyperlinks.test.ts`, `tests/numberFormats.test.ts`,
-     `tests/mergedCells.test.ts`, `tests/themeFonts.test.ts`,
-     `tests/m13*.test.ts` other than what already exists. (These
-     names appear in the operator's untouchable list but several
-     don't exist on disk yet — adding them now under the M17
-     namespace would muddy the gate. Use `tests/m17*.test.ts`
-     for everything M17.)
+   `tests/`: - **NEW files matching `tests/m17*.test.ts`** (the seven new
+   test files from features 1, 2, 4, 5, 6, 7). - **NEW files at `tests/util/m17*.ts`** (helpers shared
+   between the m17 tests, e.g. `m17ChartPaletteSync.ts`,
+   `m17BuildChartSnapshot.ts`). - **The two flipped lines in
+   `tests/m12ImportRecovery.test.ts:59,84`** (specifically: the
+   `expect(e.code).toBe('xlsx-charts-unsupported')` assertions
+   replaced with the positive `MultiSheet.xlsx → snapshot with
+N charts` / `LargeWorkbook.xlsx → ...` assertions; line
+   numbers may shift slightly as the test bodies grow). - **No content edit to any other existing test file in
+   `tests/`** — including `tests/util/`, `tests/__mocks__/`,
+   and `tests/fixtures/` (formatting-testdata + charts). The
+   mock/util constraint is load-bearing: silently changing what
+   a mock returns or what a test util computes shifts existing
+   tests' actual values to match new expected values, which is
+   the M13/E silent-modify failure mode wearing a disguise. - **No new file at any path that LOOKS like an existing
+   untouchable file's name** — specifically forbidden: any new
+   file named `tests/m15*.test.ts`, `tests/borders.test.ts`,
+   `tests/hyperlinks.test.ts`, `tests/numberFormats.test.ts`,
+   `tests/mergedCells.test.ts`, `tests/themeFonts.test.ts`,
+   `tests/m13*.test.ts` other than what already exists. (These
+   names appear in the operator's untouchable list but several
+   don't exist on disk yet — adding them now under the M17
+   namespace would muddy the gate. Use `tests/m17*.test.ts`
+   for everything M17.)
    The evaluator runs `git diff --name-status tests/` at gate
    time and confirms each line in the output matches one of the
    four allowed shapes above. Any other line fails the gate.

@@ -40,21 +40,37 @@ import { readFileSync } from 'fs';
 import ExcelJS from 'exceljs';
 import { xlsxBufferToSnapshot, snapshotToXlsxBuffer } from '../src/xlsx';
 
-const APTOS = path.join(__dirname, 'fixtures', 'formatting-testdata', 'FormattingSmorgasboard.xlsx');
+const APTOS = path.join(
+    __dirname,
+    'fixtures',
+    'formatting-testdata',
+    'FormattingSmorgasboard.xlsx',
+);
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, { v?: unknown; s?: string; p?: unknown }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<number, Record<number, { v?: unknown; s?: string; p?: unknown }>>;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
 }
 
-function getCell(snap: SnapshotShape, row: number, col: number): { v?: unknown; s?: string; p?: unknown } | undefined {
+function getCell(
+    snap: SnapshotShape,
+    row: number,
+    col: number,
+): { v?: unknown; s?: string; p?: unknown } | undefined {
     return snap.sheets[snap.sheetOrder[0]].cellData[row]?.[col];
 }
 
-function getStyle(snap: SnapshotShape, row: number, col: number): Record<string, unknown> | undefined {
+function getStyle(
+    snap: SnapshotShape,
+    row: number,
+    col: number,
+): Record<string, unknown> | undefined {
     const cell = getCell(snap, row, col);
     return cell?.s ? snap.styles[cell.s] : undefined;
 }
@@ -75,13 +91,15 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
     test('Joplin edit + Excel edit flow through both directions correctly', async () => {
         // ---- Stage 1: initial import ----
         const buf0 = readFileSync(APTOS);
-        const snap1 = await xlsxBufferToSnapshot(buf0 as unknown as Buffer) as unknown as SnapshotShape;
+        const snap1 = (await xlsxBufferToSnapshot(
+            buf0 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
 
         // Capture original state for cells we'll edit so we can detect drift.
-        const origB2Value = getCellValueText(getCell(snap1, 1, 1));   // "https://example.com/alpha"
-        const origC2Value = getCellValueText(getCell(snap1, 1, 2));   // 50000 (Budget)
+        const origB2Value = getCellValueText(getCell(snap1, 1, 1)); // "https://example.com/alpha"
+        const origC2Value = getCellValueText(getCell(snap1, 1, 2)); // 50000 (Budget)
 
-        expect(origB2Value).toContain('alpha');  // sanity
+        expect(origB2Value).toContain('alpha'); // sanity
         expect(origC2Value).toBe('50000');
 
         // ---- Stage 2: simulate Joplin user edits (content + style) ----
@@ -103,7 +121,9 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         sheet.cellData[1][2] = { ...(sheet.cellData[1][2] ?? {}), s: newRedStyleId };
 
         // ---- Stage 3: export ----
-        const buf1 = await snapshotToXlsxBuffer(snap1 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf1 = await snapshotToXlsxBuffer(
+            snap1 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
 
         // ---- Stage 4: simulate Excel user edits (content + style) ----
         const wb1 = new ExcelJS.Workbook();
@@ -124,7 +144,9 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         const buf2 = Buffer.from((await wb1.xlsx.writeBuffer()) as ArrayBuffer);
 
         // ---- Stage 5: re-import ----
-        const snap2 = await xlsxBufferToSnapshot(buf2 as unknown as Buffer) as unknown as SnapshotShape;
+        const snap2 = (await xlsxBufferToSnapshot(
+            buf2 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
 
         // ---- Stage 6: verify both sets of edits flowed through ----
         // Joplin's B2 edit must be present.
@@ -161,7 +183,9 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         // stripped on export; the table-style declaration drove re-synthesis
         // on re-import.
         const totalsStyle2 = getStyle(snap2, 9, 0);
-        const totalsBd = totalsStyle2?.bd as { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } } | undefined;
+        const totalsBd = totalsStyle2?.bd as
+            | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
+            | undefined;
         expect(totalsBd?.t?.cl.rgb).toBe('#34692E');
         expect(totalsBd?.t?.s).toBe(7);
         expect(totalsBd?.b?.cl.rgb).toBe('#72D068');
@@ -185,11 +209,21 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         // without any user edits. The final snapshot should equal the
         // first import for the cells we check.
         const buf0 = readFileSync(APTOS);
-        const snap1 = await xlsxBufferToSnapshot(buf0 as unknown as Buffer) as unknown as SnapshotShape;
-        const buf1 = await snapshotToXlsxBuffer(snap1 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
-        const snap2 = await xlsxBufferToSnapshot(buf1 as unknown as Buffer) as unknown as SnapshotShape;
-        const buf2 = await snapshotToXlsxBuffer(snap2 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
-        const snap3 = await xlsxBufferToSnapshot(buf2 as unknown as Buffer) as unknown as SnapshotShape;
+        const snap1 = (await xlsxBufferToSnapshot(
+            buf0 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
+        const buf1 = await snapshotToXlsxBuffer(
+            snap1 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
+        const snap2 = (await xlsxBufferToSnapshot(
+            buf1 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
+        const buf2 = await snapshotToXlsxBuffer(
+            snap2 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
+        const snap3 = (await xlsxBufferToSnapshot(
+            buf2 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
 
         // Check: header bg is still the synth value, not "synth on top of
         // synth on top of synth".
@@ -211,8 +245,12 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         // Totals row bd stays identical.
         const t1 = getStyle(snap1, 9, 0);
         const t3 = getStyle(snap3, 9, 0);
-        const t1Bd = t1?.bd as { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } } | undefined;
-        const t3Bd = t3?.bd as { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } } | undefined;
+        const t1Bd = t1?.bd as
+            | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
+            | undefined;
+        const t3Bd = t3?.bd as
+            | { t?: { s: number; cl: { rgb: string } }; b?: { s: number; cl: { rgb: string } } }
+            | undefined;
         expect(t1Bd?.t?.cl.rgb).toBe('#34692E');
         expect(t3Bd?.t?.cl.rgb).toBe('#34692E');
         expect(t1Bd?.t?.s).toBe(7);
@@ -236,8 +274,12 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         // doesn't get the synth border re-emitted as user formatting on
         // the next export, and the user fill does survive.
         const buf0 = readFileSync(APTOS);
-        const snap1 = await xlsxBufferToSnapshot(buf0 as unknown as Buffer) as unknown as SnapshotShape;
-        const buf1 = await snapshotToXlsxBuffer(snap1 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const snap1 = (await xlsxBufferToSnapshot(
+            buf0 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
+        const buf1 = await snapshotToXlsxBuffer(
+            snap1 as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
 
         // Open in exceljs, add a fill to D5 (a banded data cell with a
         // synth bd.t).
@@ -247,11 +289,13 @@ describe('Bidirectional round-trip integrity (Aptos TableStyleMedium4)', () => {
         ws.getCell('D5').fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FF00FFFF' },  // cyan
+            fgColor: { argb: 'FF00FFFF' }, // cyan
         };
         const buf2 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 
-        const snap2 = await xlsxBufferToSnapshot(buf2 as unknown as Buffer) as unknown as SnapshotShape;
+        const snap2 = (await xlsxBufferToSnapshot(
+            buf2 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
         const d5Style = getStyle(snap2, 4, 3);
 
         // The user's cyan fill survives.

@@ -26,7 +26,8 @@ export const trackedCharts = new Map<string, TrackedChart>();
 
 export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unknown>): void {
     trackedCharts.clear();
-    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> })
+        .resources;
     if (!Array.isArray(resources)) return;
     const entry = resources.find((r) => r?.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry || typeof entry.data !== 'string') return;
@@ -47,7 +48,12 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                 componentKey?: string;
                 data?: {
                     chartId?: string;
-                    sourceRange?: { startRow?: number; endRow?: number; startColumn?: number; endColumn?: number };
+                    sourceRange?: {
+                        startRow?: number;
+                        endRow?: number;
+                        startColumn?: number;
+                        endColumn?: number;
+                    };
                     sourceSheetName?: string;
                 };
             };
@@ -56,8 +62,14 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
             const chartId = data?.chartId;
             const sr = data?.sourceRange;
             if (typeof chartId !== 'string' || !chartId) continue;
-            if (!sr || typeof sr.startRow !== 'number' || typeof sr.endRow !== 'number'
-                || typeof sr.startColumn !== 'number' || typeof sr.endColumn !== 'number') continue;
+            if (
+                !sr ||
+                typeof sr.startRow !== 'number' ||
+                typeof sr.endRow !== 'number' ||
+                typeof sr.startColumn !== 'number' ||
+                typeof sr.endColumn !== 'number'
+            )
+                continue;
             trackedCharts.set(chartId, {
                 id: chartId,
                 sourceRange: {

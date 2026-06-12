@@ -36,10 +36,14 @@ export interface ImportedChartDrawing {
     labels: string[];
     datasets: Array<{ label?: string; data: number[] }>;
     anchor: {
-        fromCol: number; fromColOff: number;
-        fromRow: number; fromRowOff: number;
-        toCol: number; toColOff: number;
-        toRow: number; toRowOff: number;
+        fromCol: number;
+        fromColOff: number;
+        fromRow: number;
+        fromRowOff: number;
+        toCol: number;
+        toColOff: number;
+        toRow: number;
+        toRowOff: number;
     };
     meta?: {
         unsupportedSourceType?: string;
@@ -135,8 +139,8 @@ export interface ImportedChartDrawing {
         // others round-trip the type but render as a straight fit fallback.
         trendline?: {
             type: 'linear' | 'exp' | 'log' | 'poly' | 'power' | 'movingAvg';
-            order?: number;   // poly order
-            period?: number;  // movingAvg period
+            order?: number; // poly order
+            period?: number; // movingAvg period
             dispRSqr?: boolean;
             dispEq?: boolean;
         };
@@ -181,7 +185,8 @@ interface RawAnchor {
 // fixture). Match both shapes via an optional `(?:xdr:)?` prefix.
 function walkAnchors(drawingXml: string): RawAnchor[] {
     const out: RawAnchor[] = [];
-    const re = /<(?:xdr:)?(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[^>]*>([\s\S]*?)<\/(?:xdr:)?\1>/g;
+    const re =
+        /<(?:xdr:)?(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[^>]*>([\s\S]*?)<\/(?:xdr:)?\1>/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(drawingXml)) !== null) {
         const kindRaw = match[1];
@@ -222,16 +227,20 @@ function walkAnchors(drawingXml: string): RawAnchor[] {
         }
 
         const kind: RawAnchor['kind'] =
-            kindRaw === 'twoCellAnchor' ? 'twoCell'
-            : kindRaw === 'oneCellAnchor' ? 'oneCell'
-            : 'absolute';
+            kindRaw === 'twoCellAnchor'
+                ? 'twoCell'
+                : kindRaw === 'oneCellAnchor'
+                  ? 'oneCell'
+                  : 'absolute';
 
         out.push({ rId, kind, from, to });
     }
     return out;
 }
 
-function parseAnchorPoint(body: string): { col: number; colOff: number; row: number; rowOff: number } | null {
+function parseAnchorPoint(
+    body: string,
+): { col: number; colOff: number; row: number; rowOff: number } | null {
     const col = body.match(/<(?:xdr:)?col>(\d+)<\/(?:xdr:)?col>/);
     const colOff = body.match(/<(?:xdr:)?colOff>(-?\d+)<\/(?:xdr:)?colOff>/);
     const row = body.match(/<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/);
@@ -301,7 +310,7 @@ export function decodeCellRef(formula: string): DecodedRef | null {
     if (!formula) return null;
     const sheetMatch = formula.match(/^(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_]*))!(.+)$/);
     if (!sheetMatch) return null;
-    const sheetName = (sheetMatch[1] ? sheetMatch[1].replace(/''/g, "'") : sheetMatch[2]);
+    const sheetName = sheetMatch[1] ? sheetMatch[1].replace(/''/g, "'") : sheetMatch[2];
     const rangePart = sheetMatch[3];
     const rangeRe = /^\$?([A-Za-z]+)\$?(\d+)(?::\$?([A-Za-z]+)\$?(\d+))?$/;
     const m = rangePart.match(rangeRe);
@@ -388,7 +397,9 @@ const C = '(?:c:)?';
 export function parseChartXml(chartXml: string): ParsedChart | null {
     // Chart-type element name. ECMA-376 chart-types live as direct
     // children of <c:plotArea>.
-    const typeMatch = chartXml.match(/<(?:c:)?(bar|line|pie|doughnut|radar|scatter|area|bubble|surface|stock|ofPie|bar3D|line3D|pie3D|area3D|surface3D)Chart\b/);
+    const typeMatch = chartXml.match(
+        /<(?:c:)?(bar|line|pie|doughnut|radar|scatter|area|bubble|surface|stock|ofPie|bar3D|line3D|pie3D|area3D|surface3D)Chart\b/,
+    );
     let type: ChartType = 'bar';
     let unsupportedSourceType: string | undefined;
     if (typeMatch) {
@@ -417,8 +428,15 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     // Pie/doughnut have no grouping element; leave undefined.
     let barGrouping: 'clustered' | 'stacked' | 'percentStacked' | 'standard' | undefined;
     if (type === 'bar' || type === 'line') {
-        const groupingMatch = chartXml.match(/<(?:c:)?grouping\s+val="(clustered|stacked|percentStacked|standard)"/);
-        if (groupingMatch) barGrouping = groupingMatch[1] as 'clustered' | 'stacked' | 'percentStacked' | 'standard';
+        const groupingMatch = chartXml.match(
+            /<(?:c:)?grouping\s+val="(clustered|stacked|percentStacked|standard)"/,
+        );
+        if (groupingMatch)
+            barGrouping = groupingMatch[1] as
+                | 'clustered'
+                | 'stacked'
+                | 'percentStacked'
+                | 'standard';
     }
 
     // Gap width. <c:gapWidth val="N"/> where N is a percentage of bar
@@ -517,7 +535,10 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         const block = chartXml.match(new RegExp(`<(?:c:)?${axTag}>([\\s\\S]*?)</(?:c:)?${axTag}>`));
         if (!block) return undefined;
         // Drop the gridlines block so we read only the axis-line spPr.
-        const body = block[1].replace(/<(?:c:)?majorGridlines>[\s\S]*?<\/(?:c:)?majorGridlines>/g, '');
+        const body = block[1].replace(
+            /<(?:c:)?majorGridlines>[\s\S]*?<\/(?:c:)?majorGridlines>/g,
+            '',
+        );
         const spPr = body.match(/<(?:c:)?spPr>([\s\S]*?)<\/(?:c:)?spPr>/);
         if (!spPr) return undefined;
         // A no-line axis carries <a:ln><a:noFill/></a:ln>.
@@ -557,8 +578,12 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
             ...(flag('showCatName') !== undefined ? { showCatName: flag('showCatName') } : {}),
             ...(flag('showPercent') !== undefined ? { showPercent: flag('showPercent') } : {}),
             ...(flag('showSerName') !== undefined ? { showSerName: flag('showSerName') } : {}),
-            ...(flag('showLegendKey') !== undefined ? { showLegendKey: flag('showLegendKey') } : {}),
-            ...(flag('showBubbleSize') !== undefined ? { showBubbleSize: flag('showBubbleSize') } : {}),
+            ...(flag('showLegendKey') !== undefined
+                ? { showLegendKey: flag('showLegendKey') }
+                : {}),
+            ...(flag('showBubbleSize') !== undefined
+                ? { showBubbleSize: flag('showBubbleSize') }
+                : {}),
         };
         return Object.keys(out).length > 0 ? out : undefined;
     };
@@ -579,7 +604,9 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         // the search to inside a <c:ser> block to avoid re-grabbing the
         // chart-level one.
         const serBlock = chartXml.match(/<(?:c:)?ser\b[\s\S]*?<\/(?:c:)?ser>/);
-        const serDLblsBlock = serBlock ? serBlock[0].match(/<(?:c:)?dLbls>([\s\S]*?)<\/(?:c:)?dLbls>/) : null;
+        const serDLblsBlock = serBlock
+            ? serBlock[0].match(/<(?:c:)?dLbls>([\s\S]*?)<\/(?:c:)?dLbls>/)
+            : null;
         const seriesLevel = serDLblsBlock ? parseDLblsBody(serDLblsBlock[1]) : undefined;
 
         // Prefer whichever actually turns a label on. If the chart-level
@@ -604,13 +631,17 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         const tlBlock = chartXml.match(/<(?:c:)?trendline>([\s\S]*?)<\/(?:c:)?trendline>/);
         if (tlBlock) {
             const body = tlBlock[1];
-            const typeMatch = body.match(/<(?:c:)?trendlineType\s+val="(linear|exp|log|poly|power|movingAvg)"/);
+            const typeMatch = body.match(
+                /<(?:c:)?trendlineType\s+val="(linear|exp|log|poly|power|movingAvg)"/,
+            );
             const orderMatch = body.match(/<(?:c:)?order\s+val="(\d+)"/);
             const periodMatch = body.match(/<(?:c:)?period\s+val="(\d+)"/);
             const rsqr = /<(?:c:)?dispRSqr\s+val="1"/.test(body);
             const eq = /<(?:c:)?dispEq\s+val="1"/.test(body);
             trendline = {
-                type: (typeMatch ? typeMatch[1] : 'linear') as NonNullable<ParsedChart['trendline']>['type'],
+                type: (typeMatch ? typeMatch[1] : 'linear') as NonNullable<
+                    ParsedChart['trendline']
+                >['type'],
                 ...(orderMatch ? { order: parseInt(orderMatch[1], 10) } : {}),
                 ...(periodMatch ? { period: parseInt(periodMatch[1], 10) } : {}),
                 ...(rsqr ? { dispRSqr: true } : {}),
@@ -629,7 +660,9 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let title = '';
     const titleBlock = chartXml.match(/<(?:c:)?title\b[\s\S]*?<\/(?:c:)?title>/);
     if (titleBlock) {
-        const runs = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
+        const runs = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) =>
+            decodeXmlEntities(m[1]),
+        );
         title = runs.join('');
     }
 
@@ -637,7 +670,9 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     // When the legend element is absent, leave undefined (NotesheetChart
     // applies its own default visibility based on series count).
     let legendPos: 'r' | 'l' | 't' | 'b' | 'tr' | undefined;
-    const legendPosMatch = chartXml.match(/<(?:c:)?legend\b[\s\S]*?<(?:c:)?legendPos\s+val="(r|l|t|b|tr)"/);
+    const legendPosMatch = chartXml.match(
+        /<(?:c:)?legend\b[\s\S]*?<(?:c:)?legendPos\s+val="(r|l|t|b|tr)"/,
+    );
     if (legendPosMatch) legendPos = legendPosMatch[1] as 'r' | 'l' | 't' | 'b' | 'tr';
 
     // Walk every <c:ser>...</c:ser> in document order. Element name may
@@ -664,7 +699,9 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let anyCatRef = false;
 
     const reTx = new RegExp(`<${C}tx>([\\s\\S]*?)</${C}tx>`);
-    const reStrCacheV = new RegExp(`<${C}strCache>[\\s\\S]*?<${C}pt\\b[^>]*>[\\s\\S]*?<${C}v>([\\s\\S]*?)</${C}v>`);
+    const reStrCacheV = new RegExp(
+        `<${C}strCache>[\\s\\S]*?<${C}pt\\b[^>]*>[\\s\\S]*?<${C}v>([\\s\\S]*?)</${C}v>`,
+    );
     const reInlineV = new RegExp(`<${C}v>([\\s\\S]*?)</${C}v>`);
     const reCat = new RegExp(`<${C}cat>([\\s\\S]*?)</${C}cat>`);
     const reF = new RegExp(`<${C}f>([\\s\\S]*?)</${C}f>`);
@@ -782,7 +819,8 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
 
 // Read a series of <c:pt idx="..."><c:v>...</c:v></c:pt> from a cache body.
 function readPtCache(cacheBody: string): string[] {
-    const re = /<(?:c:)?pt\b[^>]*idx="(\d+)"[^>]*>[\s\S]*?<(?:c:)?v>([\s\S]*?)<\/(?:c:)?v>[\s\S]*?<\/(?:c:)?pt>/g;
+    const re =
+        /<(?:c:)?pt\b[^>]*idx="(\d+)"[^>]*>[\s\S]*?<(?:c:)?v>([\s\S]*?)<\/(?:c:)?v>[\s\S]*?<\/(?:c:)?pt>/g;
     const map = new Map<number, string>();
     let match: RegExpExecArray | null;
     let max = -1;
@@ -870,19 +908,25 @@ export async function readChartsFromXlsxZip(
             anchorIndex++;
             const target = relMap.get(anchor.rId);
             if (!target) {
-                console.warn(`[Notesheet] M17: drawing ${link.drawingPath} anchor ${anchorIndex} rId ${anchor.rId} has no rels target — dropping`);
+                console.warn(
+                    `[Notesheet] M17: drawing ${link.drawingPath} anchor ${anchorIndex} rId ${anchor.rId} has no rels target — dropping`,
+                );
                 continue;
             }
             const chartPath = resolveRelTarget(drawingFolder, target);
             const chartFile = zip.file(chartPath);
             if (!chartFile) {
-                console.warn(`[Notesheet] M17: drawing ${link.drawingPath} anchor ${anchorIndex} -> missing chart part ${chartPath} — dropping`);
+                console.warn(
+                    `[Notesheet] M17: drawing ${link.drawingPath} anchor ${anchorIndex} -> missing chart part ${chartPath} — dropping`,
+                );
                 continue;
             }
             const chartXml = await chartFile.async('string');
             const parsed = parseChartXml(chartXml);
             if (!parsed) {
-                console.warn(`[Notesheet] M17: chart ${chartPath} could not be parsed (no series or no usable refs) — dropping`);
+                console.warn(
+                    `[Notesheet] M17: chart ${chartPath} could not be parsed (no series or no usable refs) — dropping`,
+                );
                 continue;
             }
 
@@ -907,34 +951,43 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
-            const hasMeta = parsed.unsupportedSourceType
-                || parsed.barDir
-                || parsed.barGrouping
-                || parsed.barGapWidth !== undefined
-                || parsed.legendPos
-                || parsed.categoryAxisType
-                || parsed.holeSize !== undefined
-                || parsed.lineSmooth !== undefined
-                || parsed.lineMarkerOn !== undefined
-                || parsed.dispBlanksAs
-                || parsed.crossBetween
-                || parsed.tickMark
-                || parsed.catAxisLine
-                || parsed.valAxisLine
-                || parsed.valAxisNumFmt
-                || parsed.dLbls
-                || parsed.trendline;
+            const hasMeta =
+                parsed.unsupportedSourceType ||
+                parsed.barDir ||
+                parsed.barGrouping ||
+                parsed.barGapWidth !== undefined ||
+                parsed.legendPos ||
+                parsed.categoryAxisType ||
+                parsed.holeSize !== undefined ||
+                parsed.lineSmooth !== undefined ||
+                parsed.lineMarkerOn !== undefined ||
+                parsed.dispBlanksAs ||
+                parsed.crossBetween ||
+                parsed.tickMark ||
+                parsed.catAxisLine ||
+                parsed.valAxisLine ||
+                parsed.valAxisNumFmt ||
+                parsed.dLbls ||
+                parsed.trendline;
             if (hasMeta) {
                 drawing.meta = {
-                    ...(parsed.unsupportedSourceType ? { unsupportedSourceType: parsed.unsupportedSourceType } : {}),
+                    ...(parsed.unsupportedSourceType
+                        ? { unsupportedSourceType: parsed.unsupportedSourceType }
+                        : {}),
                     ...(parsed.barDir ? { barDir: parsed.barDir } : {}),
                     ...(parsed.barGrouping ? { barGrouping: parsed.barGrouping } : {}),
-                    ...(parsed.barGapWidth !== undefined ? { barGapWidth: parsed.barGapWidth } : {}),
+                    ...(parsed.barGapWidth !== undefined
+                        ? { barGapWidth: parsed.barGapWidth }
+                        : {}),
                     ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
-                    ...(parsed.categoryAxisType ? { categoryAxisType: parsed.categoryAxisType } : {}),
+                    ...(parsed.categoryAxisType
+                        ? { categoryAxisType: parsed.categoryAxisType }
+                        : {}),
                     ...(parsed.holeSize !== undefined ? { holeSize: parsed.holeSize } : {}),
                     ...(parsed.lineSmooth !== undefined ? { lineSmooth: parsed.lineSmooth } : {}),
-                    ...(parsed.lineMarkerOn !== undefined ? { lineMarkerOn: parsed.lineMarkerOn } : {}),
+                    ...(parsed.lineMarkerOn !== undefined
+                        ? { lineMarkerOn: parsed.lineMarkerOn }
+                        : {}),
                     ...(parsed.dispBlanksAs ? { dispBlanksAs: parsed.dispBlanksAs } : {}),
                     ...(parsed.crossBetween ? { crossBetween: parsed.crossBetween } : {}),
                     ...(parsed.tickMark ? { tickMark: parsed.tickMark } : {}),
@@ -945,7 +998,9 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.trendline ? { trendline: parsed.trendline } : {}),
                 };
                 if (parsed.unsupportedSourceType) {
-                    console.warn(`[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`);
+                    console.warn(
+                        `[Notesheet] M17: chart type '${parsed.unsupportedSourceType}' is not supported; falling back to 'bar'`,
+                    );
                 }
             }
             out.push(drawing);
@@ -1023,7 +1078,10 @@ export async function stripChartPartsFromZip(
 
         for (const rId of droppedRIds) {
             // Match a <Relationship ... Id="rId" ... /> regardless of attr order.
-            const relRe = new RegExp(`<Relationship\\s+[^>]*?\\bId="${escapeRegex(rId)}"[^>]*?/>`, 'g');
+            const relRe = new RegExp(
+                `<Relationship\\s+[^>]*?\\bId="${escapeRegex(rId)}"[^>]*?/>`,
+                'g',
+            );
             relsXml = relsXml.replace(relRe, '');
         }
         zip.file(path, relsXml);
@@ -1037,7 +1095,10 @@ export async function stripChartPartsFromZip(
                 // (xmlns:r="http://..." in some programmatically-built
                 // workbooks — note the URL contains '/' so [^/]* won't
                 // span it). Use [^>]* up to the self-closing tag end.
-                const tagRe = new RegExp(`<drawing\\s+[^>]*?\\br:id="${escapeRegex(rId)}"[^>]*?/>`, 'g');
+                const tagRe = new RegExp(
+                    `<drawing\\s+[^>]*?\\br:id="${escapeRegex(rId)}"[^>]*?/>`,
+                    'g',
+                );
                 sheetXml = sheetXml.replace(tagRe, '');
             }
             zip.file(sheetPath, sheetXml);
@@ -1049,12 +1110,14 @@ export async function stripChartPartsFromZip(
         const folder = drawingPath.split('/').slice(0, -1).join('/');
         const filename = drawingPath.split('/').pop() ?? '';
         const relsPath = `${folder}/_rels/${filename}.rels`;
-        zip.remove(drawingPath); removedParts.push(`/${drawingPath}`);
+        zip.remove(drawingPath);
+        removedParts.push(`/${drawingPath}`);
         zip.remove(relsPath);
     }
     for (const path of Object.keys(zip.files)) {
         if (path.startsWith('xl/charts/')) {
-            zip.remove(path); removedParts.push(`/${path}`);
+            zip.remove(path);
+            removedParts.push(`/${path}`);
         }
     }
 
@@ -1063,7 +1126,10 @@ export async function stripChartPartsFromZip(
     if (ctFile) {
         let ctXml = await ctFile.async('string');
         for (const partName of removedParts) {
-            const re = new RegExp(`<Override\\b[^/]*PartName="${escapeRegex(partName)}"[^/]*/>`, 'g');
+            const re = new RegExp(
+                `<Override\\b[^/]*PartName="${escapeRegex(partName)}"[^/]*/>`,
+                'g',
+            );
             ctXml = ctXml.replace(re, '');
         }
         zip.file(ctPath, ctXml);

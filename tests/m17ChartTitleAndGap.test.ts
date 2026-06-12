@@ -12,7 +12,9 @@
 // for some fixtures and wider for others. Now plumbed via meta.barGapWidth.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -32,7 +34,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): ChartDrawing[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -60,8 +63,9 @@ describe('M17 chart title (multi-run concatenation)', () => {
     test('11-stacked-bar imports full title "Investment vs Balance so far"', async () => {
         const fp = path.join(FIXTURES_DIR, '11-stacked-bar-chart.xlsx');
         // Sanity: source XML has two <a:t> runs.
-        const sourceXml = await JSZip.loadAsync(readFileSync(fp) as unknown as ArrayBuffer)
-            .then((z) => z.file('xl/charts/chart1.xml')!.async('string'));
+        const sourceXml = await JSZip.loadAsync(readFileSync(fp) as unknown as ArrayBuffer).then(
+            (z) => z.file('xl/charts/chart1.xml')!.async('string'),
+        );
         const runs = [...sourceXml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]);
         // First two runs are inside <c:title>; subsequent runs are
         // axis labels / etc. Just verify the first two concatenate.

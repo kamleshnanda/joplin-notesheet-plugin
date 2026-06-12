@@ -1,14 +1,14 @@
 {
-	"manifest_version": 1,
-	"id": "com.kamleshnanda.joplin-notesheet",
-	"app_min_version": "3.5",
-	"platforms": ["desktop"],
-	"version": "1.0.0",
-	"name": "Notesheet",
-	"description": "Spreadsheets for Joplin. A Joplin note can be a full spreadsheet powered by the Univer SDK — formulas, formatting, sort, filter, charts, and .xlsx import/export.",
-	"author": "Kamlesh Nanda",
-	"homepage_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
-	"repository_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
-	"keywords": ["spreadsheet", "sheet", "table", "formula", "calculation", "xlsx", "excel"],
-	"categories": ["productivity", "editor"]
+    "manifest_version": 1,
+    "id": "com.kamleshnanda.joplin-notesheet",
+    "app_min_version": "3.5",
+    "platforms": ["desktop"],
+    "version": "1.0.0",
+    "name": "Notesheet",
+    "description": "Spreadsheets for Joplin. A Joplin note can be a full spreadsheet powered by the Univer SDK — formulas, formatting, sort, filter, charts, and .xlsx import/export.",
+    "author": "Kamlesh Nanda",
+    "homepage_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
+    "repository_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
+    "keywords": ["spreadsheet", "sheet", "table", "formula", "calculation", "xlsx", "excel"],
+    "categories": ["productivity", "editor"]
 }

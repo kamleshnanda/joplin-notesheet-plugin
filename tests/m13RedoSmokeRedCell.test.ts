@@ -27,11 +27,14 @@ import { emptySnapshot, extractSnapshot, wrapSnapshot } from '../src/snapshot';
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        id: string;
-        name: string;
-        cellData: Record<number, Record<number, { v?: unknown; s?: string }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            id: string;
+            name: string;
+            cellData: Record<number, Record<number, { v?: unknown; s?: string }>>;
+        }
+    >;
     styles: Record<string, unknown>;
 }
 

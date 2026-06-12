@@ -14,7 +14,9 @@
 // preserves it — NOT a hardcoded literal.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -59,7 +61,9 @@ describe('M17 default column width round-trip (issue 11)', () => {
         const buf = readFileSync(path.join(FIXTURES_DIR, '11-stacked-bar-chart.xlsx'));
         const srcDefault = effectiveDefaultWidth(await sheetFormatPr(buf as unknown as Buffer))!;
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
-        const sheet = Object.values((snap as { sheets: Record<string, { defaultColWidthChars?: number }> }).sheets)[0];
+        const sheet = Object.values(
+            (snap as { sheets: Record<string, { defaultColWidthChars?: number }> }).sheets,
+        )[0];
         expect(sheet.defaultColWidthChars).toBeCloseTo(srcDefault, 5);
     });
 
@@ -82,7 +86,9 @@ describe('M17 default column width round-trip (issue 11)', () => {
         // default that would resize its columns.
         const buf = readFileSync(path.join(FIXTURES_DIR, '01-bar-simple.xlsx'));
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
-        const sheet = Object.values((snap as { sheets: Record<string, { defaultColWidthChars?: number }> }).sheets)[0];
+        const sheet = Object.values(
+            (snap as { sheets: Record<string, { defaultColWidthChars?: number }> }).sheets,
+        )[0];
         // Either the source genuinely had a default (captured) or it
         // didn't (undefined). When undefined, export must not write one.
         if (sheet.defaultColWidthChars === undefined) {

@@ -66,16 +66,23 @@ end tell
         // main process to dispose the DevTools window.
         for (const p of context.pages()) {
             let url = '';
-            try { url = p.url(); } catch {}
+            try {
+                url = p.url();
+            } catch {}
             if (/^devtools:\/\//.test(url)) {
                 console.error(`prep-joplin-panes: closing DevTools page (${url.slice(0, 80)}...)`);
-                try { await p.close(); }
-                catch (e) { console.error(`prep-joplin-panes: close failed: ${e.message}`); }
+                try {
+                    await p.close();
+                } catch (e) {
+                    console.error(`prep-joplin-panes: close failed: ${e.message}`);
+                }
             }
         }
 
         // 2. Find the Joplin editor page (renderer).
-        const editor = context.pages().find((p) => /Resources\/app\.asar\/index\.html/.test(p.url()));
+        const editor = context
+            .pages()
+            .find((p) => /Resources\/app\.asar\/index\.html/.test(p.url()));
         if (!editor) {
             console.error('prep-joplin-panes: no Joplin editor page found; skipping pane prep.');
             return;

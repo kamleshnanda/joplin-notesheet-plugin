@@ -42,10 +42,14 @@ export interface ChartDrawing {
     labels: string[];
     datasets: Array<{ label?: string; data: number[] }>;
     anchor: {
-        fromCol: number; fromColOff: number;
-        fromRow: number; fromRowOff: number;
-        toCol: number; toColOff: number;
-        toRow: number; toRowOff: number;
+        fromCol: number;
+        fromColOff: number;
+        fromRow: number;
+        fromRowOff: number;
+        toCol: number;
+        toColOff: number;
+        toRow: number;
+        toRowOff: number;
     };
     // M17 metadata that doesn't fit the rest of the shape. Mirrors
     // `ImportedChartDrawing.meta` so a round-trip preserves it.
@@ -149,7 +153,12 @@ export function cellRef(sheetName: string, row: number, col: number): string {
 }
 
 // Single-column range on one sheet.
-export function rangeRefCol(sheetName: string, startRow: number, endRow: number, col: number): string {
+export function rangeRefCol(
+    sheetName: string,
+    startRow: number,
+    endRow: number,
+    col: number,
+): string {
     return `${escapeSheetName(sheetName)}!$${colLetters(col)}$${startRow + 1}:$${colLetters(col)}$${endRow + 1}`;
 }
 
@@ -197,16 +206,18 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
     return chartSpaceWrap(c, opts, /* hasAxes */ true, () => {
         const barDir = c.meta?.barDir ?? 'col';
         const rawGrouping = c.meta?.barGrouping;
-        const grouping = (rawGrouping === 'stacked' || rawGrouping === 'percentStacked')
-            ? rawGrouping
-            : 'clustered';
+        const grouping =
+            rawGrouping === 'stacked' || rawGrouping === 'percentStacked'
+                ? rawGrouping
+                : 'clustered';
         const overlapXml = grouping === 'clustered' ? '' : '<c:overlap val="100"/>';
         // Default 150 matches Excel's default for bar charts
         // (gap = 1.5x bar width). Source values from the import path
         // override.
         const gapWidth = c.meta?.barGapWidth ?? 150;
-        const seriesXml = c.datasets.map((ds, i) =>
-            buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i))).join('');
+        const seriesXml = c.datasets
+            .map((ds, i) => buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i)))
+            .join('');
         const dLblsXml = buildDataLabelsXml(c);
         return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes(c)}`;
     });
@@ -218,14 +229,16 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
 export function buildLineChartXml(c: ChartDrawing, opts: BuildChartOpts): string {
     return chartSpaceWrap(c, opts, /* hasAxes */ true, () => {
         const rawGrouping = c.meta?.barGrouping;
-        const grouping = (rawGrouping === 'stacked' || rawGrouping === 'percentStacked')
-            ? rawGrouping
-            : 'standard';
+        const grouping =
+            rawGrouping === 'stacked' || rawGrouping === 'percentStacked'
+                ? rawGrouping
+                : 'standard';
         // Chart-level marker on/off. Excel default 0 (off); plumb via
         // meta.lineMarkerOn so a fixture with markers round-trips.
         const markerOn = c.meta?.lineMarkerOn ? '1' : '0';
-        const seriesXml = c.datasets.map((ds, i) =>
-            buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true)).join('');
+        const seriesXml = c.datasets
+            .map((ds, i) => buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true))
+            .join('');
         const dLblsXml = buildDataLabelsXml(c);
         return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:marker val="${markerOn}"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes(c)}`;
     });
@@ -314,9 +327,7 @@ function buildSeriesXml(
     const dataCol = isIndexAxis
         ? c.sourceRange.startColumn + seriesIndex
         : c.sourceRange.startColumn + 1 + seriesIndex;
-    const dataStartRow = isIndexAxis
-        ? c.sourceRange.startRow
-        : c.sourceRange.startRow + 1; // skip the header row
+    const dataStartRow = isIndexAxis ? c.sourceRange.startRow : c.sourceRange.startRow + 1; // skip the header row
     const dataEndRow = c.sourceRange.endRow;
 
     // Header cell at the top of the series's column gives the series
@@ -327,13 +338,12 @@ function buildSeriesXml(
     // startRow is already 0 there's no header row available; use the
     // dataset's `label` directly without a sheet ref (Excel renders
     // the inline strCache value in the legend just fine).
-    const headerRow = isIndexAxis
-        ? c.sourceRange.startRow - 1
-        : c.sourceRange.startRow;
+    const headerRow = isIndexAxis ? c.sourceRange.startRow - 1 : c.sourceRange.startRow;
     const seriesName = ds.label ?? `Series ${seriesIndex + 1}`;
-    const txXml = headerRow >= 0
-        ? `<c:tx><c:strRef><c:f>${cellRef(opts.sheetName, headerRow, dataCol)}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${escapeXml(seriesName)}</c:v></c:pt></c:strCache></c:strRef></c:tx>`
-        : `<c:tx><c:v>${escapeXml(seriesName)}</c:v></c:tx>`;
+    const txXml =
+        headerRow >= 0
+            ? `<c:tx><c:strRef><c:f>${cellRef(opts.sheetName, headerRow, dataCol)}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${escapeXml(seriesName)}</c:v></c:pt></c:strCache></c:strRef></c:tx>`
+            : `<c:tx><c:v>${escapeXml(seriesName)}</c:v></c:tx>`;
 
     // Per-series fill (bar) or line stroke (line). Both reference the palette.
     const spPrXml = lineSeries
@@ -358,18 +368,21 @@ function buildSeriesXml(
     let catXml = '';
     if (!isIndexAxis) {
         const labelsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, labelCol);
-        const labelsCacheXml = c.labels.map((v, i) =>
-            `<c:pt idx="${i}"><c:v>${escapeXml(String(v))}</c:v></c:pt>`).join('');
+        const labelsCacheXml = c.labels
+            .map((v, i) => `<c:pt idx="${i}"><c:v>${escapeXml(String(v))}</c:v></c:pt>`)
+            .join('');
         catXml = `<c:cat><c:strRef><c:f>${labelsRef}</c:f><c:strCache><c:ptCount val="${c.labels.length}"/>${labelsCacheXml}</c:strCache></c:strRef></c:cat>`;
     }
 
     // Values: this column's range (number ref + cache).
     const valsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, dataCol);
-    const valsCacheXml = ds.data.map((n, i) => {
-        // NaN/Infinity must be omitted — Excel won't load <c:v>NaN</c:v>.
-        if (typeof n !== 'number' || !Number.isFinite(n)) return '';
-        return `<c:pt idx="${i}"><c:v>${n}</c:v></c:pt>`;
-    }).join('');
+    const valsCacheXml = ds.data
+        .map((n, i) => {
+            // NaN/Infinity must be omitted — Excel won't load <c:v>NaN</c:v>.
+            if (typeof n !== 'number' || !Number.isFinite(n)) return '';
+            return `<c:pt idx="${i}"><c:v>${n}</c:v></c:pt>`;
+        })
+        .join('');
     const valXml = `<c:val><c:numRef><c:f>${valsRef}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${ds.data.length}"/>${valsCacheXml}</c:numCache></c:numRef></c:val>`;
 
     // Smoothing: meta.lineSmooth controls per-series. Bar charts
@@ -379,7 +392,7 @@ function buildSeriesXml(
     // Trendline: emit on the FIRST series only (matches import, which reads
     // a single trendline). OOXML element order inside <c:ser> puts
     // <c:trendline> AFTER marker/dLbls but BEFORE <c:cat>/<c:val>.
-    const trendlineXml = (seriesIndex === 0) ? buildTrendlineXml(c) : '';
+    const trendlineXml = seriesIndex === 0 ? buildTrendlineXml(c) : '';
     return `<c:ser><c:idx val="${seriesIndex}"/><c:order val="${seriesIndex}"/>${txXml}${spPrXml}${markerXml}${trendlineXml}${catXml}${valXml}<c:smooth val="${smoothVal}"/></c:ser>`;
 }
 
@@ -390,11 +403,16 @@ function buildSeriesXml(
 function buildTrendlineXml(c: ChartDrawing): string {
     const tl = c.meta?.trendline;
     if (!tl) return '';
-    const spPr = '<c:spPr><a:ln w="19050" cap="rnd"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:prstDash val="sysDot"/></a:ln><a:effectLst/></c:spPr>';
+    const spPr =
+        '<c:spPr><a:ln w="19050" cap="rnd"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:prstDash val="sysDot"/></a:ln><a:effectLst/></c:spPr>';
     const typeXml = `<c:trendlineType val="${tl.type}"/>`;
     // <c:order> is only meaningful for poly; <c:period> only for movingAvg.
-    const orderXml = (tl.type === 'poly' && typeof tl.order === 'number') ? `<c:order val="${tl.order}"/>` : '';
-    const periodXml = (tl.type === 'movingAvg' && typeof tl.period === 'number') ? `<c:period val="${tl.period}"/>` : '';
+    const orderXml =
+        tl.type === 'poly' && typeof tl.order === 'number' ? `<c:order val="${tl.order}"/>` : '';
+    const periodXml =
+        tl.type === 'movingAvg' && typeof tl.period === 'number'
+            ? `<c:period val="${tl.period}"/>`
+            : '';
     const rsqrXml = tl.dispRSqr ? '<c:dispRSqr val="1"/>' : '';
     const eqXml = tl.dispEq ? '<c:dispEq val="1"/>' : '';
     return `<c:trendline>${spPr}${typeXml}${orderXml}${periodXml}${rsqrXml}${eqXml}</c:trendline>`;
@@ -419,21 +437,26 @@ function buildPieSeriesXml(
 
     // Per-data-point fills via <c:dPt>. Element order within each dPt is
     // strict: idx, invertIfNegative, bubble3D, spPr.
-    const dPtXml = ds.data.map((_, i) => {
-        const hex = paletteHex(i);
-        return `<c:dPt><c:idx val="${i}"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="${hex}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:ln><a:effectLst/></c:spPr></c:dPt>`;
-    }).join('');
+    const dPtXml = ds.data
+        .map((_, i) => {
+            const hex = paletteHex(i);
+            return `<c:dPt><c:idx val="${i}"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="${hex}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:ln><a:effectLst/></c:spPr></c:dPt>`;
+        })
+        .join('');
 
     const labelsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, labelCol);
-    const labelsCacheXml = c.labels.map((v, i) =>
-        `<c:pt idx="${i}"><c:v>${escapeXml(String(v))}</c:v></c:pt>`).join('');
+    const labelsCacheXml = c.labels
+        .map((v, i) => `<c:pt idx="${i}"><c:v>${escapeXml(String(v))}</c:v></c:pt>`)
+        .join('');
     const catXml = `<c:cat><c:strRef><c:f>${labelsRef}</c:f><c:strCache><c:ptCount val="${c.labels.length}"/>${labelsCacheXml}</c:strCache></c:strRef></c:cat>`;
 
     const valsRef = rangeRefCol(opts.sheetName, dataStartRow, dataEndRow, dataCol);
-    const valsCacheXml = ds.data.map((n, i) => {
-        if (typeof n !== 'number' || !Number.isFinite(n)) return '';
-        return `<c:pt idx="${i}"><c:v>${n}</c:v></c:pt>`;
-    }).join('');
+    const valsCacheXml = ds.data
+        .map((n, i) => {
+            if (typeof n !== 'number' || !Number.isFinite(n)) return '';
+            return `<c:pt idx="${i}"><c:v>${n}</c:v></c:pt>`;
+        })
+        .join('');
     const valXml = `<c:val><c:numRef><c:f>${valsRef}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${ds.data.length}"/>${valsCacheXml}</c:numCache></c:numRef></c:val>`;
 
     return `<c:ser><c:idx val="0"/><c:order val="0"/>${txXml}${dPtXml}${catXml}${valXml}</c:ser>`;
@@ -469,7 +492,8 @@ function categoryAndValueAxes(c: ChartDrawing): string {
     const catAxPos = isHorizontalBar ? 'l' : 'b';
     const valAxPos = isHorizontalBar ? 'b' : 'l';
     const tickMark = c.meta?.tickMark ?? 'none';
-    const lightGreyLine = '<a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln>';
+    const lightGreyLine =
+        '<a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln>';
     const majorGridlinesXml = `<c:majorGridlines><c:spPr>${lightGreyLine}<a:effectLst/></c:spPr></c:majorGridlines>`;
     // Axis-line <c:spPr>. WITHOUT this Excel paints its legacy DARK solid
     // line on both axes — the "introduced axes / vertical line" the user
@@ -499,22 +523,26 @@ function categoryAndValueAxes(c: ChartDrawing): string {
 // rIds inside the anchors are 1-based per drawing.xml (independent of the
 // sheet rels rIds — those live in xl/worksheets/_rels/sheet{S}.xml.rels).
 export function buildDrawingXml(charts: ChartDrawing[]): string {
-    const anchors = charts.map((c, i) => {
-        const a = c.anchor;
-        const rId = i + 1; // 1-based rId inside drawing{N}.xml.rels
-        const cNvPrId = i + 2; // Excel uses id=2,3,... for graphic frames
-        return `<xdr:twoCellAnchor>` +
-            `<xdr:from><xdr:col>${a.fromCol}</xdr:col><xdr:colOff>${a.fromColOff}</xdr:colOff><xdr:row>${a.fromRow}</xdr:row><xdr:rowOff>${a.fromRowOff}</xdr:rowOff></xdr:from>` +
-            `<xdr:to><xdr:col>${a.toCol}</xdr:col><xdr:colOff>${a.toColOff}</xdr:colOff><xdr:row>${a.toRow}</xdr:row><xdr:rowOff>${a.toRowOff}</xdr:rowOff></xdr:to>` +
-            `<xdr:graphicFrame macro="">` +
-            `<xdr:nvGraphicFramePr><xdr:cNvPr id="${cNvPrId}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>` +
-            // <a:off>/<a:ext> zeros are correct — anchor drives size, this xfrm is a placeholder. Spike confirmed.
-            `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>` +
-            `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId${rId}"/></a:graphicData></a:graphic>` +
-            `</xdr:graphicFrame>` +
-            `<xdr:clientData/>` +
-            `</xdr:twoCellAnchor>`;
-    }).join('');
+    const anchors = charts
+        .map((c, i) => {
+            const a = c.anchor;
+            const rId = i + 1; // 1-based rId inside drawing{N}.xml.rels
+            const cNvPrId = i + 2; // Excel uses id=2,3,... for graphic frames
+            return (
+                `<xdr:twoCellAnchor>` +
+                `<xdr:from><xdr:col>${a.fromCol}</xdr:col><xdr:colOff>${a.fromColOff}</xdr:colOff><xdr:row>${a.fromRow}</xdr:row><xdr:rowOff>${a.fromRowOff}</xdr:rowOff></xdr:from>` +
+                `<xdr:to><xdr:col>${a.toCol}</xdr:col><xdr:colOff>${a.toColOff}</xdr:colOff><xdr:row>${a.toRow}</xdr:row><xdr:rowOff>${a.toRowOff}</xdr:rowOff></xdr:to>` +
+                `<xdr:graphicFrame macro="">` +
+                `<xdr:nvGraphicFramePr><xdr:cNvPr id="${cNvPrId}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>` +
+                // <a:off>/<a:ext> zeros are correct — anchor drives size, this xfrm is a placeholder. Spike confirmed.
+                `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>` +
+                `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId${rId}"/></a:graphicData></a:graphic>` +
+                `</xdr:graphicFrame>` +
+                `<xdr:clientData/>` +
+                `</xdr:twoCellAnchor>`
+            );
+        })
+        .join('');
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${anchors}</xdr:wsDr>`;
 }
@@ -526,8 +554,12 @@ export function buildDrawingXml(charts: ChartDrawing[]): string {
 // pointing to chart3.xml + chart4.xml (because charts 1,2 are on a different
 // sheet's drawing) → chartFileNumbers=[3,4].
 export function buildDrawingRelsXml(chartFileNumbers: number[]): string {
-    const rels = chartFileNumbers.map((n, i) =>
-        `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${n}.xml"/>`).join('');
+    const rels = chartFileNumbers
+        .map(
+            (n, i) =>
+                `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${n}.xml"/>`,
+        )
+        .join('');
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`;
 }
@@ -544,11 +576,16 @@ export function buildChartRelsXml(chartFileNumber: number): string {
 
 export function buildChartXml(c: ChartDrawing, opts: BuildChartOpts): string {
     switch (c.type) {
-        case 'bar': return buildBarChartXml(c, opts);
-        case 'line': return buildLineChartXml(c, opts);
-        case 'pie': return buildPieChartXml(c, opts);
-        case 'doughnut': return buildDoughnutChartXml(c, opts);
-        default: return buildBarChartXml(c, opts);
+        case 'bar':
+            return buildBarChartXml(c, opts);
+        case 'line':
+            return buildLineChartXml(c, opts);
+        case 'pie':
+            return buildPieChartXml(c, opts);
+        case 'doughnut':
+            return buildDoughnutChartXml(c, opts);
+        default:
+            return buildBarChartXml(c, opts);
     }
 }
 
@@ -559,7 +596,8 @@ export function buildChartXml(c: ChartDrawing, opts: BuildChartOpts): string {
 // We filter to entries whose componentKey === 'NotesheetChart' (other
 // drawings — images, shapes — coexist and must be left alone).
 export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[] {
-    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> })
+        .resources;
     if (!Array.isArray(resources)) return [];
     const entry = resources.find((r) => r?.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry || typeof entry.data !== 'string') return [];
@@ -584,7 +622,12 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                 data?: {
                     chartId?: string;
                     type?: string;
-                    sourceRange?: { startRow?: number; endRow?: number; startColumn?: number; endColumn?: number };
+                    sourceRange?: {
+                        startRow?: number;
+                        endRow?: number;
+                        startColumn?: number;
+                        endColumn?: number;
+                    };
                     sourceSheetName?: string;
                     title?: string;
                     labels?: unknown[];
@@ -623,12 +666,32 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     };
                 };
                 axisAlignSheetTransform?: {
-                    from?: { column?: number; columnOffset?: number; row?: number; rowOffset?: number };
-                    to?: { column?: number; columnOffset?: number; row?: number; rowOffset?: number };
+                    from?: {
+                        column?: number;
+                        columnOffset?: number;
+                        row?: number;
+                        rowOffset?: number;
+                    };
+                    to?: {
+                        column?: number;
+                        columnOffset?: number;
+                        row?: number;
+                        rowOffset?: number;
+                    };
                 };
                 sheetTransform?: {
-                    from?: { column?: number; columnOffset?: number; row?: number; rowOffset?: number };
-                    to?: { column?: number; columnOffset?: number; row?: number; rowOffset?: number };
+                    from?: {
+                        column?: number;
+                        columnOffset?: number;
+                        row?: number;
+                        rowOffset?: number;
+                    };
+                    to?: {
+                        column?: number;
+                        columnOffset?: number;
+                        row?: number;
+                        rowOffset?: number;
+                    };
                 };
             };
 
@@ -636,13 +699,23 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
             const data = d.data;
             if (!data) continue;
 
-            const type = (data.type === 'bar' || data.type === 'line' || data.type === 'pie' || data.type === 'doughnut')
-                ? data.type
-                : 'bar';
+            const type =
+                data.type === 'bar' ||
+                data.type === 'line' ||
+                data.type === 'pie' ||
+                data.type === 'doughnut'
+                    ? data.type
+                    : 'bar';
 
             const sr = data.sourceRange;
-            if (!sr || typeof sr.startRow !== 'number' || typeof sr.endRow !== 'number'
-                || typeof sr.startColumn !== 'number' || typeof sr.endColumn !== 'number') continue;
+            if (
+                !sr ||
+                typeof sr.startRow !== 'number' ||
+                typeof sr.endRow !== 'number' ||
+                typeof sr.startColumn !== 'number' ||
+                typeof sr.endColumn !== 'number'
+            )
+                continue;
 
             // Prefer axisAlignSheetTransform — it's xlsx-aligned per Univer's
             // service. Fall back to sheetTransform on the (rare) chance the
@@ -650,12 +723,14 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
             const tx = d.axisAlignSheetTransform ?? d.sheetTransform;
             if (!tx?.from || !tx?.to) continue;
 
-            const labels = Array.isArray(data.labels) ? data.labels.map((l) => String(l ?? '')) : [];
+            const labels = Array.isArray(data.labels)
+                ? data.labels.map((l) => String(l ?? ''))
+                : [];
             const datasets = Array.isArray(data.datasets)
                 ? data.datasets.map((ds) => ({
-                    label: ds?.label,
-                    data: Array.isArray(ds?.data) ? ds.data.map((v) => Number(v)) : [],
-                }))
+                      label: ds?.label,
+                      data: Array.isArray(ds?.data) ? ds.data.map((v) => Number(v)) : [],
+                  }))
                 : [];
 
             out.push({
@@ -695,7 +770,10 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
 
 // Look up a sheet's 1-based index in the workbook (matches xl/worksheets/sheet{N}.xml)
 // and its display name (used for <c:f> sheet-qualified ranges).
-function lookupSheet(snapshot: UniverSnapshot, sheetId: string): { index: number; name: string } | null {
+function lookupSheet(
+    snapshot: UniverSnapshot,
+    sheetId: string,
+): { index: number; name: string } | null {
     const sheetOrder = (snapshot as { sheetOrder?: string[] }).sheetOrder ?? [];
     const sheets = (snapshot as { sheets?: Record<string, { name?: string }> }).sheets ?? {};
     const idx0 = sheetOrder.indexOf(sheetId);
@@ -750,15 +828,27 @@ function insertDrawingRefIntoSheet(sheetXml: string, rId: number): string {
 // Patch [Content_Types].xml with the four Override entries Excel needs per
 // drawing + chart family. The drawing override takes a single drawingNum;
 // the chart family takes the chart number + its style/colors siblings.
-function patchContentTypes(contentTypesXml: string, drawingNums: number[], chartNums: number[]): string {
+function patchContentTypes(
+    contentTypesXml: string,
+    drawingNums: number[],
+    chartNums: number[],
+): string {
     const toAdd: string[] = [];
     for (const n of drawingNums) {
-        toAdd.push(`<Override PartName="/xl/drawings/drawing${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+        toAdd.push(
+            `<Override PartName="/xl/drawings/drawing${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`,
+        );
     }
     for (const n of chartNums) {
-        toAdd.push(`<Override PartName="/xl/charts/chart${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`);
-        toAdd.push(`<Override PartName="/xl/charts/style${n}.xml" ContentType="application/vnd.ms-office.chartstyle+xml"/>`);
-        toAdd.push(`<Override PartName="/xl/charts/colors${n}.xml" ContentType="application/vnd.ms-office.chartcolorstyle+xml"/>`);
+        toAdd.push(
+            `<Override PartName="/xl/charts/chart${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`,
+        );
+        toAdd.push(
+            `<Override PartName="/xl/charts/style${n}.xml" ContentType="application/vnd.ms-office.chartstyle+xml"/>`,
+        );
+        toAdd.push(
+            `<Override PartName="/xl/charts/colors${n}.xml" ContentType="application/vnd.ms-office.chartcolorstyle+xml"/>`,
+        );
     }
     if (toAdd.length === 0) return contentTypesXml;
     return contentTypesXml.replace(/<\/Types>\s*$/, `${toAdd.join('')}</Types>`);
@@ -830,7 +920,10 @@ export async function injectChartsIntoZip(
 
             // 3) Add drawing.xml + drawing rels.
             zip.file(`xl/drawings/drawing${drawingNum}.xml`, buildDrawingXml(sheetCharts));
-            zip.file(`xl/drawings/_rels/drawing${drawingNum}.xml.rels`, buildDrawingRelsXml(chartFileNumbers));
+            zip.file(
+                `xl/drawings/_rels/drawing${drawingNum}.xml.rels`,
+                buildDrawingRelsXml(chartFileNumbers),
+            );
 
             // 4) Add each chart's xml + style + colors + chart rels.
             // Cross-sheet (M17): when the chart drawing carries a
@@ -841,10 +934,14 @@ export async function injectChartsIntoZip(
             for (let i = 0; i < sheetCharts.length; i++) {
                 const c = sheetCharts[i];
                 const chartNum = chartFileNumbers[i];
-                const refSheetName = c.sourceSheetName && c.sourceSheetName !== sheet.name
-                    ? c.sourceSheetName
-                    : sheet.name;
-                zip.file(`xl/charts/chart${chartNum}.xml`, buildChartXml(c, { sheetName: refSheetName }));
+                const refSheetName =
+                    c.sourceSheetName && c.sourceSheetName !== sheet.name
+                        ? c.sourceSheetName
+                        : sheet.name;
+                zip.file(
+                    `xl/charts/chart${chartNum}.xml`,
+                    buildChartXml(c, { sheetName: refSheetName }),
+                );
                 zip.file(`xl/charts/style${chartNum}.xml`, CHART_STYLE_XML);
                 zip.file(`xl/charts/colors${chartNum}.xml`, CHART_COLORS_XML);
                 zip.file(`xl/charts/_rels/chart${chartNum}.xml.rels`, buildChartRelsXml(chartNum));

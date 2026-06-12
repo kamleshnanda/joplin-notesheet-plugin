@@ -32,8 +32,11 @@ async function main() {
         let frame = null;
         for (let i = 0; i < 30 && !frame; i++) {
             for (const p of pages) {
-                const candidate = p.frames().find(f => /UserWebviewIndex\.html/.test(f.url()));
-                if (candidate) { frame = candidate; break; }
+                const candidate = p.frames().find((f) => /UserWebviewIndex\.html/.test(f.url()));
+                if (candidate) {
+                    frame = candidate;
+                    break;
+                }
             }
             if (!frame) await pages[0].waitForTimeout(200);
         }
@@ -41,7 +44,8 @@ async function main() {
 
         const result = await frame.evaluate(() => {
             const api = window.__notesheetUniverAPI;
-            if (!api) return { error: 'no notesheet api on window — is the Notesheet plugin loaded?' };
+            if (!api)
+                return { error: 'no notesheet api on window — is the Notesheet plugin loaded?' };
             const wb = api.getActiveWorkbook && api.getActiveWorkbook();
             const ws = wb && wb.getActiveSheet && wb.getActiveSheet();
             if (!ws) return { error: 'no active sheet' };
@@ -59,4 +63,7 @@ async function main() {
     }
 }
 
-main().catch(e => { console.error(e.stack || e.message); process.exit(1); });
+main().catch((e) => {
+    console.error(e.stack || e.message);
+    process.exit(1);
+});

@@ -27,7 +27,9 @@
 // deliberately excluded — the import path regenerates a synthetic id.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -110,7 +112,12 @@ function buildChartSnapshot(sheetSpecs: SheetSpec[], charts: ChartSpec[]): Recor
                 datasets: c.datasets,
             },
             axisAlignSheetTransform: {
-                from: { column: anchor.fromCol, columnOffset: 0, row: anchor.fromRow, rowOffset: 0 },
+                from: {
+                    column: anchor.fromCol,
+                    columnOffset: 0,
+                    row: anchor.fromRow,
+                    rowOffset: 0,
+                },
                 to: { column: anchor.toCol, columnOffset: 0, row: anchor.toRow, rowOffset: 0 },
             },
         };
@@ -125,9 +132,7 @@ function buildChartSnapshot(sheetSpecs: SheetSpec[], charts: ChartSpec[]): Recor
         locale: 'enUS',
         styles: {},
         sheets,
-        resources: [
-            { name: 'SHEET_DRAWING_PLUGIN', data: JSON.stringify(drawingResource) },
-        ],
+        resources: [{ name: 'SHEET_DRAWING_PLUGIN', data: JSON.stringify(drawingResource) }],
     };
 }
 
@@ -143,8 +148,14 @@ interface CollectedChart {
     labels: string[];
     datasets: Array<{ label?: string; data: number[] }>;
     anchor: {
-        fromCol: number; fromColOff: number; fromRow: number; fromRowOff: number;
-        toCol: number; toColOff: number; toRow: number; toRowOff: number;
+        fromCol: number;
+        fromColOff: number;
+        fromRow: number;
+        fromRowOff: number;
+        toCol: number;
+        toColOff: number;
+        toRow: number;
+        toRowOff: number;
     };
 }
 
@@ -153,10 +164,14 @@ interface CollectedChart {
 // pack pins. Anchor is read from axisAlignSheetTransform (the
 // xlsx-aligned transform both import and export agree on).
 function collectCharts(snap: unknown): CollectedChart[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
-    const parsed = JSON.parse(entry.data) as Record<string, { data: Record<string, any>; order?: string[] }>;
+    const parsed = JSON.parse(entry.data) as Record<
+        string,
+        { data: Record<string, any>; order?: string[] }
+    >;
     const out: CollectedChart[] = [];
     for (const subUnitId of Object.keys(parsed)) {
         const sub = parsed[subUnitId];
@@ -178,10 +193,14 @@ function collectCharts(snap: unknown): CollectedChart[] {
                     data: ds.data ?? [],
                 })),
                 anchor: {
-                    fromCol: tx.from?.column ?? 0, fromColOff: tx.from?.columnOffset ?? 0,
-                    fromRow: tx.from?.row ?? 0, fromRowOff: tx.from?.rowOffset ?? 0,
-                    toCol: tx.to?.column ?? 0, toColOff: tx.to?.columnOffset ?? 0,
-                    toRow: tx.to?.row ?? 0, toRowOff: tx.to?.rowOffset ?? 0,
+                    fromCol: tx.from?.column ?? 0,
+                    fromColOff: tx.from?.columnOffset ?? 0,
+                    fromRow: tx.from?.row ?? 0,
+                    fromRowOff: tx.from?.rowOffset ?? 0,
+                    toCol: tx.to?.column ?? 0,
+                    toColOff: tx.to?.columnOffset ?? 0,
+                    toRow: tx.to?.row ?? 0,
+                    toRowOff: tx.to?.rowOffset ?? 0,
                 },
             });
         }
@@ -224,16 +243,18 @@ const ONE_SHEET: SheetSpec[] = [{ id: 'sheet-1', name: 'Sheet1' }];
 
 describe('feature-6: programmatic round-trip pack', () => {
     test('Case A — bar chart with mixed positive/negative values', async () => {
-        const snap = buildChartSnapshot(ONE_SHEET, [{
-            sheetId: 'sheet-1',
-            drawingId: 'chart-A',
-            type: 'bar',
-            title: 'Net change',
-            sourceRange: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 1 },
-            labels: ['Q1', 'Q2', 'Q3', 'Q4'],
-            datasets: [{ label: 'Delta', data: [3, -2, 5, -1] }],
-            anchor: { fromCol: 3, fromRow: 0, toCol: 10, toRow: 15 },
-        }]);
+        const snap = buildChartSnapshot(ONE_SHEET, [
+            {
+                sheetId: 'sheet-1',
+                drawingId: 'chart-A',
+                type: 'bar',
+                title: 'Net change',
+                sourceRange: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 1 },
+                labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+                datasets: [{ label: 'Delta', data: [3, -2, 5, -1] }],
+                anchor: { fromCol: 3, fromRow: 0, toCol: 10, toRow: 15 },
+            },
+        ]);
         const { first, second } = await roundTrip(snap);
         expect(first).toHaveLength(1);
         expect(second).toHaveLength(1);
@@ -244,15 +265,17 @@ describe('feature-6: programmatic round-trip pack', () => {
     });
 
     test('Case B — line chart with a single-data-point series', async () => {
-        const snap = buildChartSnapshot(ONE_SHEET, [{
-            sheetId: 'sheet-1',
-            drawingId: 'chart-B',
-            type: 'line',
-            title: 'Single point',
-            sourceRange: { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 },
-            labels: ['OnlyPoint'],
-            datasets: [{ label: 'Series 1', data: [42] }],
-        }]);
+        const snap = buildChartSnapshot(ONE_SHEET, [
+            {
+                sheetId: 'sheet-1',
+                drawingId: 'chart-B',
+                type: 'line',
+                title: 'Single point',
+                sourceRange: { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 },
+                labels: ['OnlyPoint'],
+                datasets: [{ label: 'Series 1', data: [42] }],
+            },
+        ]);
         const { first, second } = await roundTrip(snap);
         expect(first).toHaveLength(1);
         expect(second).toHaveLength(1);
@@ -264,15 +287,17 @@ describe('feature-6: programmatic round-trip pack', () => {
     test('Case C — pie chart with a very long category label', async () => {
         const longLabel = 'Engineering, Research, Development & Long-Tail Operations Division';
         expect(longLabel.length).toBeGreaterThan(30);
-        const snap = buildChartSnapshot(ONE_SHEET, [{
-            sheetId: 'sheet-1',
-            drawingId: 'chart-C',
-            type: 'pie',
-            title: 'Headcount',
-            sourceRange: { startRow: 0, endRow: 3, startColumn: 0, endColumn: 1 },
-            labels: [longLabel, 'Sales', 'Support'],
-            datasets: [{ label: 'People', data: [120, 45, 30] }],
-        }]);
+        const snap = buildChartSnapshot(ONE_SHEET, [
+            {
+                sheetId: 'sheet-1',
+                drawingId: 'chart-C',
+                type: 'pie',
+                title: 'Headcount',
+                sourceRange: { startRow: 0, endRow: 3, startColumn: 0, endColumn: 1 },
+                labels: [longLabel, 'Sales', 'Support'],
+                datasets: [{ label: 'People', data: [120, 45, 30] }],
+            },
+        ]);
         const { first, second } = await roundTrip(snap);
         expect(first).toHaveLength(1);
         expect(second).toHaveLength(1);
@@ -282,15 +307,17 @@ describe('feature-6: programmatic round-trip pack', () => {
     });
 
     test('Case D — doughnut chart with an empty series (zero data rows)', async () => {
-        const snap = buildChartSnapshot(ONE_SHEET, [{
-            sheetId: 'sheet-1',
-            drawingId: 'chart-D',
-            type: 'doughnut',
-            title: 'Empty',
-            sourceRange: { startRow: 0, endRow: 0, startColumn: 0, endColumn: 1 },
-            labels: [],
-            datasets: [{ label: 'Series 1', data: [] }],
-        }]);
+        const snap = buildChartSnapshot(ONE_SHEET, [
+            {
+                sheetId: 'sheet-1',
+                drawingId: 'chart-D',
+                type: 'doughnut',
+                title: 'Empty',
+                sourceRange: { startRow: 0, endRow: 0, startColumn: 0, endColumn: 1 },
+                labels: [],
+                datasets: [{ label: 'Series 1', data: [] }],
+            },
+        ]);
         const { first, second } = await roundTrip(snap);
         expect(first).toHaveLength(1);
         // Spec accepts EITHER outcome: DROP (0 drawings) or PRESERVE.
@@ -321,15 +348,17 @@ describe('feature-6: programmatic round-trip pack', () => {
     test('Case E — bar chart with XML-special chars in title and category names', async () => {
         const title = 'Sales & "Profit" <Q1> \'2024\'';
         const labels = ['R&D', 'x<y', 'a>b'];
-        const snap = buildChartSnapshot(ONE_SHEET, [{
-            sheetId: 'sheet-1',
-            drawingId: 'chart-E',
-            type: 'bar',
-            title,
-            sourceRange: { startRow: 0, endRow: 3, startColumn: 0, endColumn: 1 },
-            labels,
-            datasets: [{ label: 'Q&A <count>', data: [10, 20, 30] }],
-        }]);
+        const snap = buildChartSnapshot(ONE_SHEET, [
+            {
+                sheetId: 'sheet-1',
+                drawingId: 'chart-E',
+                type: 'bar',
+                title,
+                sourceRange: { startRow: 0, endRow: 3, startColumn: 0, endColumn: 1 },
+                labels,
+                datasets: [{ label: 'Q&A <count>', data: [10, 20, 30] }],
+            },
+        ]);
         const { first, second } = await roundTrip(snap);
         expect(first).toHaveLength(1);
         expect(second).toHaveLength(1);
@@ -342,17 +371,22 @@ describe('feature-6: programmatic round-trip pack', () => {
 
     test('Case F — cross-sheet chart (chart on Sheet2 references data on Sheet1)', async () => {
         const snap = buildChartSnapshot(
-            [{ id: 'sheet-1', name: 'Sheet1' }, { id: 'sheet-2', name: 'Sheet2' }],
-            [{
-                sheetId: 'sheet-2',
-                drawingId: 'chart-F',
-                type: 'bar',
-                title: 'Cross-sheet',
-                sourceRange: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 1 },
-                sourceSheetName: 'Sheet1',
-                labels: ['Jan', 'Feb'],
-                datasets: [{ label: 'Revenue', data: [100, 200] }],
-            }],
+            [
+                { id: 'sheet-1', name: 'Sheet1' },
+                { id: 'sheet-2', name: 'Sheet2' },
+            ],
+            [
+                {
+                    sheetId: 'sheet-2',
+                    drawingId: 'chart-F',
+                    type: 'bar',
+                    title: 'Cross-sheet',
+                    sourceRange: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 1 },
+                    sourceSheetName: 'Sheet1',
+                    labels: ['Jan', 'Feb'],
+                    datasets: [{ label: 'Revenue', data: [100, 200] }],
+                },
+            ],
         );
         const { first, second } = await roundTrip(snap);
         expect(first).toHaveLength(1);
@@ -406,9 +440,7 @@ describe('feature-6: programmatic round-trip pack', () => {
         // Strip comments (// ... and /* ... */) so the sentinel checks
         // only EXECUTABLE code, not the prose above that legitimately
         // names the forbidden API to explain why it's forbidden.
-        const codeOnly = src
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/\/\/[^\n]*/g, '');
+        const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
         // The forbidden form is the constructor call (exceljs's chart
         // write API is thin; M10 post-processes the zip instead).
         expect(/new\s+ExcelJS\s*\.\s*Workbook\s*\(/.test(codeOnly)).toBe(false);

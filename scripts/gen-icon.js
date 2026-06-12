@@ -9,14 +9,15 @@ const { deflateSync } = require('zlib');
 
 const W = 96;
 const H = 96;
-const BG = [255, 255, 255];        // white
-const GRID = [80, 80, 80];          // medium-dark grey grid lines
-const FILL = [52, 105, 46];         // #34692E Notesheet green
+const BG = [255, 255, 255]; // white
+const GRID = [80, 80, 80]; // medium-dark grey grid lines
+const FILL = [52, 105, 46]; // #34692E Notesheet green
 
 // Cell layout: 4x4 cells with 1px grid between. Margin: 4px. Each cell
 // is (96 - 8 margin - 5 grid lines) / 4 ≈ 20 px wide. Use exact maths.
 const MARGIN = 4;
-const ROWS = 4, COLS = 4;
+const ROWS = 4,
+    COLS = 4;
 const GRID_W = 1;
 const CELL_W = Math.floor((W - 2 * MARGIN - (COLS + 1) * GRID_W) / COLS);
 const CELL_H = Math.floor((H - 2 * MARGIN - (ROWS + 1) * GRID_W) / ROWS);
@@ -28,8 +29,8 @@ const PAINT_H = MARGIN * 2 + (ROWS + 1) * GRID_W + ROWS * CELL_H;
 const X_OFFSET = Math.floor((W - PAINT_W) / 2);
 const Y_OFFSET = Math.floor((H - PAINT_H) / 2);
 
-const filledCellRow = 2;  // 0-indexed (3rd row from top)
-const filledCellCol = 1;  // 0-indexed (2nd col from left)
+const filledCellRow = 2; // 0-indexed (3rd row from top)
+const filledCellCol = 1; // 0-indexed (2nd col from left)
 
 // rgba buffer — use RGBA so the PNG encoder is simple.
 const buf = Buffer.alloc(W * H * 4);
@@ -99,11 +100,11 @@ const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const ihdr = Buffer.alloc(13);
 ihdr.writeUInt32BE(W, 0);
 ihdr.writeUInt32BE(H, 4);
-ihdr[8] = 8;        // bit depth
-ihdr[9] = 6;        // color type RGBA
+ihdr[8] = 8; // bit depth
+ihdr[9] = 6; // color type RGBA
 ihdr[10] = 0;
 ihdr[11] = 0;
-ihdr[12] = 0;       // not interlaced
+ihdr[12] = 0; // not interlaced
 
 // Add filter byte (0 = None) per scanline.
 const filtered = Buffer.alloc((W * 4 + 1) * H);

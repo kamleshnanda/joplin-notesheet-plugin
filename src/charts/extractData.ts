@@ -72,8 +72,8 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
         };
 
         // Prefer the sheet the range was anchored on, fall back to active.
-        const sheet = (range.subUnitId && wb.getSheetBySheetId?.(range.subUnitId))
-            || wb.getActiveSheet?.();
+        const sheet =
+            (range.subUnitId && wb.getSheetBySheetId?.(range.subUnitId)) || wb.getActiveSheet?.();
         if (!sheet) return empty;
 
         const rangeObj = sheet.getRange?.(range);
@@ -85,12 +85,14 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
             const data = values.map((row) => toNumber(row[0]));
             return {
                 labels: data.map((_, i) => String(i + 1)),
-                datasets: [{
-                    label: 'Series 1',
-                    data,
-                    backgroundColor: CHART_PALETTE[0],
-                    borderColor: CHART_PALETTE[0],
-                }],
+                datasets: [
+                    {
+                        label: 'Series 1',
+                        data,
+                        backgroundColor: CHART_PALETTE[0],
+                        borderColor: CHART_PALETTE[0],
+                    },
+                ],
             };
         }
 
@@ -138,11 +140,14 @@ export function extractDataFromSnapshot(
     if (!snapshot || typeof snapshot !== 'object' || !range) return empty;
 
     const snap = snapshot as {
-        sheets?: Record<string, {
-            id?: string;
-            name?: string;
-            cellData?: Record<string, Record<string, { v?: unknown }>>;
-        }>;
+        sheets?: Record<
+            string,
+            {
+                id?: string;
+                name?: string;
+                cellData?: Record<string, Record<string, { v?: unknown }>>;
+            }
+        >;
         sheetOrder?: string[];
     };
 
@@ -183,12 +188,14 @@ export function extractDataFromSnapshot(
         const data = values.map((row) => toNumber(row[0]));
         return {
             labels: data.map((_, i) => String(i + 1)),
-            datasets: [{
-                label: 'Series 1',
-                data,
-                backgroundColor: CHART_PALETTE[0],
-                borderColor: CHART_PALETTE[0],
-            }],
+            datasets: [
+                {
+                    label: 'Series 1',
+                    data,
+                    backgroundColor: CHART_PALETTE[0],
+                    borderColor: CHART_PALETTE[0],
+                },
+            ],
         };
     }
 

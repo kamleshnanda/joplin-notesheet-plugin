@@ -6,3 +6,13 @@ api/
 package-lock.json
 tests/fixtures/
 screenshots/
+
+# Internal PGE working logs / planning narratives — deeply-nested manual
+# list indentation that Prettier's markdown formatter cannot make
+# idempotent (it oscillates between indent depths, so format:check would
+# fail forever). These are session handoff logs, not shipped/reviewed
+# docs, so we exclude them rather than churn their structure.
+PROGRESS.md
+# evaluator.md oscillates on `NEEDS_WORK` (Prettier flip-flops the
+# underscore-emphasis escaping each pass); internal harness brief, ignore.
+.claude/agents/evaluator.md

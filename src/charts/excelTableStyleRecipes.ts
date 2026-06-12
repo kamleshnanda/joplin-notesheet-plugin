@@ -203,27 +203,69 @@ const DARK_ACHROMATIC = (n: number): ExcelTableStyleRecipe => ({
 export const EXCEL_TABLE_STYLE_RECIPES: ExcelTableStyleRecipe[] = [
     // --- Light (21) -------------------------------------------------------
     LIGHT_ACHROMATIC(1),
-    lightFor(1, 2), lightFor(2, 3), lightFor(3, 4), lightFor(4, 5), lightFor(5, 6), lightFor(6, 7),
+    lightFor(1, 2),
+    lightFor(2, 3),
+    lightFor(3, 4),
+    lightFor(4, 5),
+    lightFor(5, 6),
+    lightFor(6, 7),
     LIGHT_ACHROMATIC(8),
-    lightFor(1, 9), lightFor(2, 10), lightFor(3, 11), lightFor(4, 12), lightFor(5, 13), lightFor(6, 14),
+    lightFor(1, 9),
+    lightFor(2, 10),
+    lightFor(3, 11),
+    lightFor(4, 12),
+    lightFor(5, 13),
+    lightFor(6, 14),
     LIGHT_ACHROMATIC(15),
-    lightFor(1, 16), lightFor(2, 17), lightFor(3, 18), lightFor(4, 19), lightFor(5, 20), lightFor(6, 21),
+    lightFor(1, 16),
+    lightFor(2, 17),
+    lightFor(3, 18),
+    lightFor(4, 19),
+    lightFor(5, 20),
+    lightFor(6, 21),
 
     // --- Medium (28) ------------------------------------------------------
     MEDIUM_ACHROMATIC(1),
-    mediumFor(1, 2), mediumFor(2, 3), mediumFor(3, 4), mediumFor(4, 5), mediumFor(5, 6), mediumFor(6, 7),
+    mediumFor(1, 2),
+    mediumFor(2, 3),
+    mediumFor(3, 4),
+    mediumFor(4, 5),
+    mediumFor(5, 6),
+    mediumFor(6, 7),
     MEDIUM_ACHROMATIC(8),
-    mediumFor(1, 9), mediumFor(2, 10), mediumFor(3, 11), mediumFor(4, 12), mediumFor(5, 13), mediumFor(6, 14),
+    mediumFor(1, 9),
+    mediumFor(2, 10),
+    mediumFor(3, 11),
+    mediumFor(4, 12),
+    mediumFor(5, 13),
+    mediumFor(6, 14),
     MEDIUM_ACHROMATIC(15),
-    mediumFor(1, 16), mediumFor(2, 17), mediumFor(3, 18), mediumFor(4, 19), mediumFor(5, 20), mediumFor(6, 21),
+    mediumFor(1, 16),
+    mediumFor(2, 17),
+    mediumFor(3, 18),
+    mediumFor(4, 19),
+    mediumFor(5, 20),
+    mediumFor(6, 21),
     MEDIUM_ACHROMATIC(22),
-    mediumFor(1, 23), mediumFor(2, 24), mediumFor(3, 25), mediumFor(4, 26), mediumFor(5, 27), mediumFor(6, 28),
+    mediumFor(1, 23),
+    mediumFor(2, 24),
+    mediumFor(3, 25),
+    mediumFor(4, 26),
+    mediumFor(5, 27),
+    mediumFor(6, 28),
 
     // --- Dark (11) --------------------------------------------------------
     DARK_ACHROMATIC(1),
-    darkFor(1, 2), darkFor(2, 3), darkFor(3, 4), darkFor(4, 5), darkFor(5, 6), darkFor(6, 7),
+    darkFor(1, 2),
+    darkFor(2, 3),
+    darkFor(3, 4),
+    darkFor(4, 5),
+    darkFor(5, 6),
+    darkFor(6, 7),
     DARK_ACHROMATIC(8),
-    darkFor(1, 9), darkFor(2, 10), darkFor(3, 11),
+    darkFor(1, 9),
+    darkFor(2, 10),
+    darkFor(3, 11),
 ];
 
 export const EXCEL_TABLE_STYLE_RECIPE_BY_NAME: Record<string, ExcelTableStyleRecipe> =
@@ -330,8 +372,11 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-    const rN = r / 255, gN = g / 255, bN = b / 255;
-    const max = Math.max(rN, gN, bN), min = Math.min(rN, gN, bN);
+    const rN = r / 255,
+        gN = g / 255,
+        bN = b / 255;
+    const max = Math.max(rN, gN, bN),
+        min = Math.min(rN, gN, bN);
     const l = (max + min) / 2;
     let h = 0;
     let s = 0;
@@ -339,9 +384,15 @@ function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: n
         const d = max - min;
         s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
         switch (max) {
-            case rN: h = (gN - bN) / d + (gN < bN ? 6 : 0); break;
-            case gN: h = (bN - rN) / d + 2; break;
-            case bN: h = (rN - gN) / d + 4; break;
+            case rN:
+                h = (gN - bN) / d + (gN < bN ? 6 : 0);
+                break;
+            case gN:
+                h = (bN - rN) / d + 2;
+                break;
+            case bN:
+                h = (rN - gN) / d + 4;
+                break;
         }
         h /= 6;
     }
@@ -398,10 +449,7 @@ export function tintRgb(baseHex: string, tint: number): string {
  * `accents` is a 6-tuple of `'#RRGGBB'` strings indexed by accent1..accent6.
  * If the recipe is achromatic (`accent: null`) the literal `rgb` is returned.
  */
-export function resolveColorSlot(
-    recipe: ColorSlotRecipe,
-    accents: readonly string[],
-): string {
+export function resolveColorSlot(recipe: ColorSlotRecipe, accents: readonly string[]): string {
     if (recipe.accent === null || recipe.accent === undefined) {
         return (recipe.rgb || '#000000').toUpperCase();
     }

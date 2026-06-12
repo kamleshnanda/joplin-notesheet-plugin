@@ -61,8 +61,8 @@ async function main(): Promise<void> {
     const buffer = fs.readFileSync(fixturePath);
     const snapshot = await xlsxBufferToSnapshot(buffer);
 
-    const title = customTitle
-        || `PGE ${fixtureName} ${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    const title =
+        customTitle || `PGE ${fixtureName} ${new Date().toISOString().replace(/[:.]/g, '-')}`;
     const body = wrapSnapshot(snapshot);
 
     const tmp = path.join(require('os').tmpdir(), `pge-fixture-${process.pid}.md`);
@@ -79,4 +79,7 @@ async function main(): Promise<void> {
     }
 }
 
-main().catch((e: Error) => { console.error(e.message); process.exit(1); });
+main().catch((e: Error) => {
+    console.error(e.message);
+    process.exit(1);
+});

@@ -36,7 +36,11 @@ export function pushChartUpdate(id: string, data: ChartData): void {
     const set = listeners.get(id);
     if (!set || set.size === 0) return;
     for (const fn of set) {
-        try { fn(data); } catch (e) { console.error('[Notesheet] chart listener threw', e); }
+        try {
+            fn(data);
+        } catch (e) {
+            console.error('[Notesheet] chart listener threw', e);
+        }
     }
 }
 

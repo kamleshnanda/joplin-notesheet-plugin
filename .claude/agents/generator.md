@@ -46,8 +46,8 @@ Follow CLAUDE.md's "Proof before passing" sequence verbatim:
    The evaluator will catch you anyway and the cycle wastes time.
 10. Only after step 9 confirms the feature is visually correct, edit
     `test-results.json` and flip the row to `{"passes": true,
-    "evidence": ["screenshots/.../foo.png", ...],
-    "evaluator_verdict": null, "last_attempted_at": "<UTC ISO>"}`.
+"evidence": ["screenshots/.../foo.png", ...],
+"evaluator_verdict": null, "last_attempted_at": "<UTC ISO>"}`.
     The evaluator runs next and will set `evaluator_verdict` to PASS
     or NEEDS_WORK; you do not write that field yourself.
 

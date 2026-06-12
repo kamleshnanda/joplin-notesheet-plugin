@@ -30,7 +30,9 @@
 //      back to plain text on import — no need to emit cell.p
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -51,24 +53,36 @@ interface Body {
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, {
-            v?: unknown;
-            t?: number;
-            s?: string;
-            p?: { body?: Body; documentStyle?: { pageSize?: { width?: number; height?: number } } };
-        }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<
+                number,
+                Record<
+                    number,
+                    {
+                        v?: unknown;
+                        t?: number;
+                        s?: string;
+                        p?: {
+                            body?: Body;
+                            documentStyle?: { pageSize?: { width?: number; height?: number } };
+                        };
+                    }
+                >
+            >;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
 }
 
 async function importFixture(file: string): Promise<SnapshotShape> {
     const buf = readFileSync(file);
-    return await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+    return (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as SnapshotShape;
 }
 
 async function importBuf(buf: Buffer): Promise<SnapshotShape> {
-    return await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+    return (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as SnapshotShape;
 }
 
 describe('M13 — rich-text within a single cell', () => {
@@ -144,18 +158,27 @@ describe('M13 — rich-text within a single cell', () => {
 
     test('round-trip: rich-text exports back to richText, re-imports identical', async () => {
         const snap = await importFixture(FIXTURE);
-        const buf2 = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf2 = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buf2 as unknown as Parameters<typeof wb.xlsx.load>[0]);
         const ws = wb.getWorksheet(1)!;
         // A1: bold + plain.
-        const a1 = ws.getCell('A1').value as { richText?: Array<{ font?: { bold?: boolean }; text: string }> };
+        const a1 = ws.getCell('A1').value as {
+            richText?: Array<{ font?: { bold?: boolean }; text: string }>;
+        };
         expect(a1?.richText).toBeDefined();
         expect(a1.richText).toHaveLength(2);
-        expect(a1.richText![0]).toMatchObject({ text: 'Hello', font: expect.objectContaining({ bold: true }) });
+        expect(a1.richText![0]).toMatchObject({
+            text: 'Hello',
+            font: expect.objectContaining({ bold: true }),
+        });
         expect(a1.richText![1]).toMatchObject({ text: ' world' });
         // A2: red + plain + blue + plain.
-        const a2 = ws.getCell('A2').value as { richText?: Array<{ font?: { color?: { argb?: string } }; text: string }> };
+        const a2 = ws.getCell('A2').value as {
+            richText?: Array<{ font?: { color?: { argb?: string } }; text: string }>;
+        };
         expect(a2?.richText).toHaveLength(4);
         expect(a2.richText![0].font?.color?.argb?.toUpperCase().slice(2)).toBe('FF0000');
         expect(a2.richText![2].font?.color?.argb?.toUpperCase().slice(2)).toBe('0000FF');
@@ -237,7 +260,9 @@ describe('M13 — rich-text within a single cell', () => {
         ws.getCell('A1').value = 'plain';
         const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
         const snap = await importBuf(buf0);
-        const buf1 = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf1 = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb1 = new ExcelJS.Workbook();
         await wb1.xlsx.load(buf1 as unknown as Parameters<typeof wb1.xlsx.load>[0]);
         const ws1 = wb1.getWorksheet('Sheet1')!;

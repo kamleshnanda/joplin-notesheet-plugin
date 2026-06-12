@@ -21,8 +21,11 @@ async function main() {
         let frame = null;
         for (let i = 0; i < 30 && !frame; i++) {
             for (const p of pages) {
-                const c = p.frames().find(f => /UserWebviewIndex\.html/.test(f.url()));
-                if (c) { frame = c; break; }
+                const c = p.frames().find((f) => /UserWebviewIndex\.html/.test(f.url()));
+                if (c) {
+                    frame = c;
+                    break;
+                }
             }
             if (!frame) await pages[0].waitForTimeout(200);
         }
@@ -39,8 +42,14 @@ async function main() {
             if (wb.getSheets) {
                 const sheets = wb.getSheets();
                 for (const s of sheets) {
-                    if (typeof s.getSheetName === 'function' && s.getSheetName() === name) { sheet = s; break; }
-                    if (typeof s.getName === 'function' && s.getName() === name) { sheet = s; break; }
+                    if (typeof s.getSheetName === 'function' && s.getSheetName() === name) {
+                        sheet = s;
+                        break;
+                    }
+                    if (typeof s.getName === 'function' && s.getName() === name) {
+                        sheet = s;
+                        break;
+                    }
                 }
             }
             if (!sheet && wb.getSheetByName) sheet = wb.getSheetByName(name);
@@ -53,7 +62,13 @@ async function main() {
             }
             // Confirm by reading what's now active.
             const active = wb.getActiveSheet ? wb.getActiveSheet() : null;
-            const activeName = active && (active.getSheetName ? active.getSheetName() : (active.getName ? active.getName() : null));
+            const activeName =
+                active &&
+                (active.getSheetName
+                    ? active.getSheetName()
+                    : active.getName
+                      ? active.getName()
+                      : null);
             return { ok: true, activeName };
         }, targetSheetName);
         console.log(JSON.stringify(result, null, 2));
@@ -62,4 +77,7 @@ async function main() {
         await browser.close();
     }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+});

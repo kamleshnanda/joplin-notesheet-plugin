@@ -28,13 +28,17 @@ joplin.plugins.register({
             // this editor takes over and shows the Univer spreadsheet UI.
             await joplin.views.editors.register('notesheetEditor', {
                 onActivationCheck: async (event) => {
-                    const note = await joplin.data.get(['notes', event.noteId], { fields: ['body'] });
+                    const note = await joplin.data.get(['notes', event.noteId], {
+                        fields: ['body'],
+                    });
                     return isNotesheetBody(note?.body);
                 },
                 onSetup: async (handle) => {
                     let viewReady = false;
 
-                    await joplin.views.editors.setHtml(handle, `
+                    await joplin.views.editors.setHtml(
+                        handle,
+                        `
                         <!DOCTYPE html>
                         <html>
                         <head>
@@ -48,7 +52,8 @@ joplin.plugins.register({
                             <div id="notesheet-univer-root"></div>
                         </body>
                         </html>
-                    `);
+                    `,
+                    );
                     await joplin.views.editors.addScript(handle, './editorView.js');
 
                     // Message bridge: editor view ←→ plugin process.
@@ -59,7 +64,9 @@ joplin.plugins.register({
                             viewReady = true;
                             const note = await joplin.workspace.selectedNote();
                             if (!note) return;
-                            const fullNote = await joplin.data.get(['notes', note.id], { fields: ['id', 'body'] });
+                            const fullNote = await joplin.data.get(['notes', note.id], {
+                                fields: ['id', 'body'],
+                            });
                             const result = extractSnapshot(fullNote?.body);
                             if (result.ok) {
                                 await joplin.views.editors.postMessage(handle, {
@@ -125,11 +132,13 @@ joplin.plugins.register({
                         // Joplin to show our editor. Retry a few times since
                         // the timing varies by machine load.
                         for (let attempt = 0; attempt < 10; attempt++) {
-                            await new Promise(r => setTimeout(r, 300));
+                            await new Promise((r) => setTimeout(r, 300));
                             try {
                                 await joplin.commands.execute('showEditorPlugin');
                                 break;
-                            } catch { /* retry */ }
+                            } catch {
+                                /* retry */
+                            }
                         }
                     } catch (error) {
                         console.error(LOG, 'newSpreadsheet failed:', error);
@@ -175,11 +184,13 @@ joplin.plugins.register({
                         await joplin.commands.execute('openNote', note.id);
                         // Same retry pattern as newSpreadsheet — wait for activation check.
                         for (let attempt = 0; attempt < 10; attempt++) {
-                            await new Promise(r => setTimeout(r, 300));
+                            await new Promise((r) => setTimeout(r, 300));
                             try {
                                 await joplin.commands.execute('showEditorPlugin');
                                 break;
-                            } catch { /* retry */ }
+                            } catch {
+                                /* retry */
+                            }
                         }
                     } catch (error) {
                         console.error(LOG, 'importXlsxAsNotesheet failed:', error);

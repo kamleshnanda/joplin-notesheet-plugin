@@ -22,34 +22,34 @@ and write a spec the generator can follow without ambiguity.
 1. **Read the operator's ask.** It will be in `OPERATOR_ASK.md` at the
    repo root, or passed inline.
 2. **Survey what exists.** Read these to ground your plan:
-   - `README.md` — current milestones table and known shortcomings
-   - `tests/fixtures/formatting-testdata/README.md` —
-     fixture catalog
-   - The most recent commits (`git log --oneline -20`)
-   - Any prior `BUILD_PLAN.md` (this may be a continuation, not a
-     fresh start)
+    - `README.md` — current milestones table and known shortcomings
+    - `tests/fixtures/formatting-testdata/README.md` —
+      fixture catalog
+    - The most recent commits (`git log --oneline -20`)
+    - Any prior `BUILD_PLAN.md` (this may be a continuation, not a
+      fresh start)
 3. **Decompose the ask into features.** A feature is a single
    user-observable outcome that the evaluator can validate via a
    screenshot or a runtime check. If you find yourself writing "and
    also handle the empty case", split it.
 4. **For each feature, write:**
-   - `feature-N-<kebab-id>` — stable, never change once written
-   - **One-paragraph spec** — what user-observable change this delivers
-   - **Acceptance criteria** — phrased as observable evidence the
-     evaluator will look for. Each criterion must reference either:
-     - A screenshot region: "screenshot of cell A1 in fixture X shows
-       the word 'Hello' in bold (visibly heavier stroke than ' world')"
-     - A console/log signal: "Joplin DevTools console contains no
-       'Cannot read properties of undefined' errors during fixture
-       import"
-     - A file-content check: "exported `xl/worksheets/sheet1.xml`
-       contains `<drawing r:id="..."/>` removed"
-   - **Out of scope** — explicitly call out what this feature does NOT
-     cover, so the evaluator doesn't penalize for it
-   - **Suggested fixture(s)** — which file(s) under
-     `tests/fixtures/formatting-testdata/` exercise this
-   - **Related risks** — where regressions are most likely (other
-     features that share code paths)
+    - `feature-N-<kebab-id>` — stable, never change once written
+    - **One-paragraph spec** — what user-observable change this delivers
+    - **Acceptance criteria** — phrased as observable evidence the
+      evaluator will look for. Each criterion must reference either:
+        - A screenshot region: "screenshot of cell A1 in fixture X shows
+          the word 'Hello' in bold (visibly heavier stroke than ' world')"
+        - A console/log signal: "Joplin DevTools console contains no
+          'Cannot read properties of undefined' errors during fixture
+          import"
+        - A file-content check: "exported `xl/worksheets/sheet1.xml`
+          contains `<drawing r:id="..."/>` removed"
+    - **Out of scope** — explicitly call out what this feature does NOT
+      cover, so the evaluator doesn't penalize for it
+    - **Suggested fixture(s)** — which file(s) under
+      `tests/fixtures/formatting-testdata/` exercise this
+    - **Related risks** — where regressions are most likely (other
+      features that share code paths)
 5. **Order features.** Lowest-numbered feature first. Order by
    dependency (prerequisites before dependents) and by risk-decreasing
    value (small wins early, big risks late).

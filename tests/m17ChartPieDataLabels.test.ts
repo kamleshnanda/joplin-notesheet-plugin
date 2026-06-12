@@ -12,7 +12,9 @@
 // turns on (at whichever level), then assert the export reproduces it.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -27,9 +29,12 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'charts');
 // series-level), OR'd together — "does this chart show this label kind
 // anywhere". Mirrors how Excel actually renders: a flag set at either
 // level lights the labels.
-function anyShowFlags(chartXml: string): { showCatName: boolean; showPercent: boolean; showVal: boolean } {
-    const has = (name: string) =>
-        new RegExp(`<(?:c:)?${name}\\s+val="1"`).test(chartXml);
+function anyShowFlags(chartXml: string): {
+    showCatName: boolean;
+    showPercent: boolean;
+    showVal: boolean;
+} {
+    const has = (name: string) => new RegExp(`<(?:c:)?${name}\\s+val="1"`).test(chartXml);
     return {
         showCatName: has('showCatName'),
         showPercent: has('showPercent'),
@@ -37,7 +42,10 @@ function anyShowFlags(chartXml: string): { showCatName: boolean; showPercent: bo
     };
 }
 
-async function chartXmls(buffer: ArrayBuffer | Buffer, predicate: (xml: string) => boolean): Promise<string[]> {
+async function chartXmls(
+    buffer: ArrayBuffer | Buffer,
+    predicate: (xml: string) => boolean,
+): Promise<string[]> {
     const zip = await JSZip.loadAsync(buffer);
     const out: string[] = [];
     for (const k of Object.keys(zip.files)) {
@@ -64,11 +72,14 @@ describe('M17 pie/doughnut data-label round-trip (issues 3/6)', () => {
     test('03-pie-single.xlsx: import captures the slice-label flags onto meta.dLbls', async () => {
         const buf = readFileSync(path.join(FIXTURES_DIR, '03-pie-single.xlsx'));
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
-        const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+        const resources =
+            (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
         const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN')!;
         const parsed = JSON.parse(entry.data);
         const sub = Object.values(parsed)[0] as { data: Record<string, any> };
-        const drawing = Object.values(sub.data)[0] as { data: { type: string; meta?: { dLbls?: Record<string, boolean> } } };
+        const drawing = Object.values(sub.data)[0] as {
+            data: { type: string; meta?: { dLbls?: Record<string, boolean> } };
+        };
         expect(drawing.data.type).toBe('pie');
         // The fix: the series-level flags reached meta.dLbls.
         expect(drawing.data.meta?.dLbls?.showCatName).toBe(true);
@@ -110,11 +121,14 @@ describe('M17 pie/doughnut data-label round-trip (issues 3/6)', () => {
         const snap1 = await xlsxBufferToSnapshot(buf as unknown as Buffer);
         const out = await snapshotToXlsxBuffer(snap1);
         const snap2 = await xlsxBufferToSnapshot(Buffer.from(out) as unknown as Buffer);
-        const resources = (snap2 as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+        const resources =
+            (snap2 as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
         const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN')!;
         const parsed = JSON.parse(entry.data);
         const sub = Object.values(parsed)[0] as { data: Record<string, any> };
-        const drawing = Object.values(sub.data)[0] as { data: { meta?: { dLbls?: Record<string, boolean> } } };
+        const drawing = Object.values(sub.data)[0] as {
+            data: { meta?: { dLbls?: Record<string, boolean> } };
+        };
         expect(drawing.data.meta?.dLbls?.showCatName).toBe(true);
         expect(drawing.data.meta?.dLbls?.showPercent).toBe(true);
     });

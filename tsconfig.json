@@ -1,20 +1,20 @@
 {
-	"compilerOptions": {
-		"outDir": "./dist/",
-		"module": "esnext",
-		"moduleResolution": "bundler",
-		"target": "es2020",
-		"jsx": "react",
-		"allowJs": true,
-		"baseUrl": ".",
-		"paths": {
-			"api": ["./api/index.ts"],
-			"api/*": ["./api/*"],
-			"*": ["./node_modules/*"]
-		},
-		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"resolveJsonModule": true,
-		"strict": false
-	}
+    "compilerOptions": {
+        "outDir": "./dist/",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "target": "es2020",
+        "jsx": "react",
+        "allowJs": true,
+        "baseUrl": ".",
+        "paths": {
+            "api": ["./api/index.ts"],
+            "api/*": ["./api/*"],
+            "*": ["./node_modules/*"]
+        },
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "strict": false
+    }
 }

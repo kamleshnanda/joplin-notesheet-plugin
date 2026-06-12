@@ -141,12 +141,15 @@ async function handleExport(): Promise<void> {
     setStatus('Exporting…');
     try {
         if (!activeApi) throw new Error('workbook not ready');
-        const workbook = activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
+        const workbook =
+            activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
         // save() is the current Univer 0.23 API; getSnapshot is deprecated.
         const snapshot = workbook?.save?.() || workbook?.getSnapshot?.();
         if (!snapshot) throw new Error('no snapshot available');
         const buffer = await snapshotToXlsxBuffer(snapshot);
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const blob = new Blob([buffer], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -206,7 +209,11 @@ function refreshChartsForEdit(): void {
 
 function closeChartModal(): void {
     if (chartSelectionDisposable) {
-        try { chartSelectionDisposable.dispose(); } catch { /* ignore */ }
+        try {
+            chartSelectionDisposable.dispose();
+        } catch {
+            /* ignore */
+        }
         chartSelectionDisposable = null;
     }
     const modal = document.getElementById(CHART_MODAL_ID);
@@ -309,8 +316,11 @@ function openChartModal(): void {
     const fWorkbook = activeApi.getActiveWorkbook?.();
     const fSheet = fWorkbook?.getActiveSheet?.();
     const initialRange = (() => {
-        try { return fSheet?.getActiveRange?.()?.getA1Notation?.() ?? 'A1:B5'; }
-        catch { return 'A1:B5'; }
+        try {
+            return fSheet?.getActiveRange?.()?.getA1Notation?.() ?? 'A1:B5';
+        } catch {
+            return 'A1:B5';
+        }
     })();
 
     const panel = document.createElement('div');
@@ -375,20 +385,32 @@ function openChartModal(): void {
     titleRow.appendChild(titleInput);
 
     const buttonRow = document.createElement('div');
-    Object.assign(buttonRow.style, { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' });
+    Object.assign(buttonRow.style, {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: '8px',
+        marginTop: '4px',
+    });
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.textContent = 'Cancel';
     Object.assign(cancelBtn.style, {
-        padding: '4px 12px', background: '#fff', border: '1px solid #9ca3af',
-        borderRadius: '4px', cursor: 'pointer',
+        padding: '4px 12px',
+        background: '#fff',
+        border: '1px solid #9ca3af',
+        borderRadius: '4px',
+        cursor: 'pointer',
     });
     const submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.textContent = 'Insert';
     Object.assign(submitBtn.style, {
-        padding: '4px 14px', background: '#2563eb', border: '1px solid #1d4ed8',
-        color: '#fff', borderRadius: '4px', cursor: 'pointer',
+        padding: '4px 14px',
+        background: '#2563eb',
+        border: '1px solid #1d4ed8',
+        color: '#fff',
+        borderRadius: '4px',
+        cursor: 'pointer',
     });
     buttonRow.appendChild(cancelBtn);
     buttonRow.appendChild(submitBtn);
@@ -411,7 +433,9 @@ function openChartModal(): void {
                 try {
                     const a1 = fWorkbook.getActiveSheet?.()?.getActiveRange?.()?.getA1Notation?.();
                     if (a1) rangeInput.value = a1;
-                } catch { /* ignore */ }
+                } catch {
+                    /* ignore */
+                }
             });
         }
     } catch (e) {
@@ -512,7 +536,11 @@ function ensureActionBar(): void {
 
 function bootUniver(snapshot: Record<string, unknown>): void {
     if (activeUniver) {
-        try { activeUniver.dispose(); } catch { /* ignore */ }
+        try {
+            activeUniver.dispose();
+        } catch {
+            /* ignore */
+        }
         activeUniver = null;
         activeApi = null;
         const old = document.getElementById(ROOT_ID);
@@ -524,20 +552,31 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     const { univer, univerAPI } = createUniver({
         locale: LocaleType.EN_US,
         locales: {
-            [LocaleType.EN_US]: merge({}, sheetsCoreEnUS, sheetsSortEnUS, sheetsFilterEnUS, sheetsTableEnUS, sheetsDrawingEnUS, sheetsHyperLinkEnUS, sheetsCfEnUS, {
-                'sheets-sort': {
-                    dialog: {
-                        'sort-reminder': 'Sort Warning',
-                        'sort-reminder-desc': 'Data was found next to your selection. What would you like to do?',
-                        'sort-reminder-ext': 'Expand the selection (sort entire rows together)',
-                        'sort-reminder-no': 'Continue with the current selection',
-                        'first-row-check': 'My data has headers',
-                    },
-                    general: {
-                        'sort-custom': 'Sort...',
+            [LocaleType.EN_US]: merge(
+                {},
+                sheetsCoreEnUS,
+                sheetsSortEnUS,
+                sheetsFilterEnUS,
+                sheetsTableEnUS,
+                sheetsDrawingEnUS,
+                sheetsHyperLinkEnUS,
+                sheetsCfEnUS,
+                {
+                    'sheets-sort': {
+                        dialog: {
+                            'sort-reminder': 'Sort Warning',
+                            'sort-reminder-desc':
+                                'Data was found next to your selection. What would you like to do?',
+                            'sort-reminder-ext': 'Expand the selection (sort entire rows together)',
+                            'sort-reminder-no': 'Continue with the current selection',
+                            'first-row-check': 'My data has headers',
+                        },
+                        general: {
+                            'sort-custom': 'Sort...',
+                        },
                     },
                 },
-            }),
+            ),
         },
         theme: defaultTheme,
         logLevel: LogLevel.WARN,
@@ -622,11 +661,14 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     // these are identity transforms.
     try {
         const injector = (univer as { __getInjector?: () => unknown }).__getInjector?.();
-        const resourceManager = (injector as { get?: (id: unknown) => unknown } | undefined)?.get?.(IResourceManagerService) as
-            | { registerPluginResource: (hook: unknown) => unknown }
-            | undefined;
+        const resourceManager = (injector as { get?: (id: unknown) => unknown } | undefined)?.get?.(
+            IResourceManagerService,
+        ) as { registerPluginResource: (hook: unknown) => unknown } | undefined;
         if (resourceManager?.registerPluginResource) {
-            for (const name of [NOTESHEET_SYNTH_STYLES_RESOURCE, NOTESHEET_THEME_CLR_SCHEME_RESOURCE]) {
+            for (const name of [
+                NOTESHEET_SYNTH_STYLES_RESOURCE,
+                NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
+            ]) {
                 const stash = new Map<string, string>();
                 resourceManager.registerPluginResource({
                     pluginName: name,
@@ -634,13 +676,17 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                     onLoad: (unitId: string, resource: string) => {
                         if (typeof resource === 'string' && resource) stash.set(unitId, resource);
                     },
-                    onUnLoad: (unitId: string) => { stash.delete(unitId); },
+                    onUnLoad: (unitId: string) => {
+                        stash.delete(unitId);
+                    },
                     toJson: (unitId: string) => stash.get(unitId) ?? '',
                     parseJson: (raw: string) => raw,
                 });
             }
         } else {
-            console.warn('[Notesheet] could not get IResourceManagerService — synth styles + theme palette won\'t round-trip on save');
+            console.warn(
+                "[Notesheet] could not get IResourceManagerService — synth styles + theme palette won't round-trip on save",
+            );
         }
     } catch (e) {
         console.warn('[Notesheet] resource hook registration failed', e);
@@ -704,13 +750,15 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     // createMenu().appendTo() with the same id is a no-op if already present.
     try {
         univerAPI.registerComponent?.(CHART_ICON_KEY, ColumnChartIcon);
-        univerAPI.createMenu?.({
-            id: CHART_MENU_ID,
-            title: 'Insert Chart',
-            icon: CHART_ICON_KEY,
-            tooltip: 'Insert a Chart.js chart anchored over the grid',
-            action: () => openChartModal(),
-        }).appendTo('ribbon.insert.media');
+        univerAPI
+            .createMenu?.({
+                id: CHART_MENU_ID,
+                title: 'Insert Chart',
+                icon: CHART_ICON_KEY,
+                tooltip: 'Insert a Chart.js chart anchored over the grid',
+                action: () => openChartModal(),
+            })
+            .appendTo('ribbon.insert.media');
     } catch (e) {
         console.warn('[Notesheet] could not register chart menu', e);
     }
@@ -758,7 +806,8 @@ function saveNow(): void {
     saveTimer = null;
     if (!activeApi) return;
     try {
-        const workbook = activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
+        const workbook =
+            activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
         if (!workbook) return;
         const snapshot = workbook.save?.() || workbook.getSnapshot?.();
         if (!snapshot) return;

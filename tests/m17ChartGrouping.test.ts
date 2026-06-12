@@ -9,7 +9,9 @@
 // Notesheet emits.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -29,7 +31,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): ChartDrawing[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);

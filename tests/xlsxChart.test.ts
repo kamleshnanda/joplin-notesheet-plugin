@@ -37,8 +37,14 @@ function fixtureChart(overrides: Partial<ChartDrawing> = {}): ChartDrawing {
         labels: ['Q1', 'Q2', 'Q3', 'Q4'],
         datasets: [{ label: 'Sales', data: [100, 120, 95, 140] }],
         anchor: {
-            fromCol: 3, fromColOff: 0, fromRow: 0, fromRowOff: 0,
-            toCol: 10, toColOff: 0, toRow: 20, toRowOff: 0,
+            fromCol: 3,
+            fromColOff: 0,
+            fromRow: 0,
+            fromRowOff: 0,
+            toCol: 10,
+            toColOff: 0,
+            toRow: 20,
+            toRowOff: 0,
         },
         ...overrides,
     };
@@ -48,7 +54,8 @@ function fixtureSnapshot(charts: ChartDrawing[], extraSheets: string[] = []) {
     const sheetOrder = ['sheet-1', ...extraSheets];
     const sheets: Record<string, unknown> = {
         'sheet-1': {
-            id: 'sheet-1', name: 'Sheet1',
+            id: 'sheet-1',
+            name: 'Sheet1',
             cellData: {
                 0: { 0: { v: 'Quarter', t: 1 }, 1: { v: 'Sales', t: 1 } },
                 1: { 0: { v: 'Q1', t: 1 }, 1: { v: 100, t: 2 } },
@@ -56,24 +63,37 @@ function fixtureSnapshot(charts: ChartDrawing[], extraSheets: string[] = []) {
                 3: { 0: { v: 'Q3', t: 1 }, 1: { v: 95, t: 2 } },
                 4: { 0: { v: 'Q4', t: 1 }, 1: { v: 140, t: 2 } },
             },
-            rowCount: 100, columnCount: 26,
-            defaultColumnWidth: 73, defaultRowHeight: 19,
-            mergeData: [], rowData: {}, columnData: {},
+            rowCount: 100,
+            columnCount: 26,
+            defaultColumnWidth: 73,
+            defaultRowHeight: 19,
+            mergeData: [],
+            rowData: {},
+            columnData: {},
         },
     };
     for (const id of extraSheets) {
         sheets[id] = {
-            id, name: id === 'sheet-2' ? 'Sheet2' : id,
-            cellData: {}, rowCount: 100, columnCount: 26,
-            defaultColumnWidth: 73, defaultRowHeight: 19,
-            mergeData: [], rowData: {}, columnData: {},
+            id,
+            name: id === 'sheet-2' ? 'Sheet2' : id,
+            cellData: {},
+            rowCount: 100,
+            columnCount: 26,
+            defaultColumnWidth: 73,
+            defaultRowHeight: 19,
+            mergeData: [],
+            rowData: {},
+            columnData: {},
         };
     }
 
-    const drawingResource = charts.length === 0 ? null : {
-        name: 'SHEET_DRAWING_PLUGIN',
-        data: JSON.stringify(buildDrawingResourceData(charts)),
-    };
+    const drawingResource =
+        charts.length === 0
+            ? null
+            : {
+                  name: 'SHEET_DRAWING_PLUGIN',
+                  data: JSON.stringify(buildDrawingResourceData(charts)),
+              };
 
     return {
         id: 'wb-test',
@@ -111,12 +131,32 @@ function buildDrawingResourceData(charts: ChartDrawing[]): Record<string, unknow
             allowTransform: true,
             transform: { left: 0, top: 0, width: 480, height: 320 },
             sheetTransform: {
-                from: { column: c.anchor.fromCol, columnOffset: c.anchor.fromColOff, row: c.anchor.fromRow, rowOffset: c.anchor.fromRowOff },
-                to: { column: c.anchor.toCol, columnOffset: c.anchor.toColOff, row: c.anchor.toRow, rowOffset: c.anchor.toRowOff },
+                from: {
+                    column: c.anchor.fromCol,
+                    columnOffset: c.anchor.fromColOff,
+                    row: c.anchor.fromRow,
+                    rowOffset: c.anchor.fromRowOff,
+                },
+                to: {
+                    column: c.anchor.toCol,
+                    columnOffset: c.anchor.toColOff,
+                    row: c.anchor.toRow,
+                    rowOffset: c.anchor.toRowOff,
+                },
             },
             axisAlignSheetTransform: {
-                from: { column: c.anchor.fromCol, columnOffset: c.anchor.fromColOff, row: c.anchor.fromRow, rowOffset: c.anchor.fromRowOff },
-                to: { column: c.anchor.toCol, columnOffset: c.anchor.toColOff, row: c.anchor.toRow, rowOffset: c.anchor.toRowOff },
+                from: {
+                    column: c.anchor.fromCol,
+                    columnOffset: c.anchor.fromColOff,
+                    row: c.anchor.fromRow,
+                    rowOffset: c.anchor.fromRowOff,
+                },
+                to: {
+                    column: c.anchor.toCol,
+                    columnOffset: c.anchor.toColOff,
+                    row: c.anchor.toRow,
+                    rowOffset: c.anchor.toRowOff,
+                },
             },
         };
         out[c.sheetId].order.push(drawingId);
@@ -209,7 +249,7 @@ describe('M10 chart XML builders', () => {
             datasets: [
                 { label: 'North', data: [10, 20, 30, 40] },
                 { label: 'South', data: [15, 25, 35, 45] },
-                { label: 'East',  data: [12, 22, 32, 42] },
+                { label: 'East', data: [12, 22, 32, 42] },
             ],
             sourceRange: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 3 },
         });
@@ -249,8 +289,32 @@ describe('M10 chart XML builders', () => {
 describe('M10 drawing + rels builders', () => {
     test('buildDrawingXml emits one twoCellAnchor per chart, all sharing one wsDr', () => {
         const charts = [
-            fixtureChart({ chartId: 'c1', anchor: { fromCol: 3, fromColOff: 0, fromRow: 0, fromRowOff: 0, toCol: 10, toColOff: 0, toRow: 20, toRowOff: 0 } }),
-            fixtureChart({ chartId: 'c2', anchor: { fromCol: 11, fromColOff: 0, fromRow: 0, fromRowOff: 0, toCol: 18, toColOff: 0, toRow: 20, toRowOff: 0 } }),
+            fixtureChart({
+                chartId: 'c1',
+                anchor: {
+                    fromCol: 3,
+                    fromColOff: 0,
+                    fromRow: 0,
+                    fromRowOff: 0,
+                    toCol: 10,
+                    toColOff: 0,
+                    toRow: 20,
+                    toRowOff: 0,
+                },
+            }),
+            fixtureChart({
+                chartId: 'c2',
+                anchor: {
+                    fromCol: 11,
+                    fromColOff: 0,
+                    fromRow: 0,
+                    fromRowOff: 0,
+                    toCol: 18,
+                    toColOff: 0,
+                    toRow: 20,
+                    toRowOff: 0,
+                },
+            }),
         ];
         const xml = buildDrawingXml(charts);
         const anchorCount = (xml.match(/<xdr:twoCellAnchor>/g) ?? []).length;
@@ -262,8 +326,12 @@ describe('M10 drawing + rels builders', () => {
 
     test('buildDrawingRelsXml maps rIds to chart file numbers', () => {
         const xml = buildDrawingRelsXml([3, 4]);
-        expect(xml).toContain(`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart3.xml"/>`);
-        expect(xml).toContain(`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart4.xml"/>`);
+        expect(xml).toContain(
+            `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart3.xml"/>`,
+        );
+        expect(xml).toContain(
+            `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart4.xml"/>`,
+        );
     });
 
     test('buildChartRelsXml points to the matching style + colors siblings', () => {
@@ -277,17 +345,23 @@ describe('M10 drawing + rels builders', () => {
 
 describe('readChartsFromSnapshot', () => {
     test('returns [] when no resources field', () => {
-        expect(readChartsFromSnapshot({} as Parameters<typeof readChartsFromSnapshot>[0])).toEqual([]);
+        expect(readChartsFromSnapshot({} as Parameters<typeof readChartsFromSnapshot>[0])).toEqual(
+            [],
+        );
     });
 
     test('returns [] when SHEET_DRAWING_PLUGIN missing', () => {
         const snap = { resources: [{ name: 'OTHER_PLUGIN', data: '{}' }] };
-        expect(readChartsFromSnapshot(snap as Parameters<typeof readChartsFromSnapshot>[0])).toEqual([]);
+        expect(
+            readChartsFromSnapshot(snap as Parameters<typeof readChartsFromSnapshot>[0]),
+        ).toEqual([]);
     });
 
     test('returns [] when SHEET_DRAWING_PLUGIN data is malformed JSON', () => {
         const snap = { resources: [{ name: 'SHEET_DRAWING_PLUGIN', data: '{not valid' }] };
-        expect(readChartsFromSnapshot(snap as Parameters<typeof readChartsFromSnapshot>[0])).toEqual([]);
+        expect(
+            readChartsFromSnapshot(snap as Parameters<typeof readChartsFromSnapshot>[0]),
+        ).toEqual([]);
     });
 
     test('filters non-NotesheetChart drawings (e.g. images) out', () => {
@@ -298,9 +372,12 @@ describe('readChartsFromSnapshot', () => {
                     'chart-x': {
                         componentKey: 'NotesheetChart',
                         data: {
-                            chartId: 'chart-x', type: 'bar', title: 'x',
+                            chartId: 'chart-x',
+                            type: 'bar',
+                            title: 'x',
                             sourceRange: { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 },
-                            labels: ['A'], datasets: [{ label: 'd', data: [1] }],
+                            labels: ['A'],
+                            datasets: [{ label: 'd', data: [1] }],
                         },
                         axisAlignSheetTransform: {
                             from: { column: 0, columnOffset: 0, row: 0, rowOffset: 0 },
@@ -311,7 +388,9 @@ describe('readChartsFromSnapshot', () => {
                 order: ['img-1', 'chart-x'],
             },
         };
-        const snap = { resources: [{ name: 'SHEET_DRAWING_PLUGIN', data: JSON.stringify(drawingData) }] };
+        const snap = {
+            resources: [{ name: 'SHEET_DRAWING_PLUGIN', data: JSON.stringify(drawingData) }],
+        };
         const out = readChartsFromSnapshot(snap as Parameters<typeof readChartsFromSnapshot>[0]);
         expect(out).toHaveLength(1);
         expect(out[0].chartId).toBe('chart-x');
@@ -373,7 +452,20 @@ describe('M10 round-trip via snapshotToXlsxBuffer', () => {
     test('two charts on one sheet → one drawing.xml with two anchors, two chart files', async () => {
         const snap = fixtureSnapshot([
             fixtureChart({ chartId: 'c1', title: 'First' }),
-            fixtureChart({ chartId: 'c2', title: 'Second', anchor: { fromCol: 11, fromColOff: 0, fromRow: 0, fromRowOff: 0, toCol: 18, toColOff: 0, toRow: 20, toRowOff: 0 } }),
+            fixtureChart({
+                chartId: 'c2',
+                title: 'Second',
+                anchor: {
+                    fromCol: 11,
+                    fromColOff: 0,
+                    fromRow: 0,
+                    fromRowOff: 0,
+                    toCol: 18,
+                    toColOff: 0,
+                    toRow: 20,
+                    toRowOff: 0,
+                },
+            }),
         ]);
         const buf = await snapshotToXlsxBuffer(snap as Parameters<typeof snapshotToXlsxBuffer>[0]);
         const zip = await JSZip.loadAsync(buf as ArrayBuffer);
@@ -394,9 +486,10 @@ describe('M10 round-trip via snapshotToXlsxBuffer', () => {
     });
 
     test('cross-sheet — chart on Sheet2 anchors there but range refs Sheet1', async () => {
-        const snap = fixtureSnapshot([
-            fixtureChart({ chartId: 'cross', sheetId: 'sheet-2', title: 'Cross-sheet' }),
-        ], ['sheet-2']);
+        const snap = fixtureSnapshot(
+            [fixtureChart({ chartId: 'cross', sheetId: 'sheet-2', title: 'Cross-sheet' })],
+            ['sheet-2'],
+        );
         // Re-write the source range to live on Sheet1 even though the chart sheetId is sheet-2.
         // readChartsFromSnapshot doesn't know "where the data lives" — that's
         // implicit in the c:f sheetName we pass at emit time. So we set the
@@ -427,9 +520,7 @@ describe('M10 round-trip via snapshotToXlsxBuffer', () => {
     });
 
     test('special chars in chart title survive round-trip', async () => {
-        const snap = fixtureSnapshot([
-            fixtureChart({ title: 'Margins & <FY26>' }),
-        ]);
+        const snap = fixtureSnapshot([fixtureChart({ title: 'Margins & <FY26>' })]);
         const buf = await snapshotToXlsxBuffer(snap as Parameters<typeof snapshotToXlsxBuffer>[0]);
         const zip = await JSZip.loadAsync(buf as ArrayBuffer);
         const chartXml = await zip.files['xl/charts/chart1.xml'].async('string');
@@ -448,17 +539,34 @@ describe('M10 round-trip via snapshotToXlsxBuffer', () => {
                 name: 'SHEET_TABLE_PLUGIN',
                 data: JSON.stringify({
                     'sheet-1': {
-                        tables: [{
-                            id: 'tbl-1', name: 'Table1',
-                            range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 1 },
-                            options: { showHeader: true, showFooter: false },
-                            filters: { tableColumnFilterList: [] },
-                            columns: [
-                                { id: 'c1', displayName: 'Quarter', dataType: 'string', formula: '', meta: {}, style: {} },
-                                { id: 'c2', displayName: 'Sales', dataType: 'number', formula: '', meta: {}, style: {} },
-                            ],
-                            meta: {},
-                        }],
+                        tables: [
+                            {
+                                id: 'tbl-1',
+                                name: 'Table1',
+                                range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 1 },
+                                options: { showHeader: true, showFooter: false },
+                                filters: { tableColumnFilterList: [] },
+                                columns: [
+                                    {
+                                        id: 'c1',
+                                        displayName: 'Quarter',
+                                        dataType: 'string',
+                                        formula: '',
+                                        meta: {},
+                                        style: {},
+                                    },
+                                    {
+                                        id: 'c2',
+                                        displayName: 'Sales',
+                                        dataType: 'number',
+                                        formula: '',
+                                        meta: {},
+                                        style: {},
+                                    },
+                                ],
+                                meta: {},
+                            },
+                        ],
                         tableFilteredOutRows: [],
                     },
                 }),
@@ -488,17 +596,34 @@ describe('M10 round-trip via snapshotToXlsxBuffer', () => {
                 name: 'SHEET_TABLE_PLUGIN',
                 data: JSON.stringify({
                     'sheet-1': {
-                        tables: [{
-                            id: 'tbl-1', name: 'Table1',
-                            range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 1 },
-                            options: { showHeader: true, showFooter: false },
-                            filters: { tableColumnFilterList: [] },
-                            columns: [
-                                { id: 'c1', displayName: 'Quarter', dataType: 'string', formula: '', meta: {}, style: {} },
-                                { id: 'c2', displayName: 'Sales', dataType: 'number', formula: '', meta: {}, style: {} },
-                            ],
-                            meta: {},
-                        }],
+                        tables: [
+                            {
+                                id: 'tbl-1',
+                                name: 'Table1',
+                                range: { startRow: 0, endRow: 4, startColumn: 0, endColumn: 1 },
+                                options: { showHeader: true, showFooter: false },
+                                filters: { tableColumnFilterList: [] },
+                                columns: [
+                                    {
+                                        id: 'c1',
+                                        displayName: 'Quarter',
+                                        dataType: 'string',
+                                        formula: '',
+                                        meta: {},
+                                        style: {},
+                                    },
+                                    {
+                                        id: 'c2',
+                                        displayName: 'Sales',
+                                        dataType: 'number',
+                                        formula: '',
+                                        meta: {},
+                                        style: {},
+                                    },
+                                ],
+                                meta: {},
+                            },
+                        ],
                         tableFilteredOutRows: [],
                     },
                 }),
@@ -511,8 +636,12 @@ describe('M10 round-trip via snapshotToXlsxBuffer', () => {
         expect(sheetRels).toMatch(/Id="rId\d+"[^>]*Target="[^"]*tables\/table1\.xml"/);
         expect(sheetRels).toMatch(/Id="rId\d+"[^>]*Target="[^"]*drawings\/drawing1\.xml"/);
         // Confirm the drawing rId is different from the table rId.
-        const tableRId = sheetRels.match(/Id="(rId\d+)"[^>]*Target="[^"]*tables\/table1\.xml"/)?.[1];
-        const drawingRId = sheetRels.match(/Id="(rId\d+)"[^>]*Target="[^"]*drawings\/drawing1\.xml"/)?.[1];
+        const tableRId = sheetRels.match(
+            /Id="(rId\d+)"[^>]*Target="[^"]*tables\/table1\.xml"/,
+        )?.[1];
+        const drawingRId = sheetRels.match(
+            /Id="(rId\d+)"[^>]*Target="[^"]*drawings\/drawing1\.xml"/,
+        )?.[1];
         expect(tableRId).toBeDefined();
         expect(drawingRId).toBeDefined();
         expect(drawingRId).not.toBe(tableRId);

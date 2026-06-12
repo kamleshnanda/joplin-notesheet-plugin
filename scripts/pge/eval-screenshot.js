@@ -53,8 +53,14 @@ const { execSync } = require('child_process');
 // Notesheet's chart palette — duplicated here so the harness doesn't have
 // to import TS. MUST stay in sync with src/charts/extractData.ts:CHART_PALETTE.
 const NOTESHEET_CHART_PALETTE_HEX = [
-    '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
-    '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+    '#3b82f6',
+    '#ef4444',
+    '#10b981',
+    '#f59e0b',
+    '#8b5cf6',
+    '#ec4899',
+    '#06b6d4',
+    '#84cc16',
 ];
 const NOTESHEET_CHART_PALETTE_RGB = NOTESHEET_CHART_PALETTE_HEX.map((h) => ({
     hex: h.toLowerCase(),
@@ -151,7 +157,9 @@ function discoverApiPort() {
         return execSync(`bash "${script}"`, {
             stdio: ['ignore', 'pipe', 'pipe'],
             timeout: 5000,
-        }).toString().trim();
+        })
+            .toString()
+            .trim();
     } catch {
         return null;
     }
@@ -161,8 +169,11 @@ function discoverToken() {
     if (process.env.JOPLIN_TOKEN) return process.env.JOPLIN_TOKEN;
     // Same pattern joplin-api.js uses; gitignored.
     const tokenFile = path.resolve(REPO_ROOT, '.claude', 'joplin-token.local');
-    try { return fs.readFileSync(tokenFile, 'utf8').trim(); }
-    catch { return ''; }
+    try {
+        return fs.readFileSync(tokenFile, 'utf8').trim();
+    } catch {
+        return '';
+    }
 }
 
 async function findLatestNoteByTitle(hostPort, token, prefix) {
@@ -175,7 +186,9 @@ async function findLatestNoteByTitle(hostPort, token, prefix) {
         .filter((n) => (n.title || '').startsWith(prefix))
         .sort((a, b) => (b.updated_time ?? 0) - (a.updated_time ?? 0));
     if (matches.length === 0) {
-        throw new Error(`no Joplin note with title prefix "${prefix}" — generator should have created one before invoking the evaluator`);
+        throw new Error(
+            `no Joplin note with title prefix "${prefix}" — generator should have created one before invoking the evaluator`,
+        );
     }
     return matches[0].id;
 }
@@ -196,7 +209,9 @@ async function pickEditorPage(context, debug) {
             try {
                 const url = p.url();
                 let title = '';
-                try { title = await p.title(); } catch {}
+                try {
+                    title = await p.title();
+                } catch {}
                 console.error(`  - title="${title}" url="${url}"`);
             } catch (e) {
                 console.error(`  - <unreadable page: ${e.message}>`);
@@ -204,25 +219,35 @@ async function pickEditorPage(context, debug) {
         }
     }
     if (pages.length === 0) {
-        throw new Error('CDP attach succeeded but no pages are exposed. Joplin may still be booting.');
+        throw new Error(
+            'CDP attach succeeded but no pages are exposed. Joplin may still be booting.',
+        );
     }
 
     // Score each page; higher is better.
-    const scored = await Promise.all(pages.map(async (p) => {
-        let url = '';
-        let title = '';
-        try { url = p.url(); } catch {}
-        try { title = await p.title(); } catch {}
-        let score = 0;
-        if (/index\.html/i.test(url)) score += 10;
-        if (/Joplin/i.test(title)) score += 5;
-        if (url && url !== 'about:blank') score += 1;
-        return { page: p, url, title, score };
-    }));
+    const scored = await Promise.all(
+        pages.map(async (p) => {
+            let url = '';
+            let title = '';
+            try {
+                url = p.url();
+            } catch {}
+            try {
+                title = await p.title();
+            } catch {}
+            let score = 0;
+            if (/index\.html/i.test(url)) score += 10;
+            if (/Joplin/i.test(title)) score += 5;
+            if (url && url !== 'about:blank') score += 1;
+            return { page: p, url, title, score };
+        }),
+    );
     scored.sort((a, b) => b.score - a.score);
     const winner = scored[0];
     if (debug) {
-        console.error(`eval-screenshot: picked page title="${winner.title}" url="${winner.url}" score=${winner.score}`);
+        console.error(
+            `eval-screenshot: picked page title="${winner.title}" url="${winner.url}" score=${winner.score}`,
+        );
     }
     return winner.page;
 }
@@ -260,7 +285,9 @@ async function waitForUniverRender(frame) {
     try {
         await frame.waitForSelector(sel, { timeout: 15_000, state: 'attached' });
     } catch {
-        console.error(`eval-screenshot: Univer canvas selector "${sel}" did not appear within 15s.`);
+        console.error(
+            `eval-screenshot: Univer canvas selector "${sel}" did not appear within 15s.`,
+        );
         return null;
     }
     // Wait for the canvas to have non-zero size — Univer creates the
@@ -275,7 +302,9 @@ async function waitForUniverRender(frame) {
             { timeout: 5_000, polling: 100 },
         );
     } catch {
-        console.error('eval-screenshot: Univer canvas attached but never resized; rendering likely incomplete.');
+        console.error(
+            'eval-screenshot: Univer canvas attached but never resized; rendering likely incomplete.',
+        );
     }
     // One frame to let any pending paint settle.
     await frame.waitForTimeout(250);
@@ -319,305 +348,355 @@ async function waitForUniverRender(frame) {
 // gracefully — but the sidecar's `geometrySource` field flags which
 // path was taken.
 async function sampleCfColumns(frame, maxColors = 8) {
-    return frame.evaluate(({ maxColors }) => {
-        const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
-        if (!canvas) return { error: 'no main canvas' };
-        const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
-        const ROW_HEADER_W_CSS = 46;
-        const COL_HEADER_H_CSS = 18;
-        const DEFAULT_COL_W_CSS = 73;
-        const DEFAULT_ROW_H_CSS = 19;
-        const COLS = { A: 0, C: 2, E: 4, G: 6, I: 8 };
-        const MAX_COL = 8; // we sample through col I (index 8)
-        const MAX_ROW = 11; // through row 11 (index 10) for CF aggregate
+    return frame.evaluate(
+        ({ maxColors }) => {
+            const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
+            if (!canvas) return { error: 'no main canvas' };
+            const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+            const ROW_HEADER_W_CSS = 46;
+            const COL_HEADER_H_CSS = 18;
+            const DEFAULT_COL_W_CSS = 73;
+            const DEFAULT_ROW_H_CSS = 19;
+            const COLS = { A: 0, C: 2, E: 4, G: 6, I: 8 };
+            const MAX_COL = 8; // we sample through col I (index 8)
+            const MAX_ROW = 11; // through row 11 (index 10) for CF aggregate
 
-        // Try to discover actual column widths / row heights via the
-        // FUniver facade exposed by editorView.tsx. The facade returns
-        // numeric CSS pixel sizes that already account for any user
-        // (or fixture) column resize.
-        let geometrySource = 'default-fallback';
-        const colWidths = new Array(MAX_COL + 1).fill(DEFAULT_COL_W_CSS);
-        const rowHeights = new Array(MAX_ROW + 1).fill(DEFAULT_ROW_H_CSS);
-        try {
-            const api = (window).__notesheetUniverAPI;
-            const wb = api && (api.getActiveWorkbook ? api.getActiveWorkbook() : null);
-            const ws = wb && (wb.getActiveSheet ? wb.getActiveSheet() : null);
-            if (ws && typeof ws.getColumnWidth === 'function' && typeof ws.getRowHeight === 'function') {
-                for (let c = 0; c <= MAX_COL; c++) {
-                    const w = Number(ws.getColumnWidth(c));
-                    if (Number.isFinite(w) && w > 0) colWidths[c] = w;
+            // Try to discover actual column widths / row heights via the
+            // FUniver facade exposed by editorView.tsx. The facade returns
+            // numeric CSS pixel sizes that already account for any user
+            // (or fixture) column resize.
+            let geometrySource = 'default-fallback';
+            const colWidths = new Array(MAX_COL + 1).fill(DEFAULT_COL_W_CSS);
+            const rowHeights = new Array(MAX_ROW + 1).fill(DEFAULT_ROW_H_CSS);
+            try {
+                const api = window.__notesheetUniverAPI;
+                const wb = api && (api.getActiveWorkbook ? api.getActiveWorkbook() : null);
+                const ws = wb && (wb.getActiveSheet ? wb.getActiveSheet() : null);
+                if (
+                    ws &&
+                    typeof ws.getColumnWidth === 'function' &&
+                    typeof ws.getRowHeight === 'function'
+                ) {
+                    for (let c = 0; c <= MAX_COL; c++) {
+                        const w = Number(ws.getColumnWidth(c));
+                        if (Number.isFinite(w) && w > 0) colWidths[c] = w;
+                    }
+                    for (let r = 0; r <= MAX_ROW; r++) {
+                        const h = Number(ws.getRowHeight(r));
+                        if (Number.isFinite(h) && h > 0) rowHeights[r] = h;
+                    }
+                    geometrySource = 'fUniver';
                 }
-                for (let r = 0; r <= MAX_ROW; r++) {
-                    const h = Number(ws.getRowHeight(r));
-                    if (Number.isFinite(h) && h > 0) rowHeights[r] = h;
-                }
-                geometrySource = 'fUniver';
+            } catch (e) {
+                // Facade not reachable — fall through to defaults below.
+                geometrySource = 'default-fallback:' + (e && e.message ? e.message : 'unknown');
             }
-        } catch (e) {
-            // Facade not reachable — fall through to defaults below.
-            geometrySource = 'default-fallback:' + (e && e.message ? e.message : 'unknown');
-        }
 
-        // Cumulative x-origins per column index (CSS px from canvas left).
-        const colXCss = new Array(MAX_COL + 2).fill(0);
-        colXCss[0] = ROW_HEADER_W_CSS;
-        for (let c = 0; c <= MAX_COL; c++) {
-            colXCss[c + 1] = colXCss[c] + colWidths[c];
-        }
-        // Cumulative y-origins per row index (CSS px from canvas top).
-        const rowYCss = new Array(MAX_ROW + 2).fill(0);
-        rowYCss[0] = COL_HEADER_H_CSS;
-        for (let r = 0; r <= MAX_ROW; r++) {
-            rowYCss[r + 1] = rowYCss[r] + rowHeights[r];
-        }
+            // Cumulative x-origins per column index (CSS px from canvas left).
+            const colXCss = new Array(MAX_COL + 2).fill(0);
+            colXCss[0] = ROW_HEADER_W_CSS;
+            for (let c = 0; c <= MAX_COL; c++) {
+                colXCss[c + 1] = colXCss[c] + colWidths[c];
+            }
+            // Cumulative y-origins per row index (CSS px from canvas top).
+            const rowYCss = new Array(MAX_ROW + 2).fill(0);
+            rowYCss[0] = COL_HEADER_H_CSS;
+            for (let r = 0; r <= MAX_ROW; r++) {
+                rowYCss[r + 1] = rowYCss[r] + rowHeights[r];
+            }
 
-        function sampleRegion(rx, ry, rw, rh) {
+            function sampleRegion(rx, ry, rw, rh) {
+                const off = document.createElement('canvas');
+                off.width = rw;
+                off.height = rh;
+                const ctx = off.getContext('2d');
+                ctx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+                const data = ctx.getImageData(0, 0, rw, rh).data;
+                const hist = new Map();
+                const inkY = new Set();
+                let sampled = 0;
+                let redInk = 0,
+                    blueInk = 0,
+                    greenInk = 0,
+                    greyInk = 0;
+                let pinkInk = 0,
+                    lightGreenInk = 0,
+                    yellowInk = 0;
+                for (let y = 0; y < rh; y += 1) {
+                    for (let x = 0; x < rw; x += 1) {
+                        const i = (y * rw + x) * 4;
+                        const r = data[i],
+                            g = data[i + 1],
+                            b = data[i + 2],
+                            a = data[i + 3];
+                        if (a < 200) continue;
+                        if (r > 235 && g > 235 && b > 235) continue;
+                        if (r < 30 && g < 30 && b < 30) continue;
+                        sampled++;
+                        inkY.add(y);
+                        // M13/D originally required pure red (g/b ≤ 80); M15
+                        // broadens to g/b ≤ 140 so the colorScale's #F8696B
+                        // family (R=248, G=105, B=107) qualifies. Pure red text
+                        // (rgb(255,0,0)) still passes; Aptos accent3 dark green
+                        // (rgb(25,107,36)) doesn't (R=25 < 200). The threshold
+                        // change is monotonic (only widens), so no prior cycle's
+                        // gate that already passed can fail.
+                        if (r >= 200 && g <= 140 && b <= 140) redInk++;
+                        // M15 broadens blueInk: dataBar colour #638EC6
+                        // (R=99, G=142, B=198) is the spec target. The
+                        // original M13/D thresholds (r<=80 AND g<=80 AND
+                        // b>=200) only matched pure blue text. We loosen to
+                        // "B clearly dominant by ≥30 over R AND G, AND B at
+                        // least 150" — catches every saturated blue from
+                        // pure rgb(0,0,255) down through Excel's dataBar
+                        // accent. Pure blue still passes; the change is
+                        // monotonic so no prior gate regresses.
+                        if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
+                        if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
+                        if (
+                            r >= 140 &&
+                            r <= 180 &&
+                            g >= 140 &&
+                            g <= 180 &&
+                            b >= 140 &&
+                            b <= 180 &&
+                            Math.abs(r - g) <= 10 &&
+                            Math.abs(g - b) <= 10
+                        )
+                            greyInk++;
+                        if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
+                        if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220)
+                            lightGreenInk++;
+                        if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
+                        const key = `rgb(${r},${g},${b})`;
+                        hist.set(key, (hist.get(key) || 0) + 1);
+                    }
+                }
+                const top = Array.from(hist.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, maxColors);
+                const [dominant, count] = top[0] || [null, 0];
+                return {
+                    dominant,
+                    count,
+                    sampled,
+                    top,
+                    regionX: rx,
+                    regionY: ry,
+                    regionWidth: rw,
+                    regionHeight: rh,
+                    inkRows: inkY.size,
+                    inkRowSpread: inkY.size / Math.max(1, rh),
+                    redInk,
+                    blueInk,
+                    greenInk,
+                    greyInk,
+                    pinkInk,
+                    lightGreenInk,
+                    yellowInk,
+                };
+            }
+
+            const cfColumns = {};
+            // Per-column sampling: each CF column gets its own region whose
+            // x-origin/width comes from the discovered colWidths array, and
+            // whose y-band covers data rows 1..10 (zero-based) — the rows
+            // that carry CF output in the fixture. We carve a 6px inset on
+            // both x edges so we land safely inside the cell rather than
+            // straddling the gridline; with content-widened columns the
+            // inset is negligible against the column body, but on default
+            // narrow columns it's still safe (>= 60px effective width).
+            const yCssCol = rowYCss[1]; // top of row 2 (data row 1)
+            const yCssEnd = rowYCss[Math.min(11, MAX_ROW + 1)]; // bottom of row 11
+            const hCssCol = Math.max(0, yCssEnd - yCssCol);
+            for (const col of Object.keys(COLS)) {
+                const colIndex = COLS[col];
+                const xLeft = colXCss[colIndex];
+                const xRight = colXCss[colIndex + 1];
+                const xInset = 6;
+                const xCss = xLeft + xInset;
+                const wCss = Math.max(0, xRight - xLeft - 2 * xInset);
+                const x = Math.round(xCss * dpr);
+                const y = Math.round(yCssCol * dpr);
+                const w = Math.round(wCss * dpr);
+                const h = Math.round(hCssCol * dpr);
+                const useX = Math.min(canvas.width - 1, x);
+                const useY = Math.min(canvas.height - 1, y);
+                const useW = Math.min(Math.max(canvas.width - useX, 0), w);
+                const useH = Math.min(Math.max(canvas.height - useY, 0), h);
+                cfColumns[col] = sampleRegion(useX, useY, useW, useH);
+            }
+
+            // Aggregate: a whole-band sample covering A2:I11 for the
+            // top-level `dominant` and `top` histogram (legacy compat).
+            const aggXCss = ROW_HEADER_W_CSS;
+            const aggYCss = rowYCss[1];
+            const aggWCss = Math.max(0, colXCss[Math.min(9, MAX_COL + 1)] - ROW_HEADER_W_CSS);
+            const aggHCss = hCssCol;
+            const aggX = Math.round(aggXCss * dpr);
+            const aggY = Math.round(aggYCss * dpr);
+            const aggWPx = Math.round(aggWCss * dpr);
+            const aggHPx = Math.round(aggHCss * dpr);
+            const useAggW = Math.min(Math.max(canvas.width - aggX, 0), aggWPx);
+            const useAggH = Math.min(Math.max(canvas.height - aggY, 0), aggHPx);
+            const agg = sampleRegion(aggX, aggY, useAggW, useAggH);
+
+            return {
+                ...agg,
+                cfColumns,
+                geometrySource,
+                colWidthsCss: colWidths,
+                rowHeightsCss: rowHeights,
+            };
+        },
+        { maxColors },
+    );
+}
+
+async function samplePixelsAt(frame, regionFn, maxColors = 8) {
+    return frame.evaluate(
+        ({ regionFnSrc, maxColors }) => {
+            const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
+            if (!canvas) return { error: 'no main canvas' };
+            const region = new Function('return ' + regionFnSrc)()(canvas);
             const off = document.createElement('canvas');
-            off.width = rw;
-            off.height = rh;
+            off.width = region.w;
+            off.height = region.h;
             const ctx = off.getContext('2d');
-            ctx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
-            const data = ctx.getImageData(0, 0, rw, rh).data;
+            ctx.drawImage(canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+            const data = ctx.getImageData(0, 0, region.w, region.h).data;
             const hist = new Map();
+            // rowsWithInk: how many distinct y-pixels carry text-coloured
+            // ink. For horizontal text in a row, ink concentrates on a
+            // narrow horizontal band (roughly the glyph height ~ 14-18px).
+            // Rotated text spreads ink across many more y-pixels — that
+            // spread is the rotation-positive signal independent of
+            // colour.
             const inkY = new Set();
             let sampled = 0;
-            let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
-            let pinkInk = 0, lightGreenInk = 0, yellowInk = 0;
-            for (let y = 0; y < rh; y += 1) {
-                for (let x = 0; x < rw; x += 1) {
-                    const i = (y * rw + x) * 4;
-                    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+            // Aggregated colour bands (match the spec thresholds exactly,
+            // independent of histogram bucketing). Anti-aliased glyph
+            // edges spread saturated colour over many near-but-not-exact
+            // RGB buckets, so the per-bucket histogram can under-report
+            // the visual presence of a colour. These aggregates count
+            // every pixel that satisfies the inequality, regardless of
+            // exact RGB.
+            // Red ink:   R >= 200 AND G <=  80 AND B <=  80
+            // Blue ink:  R <=  80 AND G <=  80 AND B >= 200
+            // Green ink: G > R+30 AND G > B+30 AND G >= 80
+            //            (broader than M13/D's R<=80 AND G>=150 AND B<=80
+            //            so the dark-but-saturated Aptos accent3 #196B24 =
+            //            rgb(25,107,36) — used as the M13/E table-style
+            //            HEADER fill — qualifies. The original tight
+            //            threshold only matched pure greens like (0,255,0)
+            //            and pastel #84E291 (132,226,145) failed too. We
+            //            generalise to "green channel clearly dominant by
+            //            ≥30 over red AND blue, AND green at least 80" —
+            //            captures every saturated green in Excel's
+            //            built-in TableStyle palette.)
+            // Grey ink:  R, G, B all in [140, 180] AND
+            //            abs(R-G) <= 10 AND abs(G-B) <= 10
+            //            (all three channels mid-range AND mutually close
+            //            — distinguishes grey from a tinted hue at similar
+            //            luminance; M13/E uses this to gate the Classic
+            //            fixture's grey header rendering.)
+            let redInk = 0,
+                blueInk = 0,
+                greenInk = 0,
+                greyInk = 0;
+            // M15 CF aggregates. pinkInk targets #FFC7CE (cellIs > 50 fill);
+            // lightGreenInk targets #C6EFCE (top-3 rank fill); yellowInk
+            // targets the iconSet middle band's gold arrow (RGB roughly
+            // 255,189,55 in Univer's ICON_MAP arrow["right-gold"]).
+            // Loose-by-design — glyphs are small and anti-aliased.
+            let pinkInk = 0,
+                lightGreenInk = 0,
+                yellowInk = 0;
+            // Stride 1 (every pixel) — region is small and we want the
+            // colour signal to cross the spec thresholds even on
+            // narrow-glyph runs.
+            for (let y = 0; y < region.h; y += 1) {
+                for (let x = 0; x < region.w; x += 1) {
+                    const i = (y * region.w + x) * 4;
+                    const r = data[i],
+                        g = data[i + 1],
+                        b = data[i + 2],
+                        a = data[i + 3];
                     if (a < 200) continue;
-                    if (r > 235 && g > 235 && b > 235) continue;
-                    if (r < 30 && g < 30 && b < 30) continue;
+                    if (r > 235 && g > 235 && b > 235) continue; // background
+                    if (r < 30 && g < 30 && b < 30) continue; // gridline
                     sampled++;
                     inkY.add(y);
                     // M13/D originally required pure red (g/b ≤ 80); M15
-                // broadens to g/b ≤ 140 so the colorScale's #F8696B
-                // family (R=248, G=105, B=107) qualifies. Pure red text
-                // (rgb(255,0,0)) still passes; Aptos accent3 dark green
-                // (rgb(25,107,36)) doesn't (R=25 < 200). The threshold
-                // change is monotonic (only widens), so no prior cycle's
-                // gate that already passed can fail.
-                if (r >= 200 && g <= 140 && b <= 140) redInk++;
+                    // broadens to g/b ≤ 140 so the colorScale's #F8696B
+                    // family (R=248, G=105, B=107) qualifies. Pure red text
+                    // (rgb(255,0,0)) still passes; Aptos accent3 dark green
+                    // (rgb(25,107,36)) doesn't (R=25 < 200). The threshold
+                    // change is monotonic (only widens), so no prior cycle's
+                    // gate that already passed can fail.
+                    if (r >= 200 && g <= 140 && b <= 140) redInk++;
                     // M15 broadens blueInk: dataBar colour #638EC6
-                // (R=99, G=142, B=198) is the spec target. The
-                // original M13/D thresholds (r<=80 AND g<=80 AND
-                // b>=200) only matched pure blue text. We loosen to
-                // "B clearly dominant by ≥30 over R AND G, AND B at
-                // least 150" — catches every saturated blue from
-                // pure rgb(0,0,255) down through Excel's dataBar
-                // accent. Pure blue still passes; the change is
-                // monotonic so no prior gate regresses.
-                if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
+                    // (R=99, G=142, B=198) is the spec target. The
+                    // original M13/D thresholds (r<=80 AND g<=80 AND
+                    // b>=200) only matched pure blue text. We loosen to
+                    // "B clearly dominant by ≥30 over R AND G, AND B at
+                    // least 150" — catches every saturated blue from
+                    // pure rgb(0,0,255) down through Excel's dataBar
+                    // accent. Pure blue still passes; the change is
+                    // monotonic so no prior gate regresses.
+                    if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
                     if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
                     if (
-                        r >= 140 && r <= 180
-                        && g >= 140 && g <= 180
-                        && b >= 140 && b <= 180
-                        && Math.abs(r - g) <= 10
-                        && Math.abs(g - b) <= 10
-                    ) greyInk++;
+                        r >= 140 &&
+                        r <= 180 &&
+                        g >= 140 &&
+                        g <= 180 &&
+                        b >= 140 &&
+                        b <= 180 &&
+                        Math.abs(r - g) <= 10 &&
+                        Math.abs(g - b) <= 10
+                    )
+                        greyInk++;
+                    // Pink: #FFC7CE family — R high, G in [180,220], B in [180,220].
                     if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
+                    // Light green: #C6EFCE family — R in [180,220], G high, B in [180,220].
                     if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
+                    // Yellow: R high, G high, B low (gold arrow / yellow-flat icon).
                     if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
                     const key = `rgb(${r},${g},${b})`;
                     hist.set(key, (hist.get(key) || 0) + 1);
                 }
             }
-            const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
+            const top = Array.from(hist.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, maxColors);
             const [dominant, count] = top[0] || [null, 0];
             return {
-                dominant, count, sampled, top,
-                regionX: rx, regionY: ry, regionWidth: rw, regionHeight: rh,
+                dominant,
+                count,
+                sampled,
+                top,
+                regionWidth: region.w,
+                regionHeight: region.h,
                 inkRows: inkY.size,
-                inkRowSpread: inkY.size / Math.max(1, rh),
-                redInk, blueInk, greenInk, greyInk,
-                pinkInk, lightGreenInk, yellowInk,
+                inkRowSpread: inkY.size / Math.max(1, region.h),
+                // Aggregated colour-band counts using spec thresholds.
+                // Use these when the per-bucket `top` histogram is fragmented
+                // by anti-aliasing (e.g. saturated colour text inside a
+                // small region). For the M13/D rich-text gate the spec
+                // requires redInk >= 30 and blueInk >= 30 within the A2
+                // band.
+                redInk,
+                blueInk,
+                greenInk,
+                greyInk,
+                pinkInk,
+                lightGreenInk,
+                yellowInk,
             };
-        }
-
-        const cfColumns = {};
-        // Per-column sampling: each CF column gets its own region whose
-        // x-origin/width comes from the discovered colWidths array, and
-        // whose y-band covers data rows 1..10 (zero-based) — the rows
-        // that carry CF output in the fixture. We carve a 6px inset on
-        // both x edges so we land safely inside the cell rather than
-        // straddling the gridline; with content-widened columns the
-        // inset is negligible against the column body, but on default
-        // narrow columns it's still safe (>= 60px effective width).
-        const yCssCol = rowYCss[1];                // top of row 2 (data row 1)
-        const yCssEnd = rowYCss[Math.min(11, MAX_ROW + 1)]; // bottom of row 11
-        const hCssCol = Math.max(0, yCssEnd - yCssCol);
-        for (const col of Object.keys(COLS)) {
-            const colIndex = COLS[col];
-            const xLeft = colXCss[colIndex];
-            const xRight = colXCss[colIndex + 1];
-            const xInset = 6;
-            const xCss = xLeft + xInset;
-            const wCss = Math.max(0, xRight - xLeft - 2 * xInset);
-            const x = Math.round(xCss * dpr);
-            const y = Math.round(yCssCol * dpr);
-            const w = Math.round(wCss * dpr);
-            const h = Math.round(hCssCol * dpr);
-            const useX = Math.min(canvas.width - 1, x);
-            const useY = Math.min(canvas.height - 1, y);
-            const useW = Math.min(Math.max(canvas.width - useX, 0), w);
-            const useH = Math.min(Math.max(canvas.height - useY, 0), h);
-            cfColumns[col] = sampleRegion(useX, useY, useW, useH);
-        }
-
-        // Aggregate: a whole-band sample covering A2:I11 for the
-        // top-level `dominant` and `top` histogram (legacy compat).
-        const aggXCss = ROW_HEADER_W_CSS;
-        const aggYCss = rowYCss[1];
-        const aggWCss = Math.max(0, colXCss[Math.min(9, MAX_COL + 1)] - ROW_HEADER_W_CSS);
-        const aggHCss = hCssCol;
-        const aggX = Math.round(aggXCss * dpr);
-        const aggY = Math.round(aggYCss * dpr);
-        const aggWPx = Math.round(aggWCss * dpr);
-        const aggHPx = Math.round(aggHCss * dpr);
-        const useAggW = Math.min(Math.max(canvas.width - aggX, 0), aggWPx);
-        const useAggH = Math.min(Math.max(canvas.height - aggY, 0), aggHPx);
-        const agg = sampleRegion(aggX, aggY, useAggW, useAggH);
-
-        return {
-            ...agg,
-            cfColumns,
-            geometrySource,
-            colWidthsCss: colWidths,
-            rowHeightsCss: rowHeights,
-        };
-    }, { maxColors });
-}
-
-async function samplePixelsAt(frame, regionFn, maxColors = 8) {
-    return frame.evaluate(({ regionFnSrc, maxColors }) => {
-        const canvas = document.querySelector('canvas[id^="univer-sheet-main-canvas"]');
-        if (!canvas) return { error: 'no main canvas' };
-        const region = (new Function('return ' + regionFnSrc))()(canvas);
-        const off = document.createElement('canvas');
-        off.width = region.w;
-        off.height = region.h;
-        const ctx = off.getContext('2d');
-        ctx.drawImage(canvas, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
-        const data = ctx.getImageData(0, 0, region.w, region.h).data;
-        const hist = new Map();
-        // rowsWithInk: how many distinct y-pixels carry text-coloured
-        // ink. For horizontal text in a row, ink concentrates on a
-        // narrow horizontal band (roughly the glyph height ~ 14-18px).
-        // Rotated text spreads ink across many more y-pixels — that
-        // spread is the rotation-positive signal independent of
-        // colour.
-        const inkY = new Set();
-        let sampled = 0;
-        // Aggregated colour bands (match the spec thresholds exactly,
-        // independent of histogram bucketing). Anti-aliased glyph
-        // edges spread saturated colour over many near-but-not-exact
-        // RGB buckets, so the per-bucket histogram can under-report
-        // the visual presence of a colour. These aggregates count
-        // every pixel that satisfies the inequality, regardless of
-        // exact RGB.
-        // Red ink:   R >= 200 AND G <=  80 AND B <=  80
-        // Blue ink:  R <=  80 AND G <=  80 AND B >= 200
-        // Green ink: G > R+30 AND G > B+30 AND G >= 80
-        //            (broader than M13/D's R<=80 AND G>=150 AND B<=80
-        //            so the dark-but-saturated Aptos accent3 #196B24 =
-        //            rgb(25,107,36) — used as the M13/E table-style
-        //            HEADER fill — qualifies. The original tight
-        //            threshold only matched pure greens like (0,255,0)
-        //            and pastel #84E291 (132,226,145) failed too. We
-        //            generalise to "green channel clearly dominant by
-        //            ≥30 over red AND blue, AND green at least 80" —
-        //            captures every saturated green in Excel's
-        //            built-in TableStyle palette.)
-        // Grey ink:  R, G, B all in [140, 180] AND
-        //            abs(R-G) <= 10 AND abs(G-B) <= 10
-        //            (all three channels mid-range AND mutually close
-        //            — distinguishes grey from a tinted hue at similar
-        //            luminance; M13/E uses this to gate the Classic
-        //            fixture's grey header rendering.)
-        let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
-        // M15 CF aggregates. pinkInk targets #FFC7CE (cellIs > 50 fill);
-        // lightGreenInk targets #C6EFCE (top-3 rank fill); yellowInk
-        // targets the iconSet middle band's gold arrow (RGB roughly
-        // 255,189,55 in Univer's ICON_MAP arrow["right-gold"]).
-        // Loose-by-design — glyphs are small and anti-aliased.
-        let pinkInk = 0, lightGreenInk = 0, yellowInk = 0;
-        // Stride 1 (every pixel) — region is small and we want the
-        // colour signal to cross the spec thresholds even on
-        // narrow-glyph runs.
-        for (let y = 0; y < region.h; y += 1) {
-            for (let x = 0; x < region.w; x += 1) {
-                const i = (y * region.w + x) * 4;
-                const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-                if (a < 200) continue;
-                if (r > 235 && g > 235 && b > 235) continue;       // background
-                if (r < 30 && g < 30 && b < 30) continue;          // gridline
-                sampled++;
-                inkY.add(y);
-                // M13/D originally required pure red (g/b ≤ 80); M15
-                // broadens to g/b ≤ 140 so the colorScale's #F8696B
-                // family (R=248, G=105, B=107) qualifies. Pure red text
-                // (rgb(255,0,0)) still passes; Aptos accent3 dark green
-                // (rgb(25,107,36)) doesn't (R=25 < 200). The threshold
-                // change is monotonic (only widens), so no prior cycle's
-                // gate that already passed can fail.
-                if (r >= 200 && g <= 140 && b <= 140) redInk++;
-                // M15 broadens blueInk: dataBar colour #638EC6
-                // (R=99, G=142, B=198) is the spec target. The
-                // original M13/D thresholds (r<=80 AND g<=80 AND
-                // b>=200) only matched pure blue text. We loosen to
-                // "B clearly dominant by ≥30 over R AND G, AND B at
-                // least 150" — catches every saturated blue from
-                // pure rgb(0,0,255) down through Excel's dataBar
-                // accent. Pure blue still passes; the change is
-                // monotonic so no prior gate regresses.
-                if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
-                if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
-                if (
-                    r >= 140 && r <= 180
-                    && g >= 140 && g <= 180
-                    && b >= 140 && b <= 180
-                    && Math.abs(r - g) <= 10
-                    && Math.abs(g - b) <= 10
-                ) greyInk++;
-                // Pink: #FFC7CE family — R high, G in [180,220], B in [180,220].
-                if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
-                // Light green: #C6EFCE family — R in [180,220], G high, B in [180,220].
-                if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
-                // Yellow: R high, G high, B low (gold arrow / yellow-flat icon).
-                if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
-                const key = `rgb(${r},${g},${b})`;
-                hist.set(key, (hist.get(key) || 0) + 1);
-            }
-        }
-        const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
-        const [dominant, count] = top[0] || [null, 0];
-        return {
-            dominant,
-            count,
-            sampled,
-            top,
-            regionWidth: region.w,
-            regionHeight: region.h,
-            inkRows: inkY.size,
-            inkRowSpread: inkY.size / Math.max(1, region.h),
-            // Aggregated colour-band counts using spec thresholds.
-            // Use these when the per-bucket `top` histogram is fragmented
-            // by anti-aliasing (e.g. saturated colour text inside a
-            // small region). For the M13/D rich-text gate the spec
-            // requires redInk >= 30 and blueInk >= 30 within the A2
-            // band.
-            redInk,
-            blueInk,
-            greenInk,
-            greyInk,
-            pinkInk,
-            lightGreenInk,
-            yellowInk,
-        };
-    }, { regionFnSrc: regionFn.toString(), maxColors });
+        },
+        { regionFnSrc: regionFn.toString(), maxColors },
+    );
 }
 
 // Region of canvas covering row 0 (cell A1 column area). Univer renders
@@ -743,7 +822,9 @@ end tell`;
         const { execFileSync } = require('child_process');
         const out = execFileSync('osascript', ['-e', script], {
             stdio: ['ignore', 'pipe', 'pipe'],
-        }).toString().trim();
+        })
+            .toString()
+            .trim();
         return out;
     } catch (e) {
         return `osascript-error: ${e.message}`;
@@ -756,14 +837,22 @@ end tell`;
 // other format (we'd rather know than silently pass a black sidecar).
 function decodePngFromFile(filePath) {
     const buf = fs.readFileSync(filePath);
-    if (buf.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error(`Not a PNG: ${filePath}`);
+    if (buf.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
+        throw new Error(`Not a PNG: ${filePath}`);
     let i = 8;
-    let width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0;
+    let width = 0,
+        height = 0,
+        bitDepth = 0,
+        colorType = 0,
+        interlace = 0;
     const idat = [];
     while (i < buf.length) {
-        const len = buf.readUInt32BE(i); i += 4;
-        const type = buf.subarray(i, i + 4).toString('ascii'); i += 4;
-        const data = buf.subarray(i, i + len); i += len;
+        const len = buf.readUInt32BE(i);
+        i += 4;
+        const type = buf.subarray(i, i + 4).toString('ascii');
+        i += 4;
+        const data = buf.subarray(i, i + len);
+        i += len;
         i += 4; // CRC ignored
         if (type === 'IHDR') {
             width = data.readUInt32BE(0);
@@ -791,7 +880,8 @@ function decodePngFromFile(filePath) {
             const cur = inflated[srcOff++];
             const left = x >= channels ? out[dstStart + x - channels] : 0;
             const up = prevRowStart >= 0 ? out[prevRowStart + x] : 0;
-            const upleft = (prevRowStart >= 0 && x >= channels) ? out[prevRowStart + x - channels] : 0;
+            const upleft =
+                prevRowStart >= 0 && x >= channels ? out[prevRowStart + x - channels] : 0;
             let recon;
             if (filter === 0) recon = cur;
             else if (filter === 1) recon = (cur + left) & 0xff;
@@ -799,8 +889,10 @@ function decodePngFromFile(filePath) {
             else if (filter === 3) recon = (cur + Math.floor((left + up) / 2)) & 0xff;
             else if (filter === 4) {
                 const p = left + up - upleft;
-                const pa = Math.abs(p - left), pb = Math.abs(p - up), pc = Math.abs(p - upleft);
-                const paeth = (pa <= pb && pa <= pc) ? left : (pb <= pc ? up : upleft);
+                const pa = Math.abs(p - left),
+                    pb = Math.abs(p - up),
+                    pc = Math.abs(p - upleft);
+                const paeth = pa <= pb && pa <= pc ? left : pb <= pc ? up : upleft;
                 recon = (cur + paeth) & 0xff;
             } else throw new Error(`unsupported filter ${filter} on row ${y}`);
             out[dstStart + x] = recon;
@@ -822,8 +914,11 @@ function decodePngFromFile(filePath) {
 // chart's worth of one colour.
 function scanScreenshotForChartPalette(filePath, maxColors = 8) {
     let png;
-    try { png = decodePngFromFile(filePath); }
-    catch (e) { return { error: `decode failed: ${e.message}` }; }
+    try {
+        png = decodePngFromFile(filePath);
+    } catch (e) {
+        return { error: `decode failed: ${e.message}` };
+    }
     const { width, height, channels, data } = png;
 
     const hits = Object.fromEntries(NOTESHEET_CHART_PALETTE_HEX.map((h) => [h, 0]));
@@ -834,16 +929,21 @@ function scanScreenshotForChartPalette(filePath, maxColors = 8) {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const off = (y * width + x) * channels;
-            const r = data[off], g = data[off + 1], b = data[off + 2];
+            const r = data[off],
+                g = data[off + 1],
+                b = data[off + 2];
             // Skip pure-white backgrounds and dark gridlines.
             if (r > 240 && g > 240 && b > 240) continue;
             if (r < 30 && g < 30 && b < 30) continue;
             scannedPixels++;
             for (const p of NOTESHEET_CHART_PALETTE_RGB) {
-                if (Math.abs(r - p.r) <= TOLERANCE
-                    && Math.abs(g - p.g) <= TOLERANCE
-                    && Math.abs(b - p.b) <= TOLERANCE) {
-                    hits[p.hex.toUpperCase().replace('#', '#').toLowerCase()] = (hits[p.hex.toUpperCase().replace('#', '#').toLowerCase()] || 0) + 1;
+                if (
+                    Math.abs(r - p.r) <= TOLERANCE &&
+                    Math.abs(g - p.g) <= TOLERANCE &&
+                    Math.abs(b - p.b) <= TOLERANCE
+                ) {
+                    hits[p.hex.toUpperCase().replace('#', '#').toLowerCase()] =
+                        (hits[p.hex.toUpperCase().replace('#', '#').toLowerCase()] || 0) + 1;
                     break;
                 }
             }
@@ -854,7 +954,9 @@ function scanScreenshotForChartPalette(filePath, maxColors = 8) {
             hist.set(key, (hist.get(key) || 0) + 1);
         }
     }
-    const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
+    const top = Array.from(hist.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, maxColors);
     if (top.length > 0) dominantNonBg = top[0][0];
     const paletteSwatchesFound = Object.values(hits).filter((n) => n >= 50).length;
     const chartPaletteHitsTotal = Object.values(hits).reduce((a, b) => a + b, 0);
@@ -878,8 +980,12 @@ function scanScreenshotForChartPalette(filePath, maxColors = 8) {
 async function probeEditorState(page) {
     return page.evaluate(() => {
         const out = {};
-        const customEditorIframe = document.querySelector('iframe.plugin-user-webview, iframe[id*="notesheetEditor"]');
-        out.customEditorVisible = !!(customEditorIframe && customEditorIframe.offsetParent !== null);
+        const customEditorIframe = document.querySelector(
+            'iframe.plugin-user-webview, iframe[id*="notesheetEditor"]',
+        );
+        out.customEditorVisible = !!(
+            customEditorIframe && customEditorIframe.offsetParent !== null
+        );
         const tinyIframe = document.querySelector('iframe.tox-edit-area__iframe');
         out.tinymceVisible = !!(tinyIframe && tinyIframe.offsetParent !== null);
         const cm = document.querySelector('.cm-editor, .CodeMirror');
@@ -928,11 +1034,15 @@ async function ensurePreviewPaneVisible(page) {
     // Joplin's layout cycle is editor-only / split / preview-only.
     for (let attempt = 0; attempt < 3; attempt++) {
         if (state.previewVisible && state.previewWidth >= 200) break;
-        console.error(`eval-screenshot: View > Toggle editor layout (preview not visible: w=${state.previewWidth})`);
+        console.error(
+            `eval-screenshot: View > Toggle editor layout (preview not visible: w=${state.previewWidth})`,
+        );
         clickJoplinMenuItem('View', 'Toggle editor layout');
         await page.waitForTimeout(800);
         state = await probeEditorState(page);
-        console.error(`eval-screenshot:   layout attempt ${attempt + 1} = ${JSON.stringify(state)}`);
+        console.error(
+            `eval-screenshot:   layout attempt ${attempt + 1} = ${JSON.stringify(state)}`,
+        );
     }
     return state;
 }
@@ -967,82 +1077,105 @@ async function pickPreviewFrame(page) {
 // consistent with prior cycles' shape so the evaluator's gate
 // expressions don't have to special-case M16.
 async function samplePreviewPaneInk(frame, maxColors = 8) {
-    return frame.evaluate(({ maxColors }) => {
-        function parseRgb(str) {
-            // Accepts `rgb(R, G, B)`, `rgba(R, G, B, A)`, or `#RRGGBB`.
-            if (!str) return null;
-            const s = String(str).trim();
-            const m1 = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
-            if (m1) return { r: Number(m1[1]), g: Number(m1[2]), b: Number(m1[3]) };
-            const m2 = /^#([0-9a-fA-F]{6})$/.exec(s);
-            if (m2) {
-                const v = m2[1];
-                return {
-                    r: parseInt(v.slice(0, 2), 16),
-                    g: parseInt(v.slice(2, 4), 16),
-                    b: parseInt(v.slice(4, 6), 16),
-                };
+    return frame.evaluate(
+        ({ maxColors }) => {
+            function parseRgb(str) {
+                // Accepts `rgb(R, G, B)`, `rgba(R, G, B, A)`, or `#RRGGBB`.
+                if (!str) return null;
+                const s = String(str).trim();
+                const m1 = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
+                if (m1) return { r: Number(m1[1]), g: Number(m1[2]), b: Number(m1[3]) };
+                const m2 = /^#([0-9a-fA-F]{6})$/.exec(s);
+                if (m2) {
+                    const v = m2[1];
+                    return {
+                        r: parseInt(v.slice(0, 2), 16),
+                        g: parseInt(v.slice(2, 4), 16),
+                        b: parseInt(v.slice(4, 6), 16),
+                    };
+                }
+                return null;
             }
-            return null;
-        }
-        const tds = Array.from(document.querySelectorAll('td'));
-        const hist = new Map();
-        let sampled = 0;
-        let redInk = 0, blueInk = 0, greenInk = 0, greyInk = 0;
-        let pinkInk = 0, lightGreenInk = 0, yellowInk = 0;
-        for (const td of tds) {
-            const cs = window.getComputedStyle(td);
-            const bg = parseRgb(cs.backgroundColor);
-            if (!bg) continue;
-            // Skip rgba(0,0,0,0) (transparent default — no fill).
-            if (cs.backgroundColor && /\b0\s*\)$/.test(cs.backgroundColor)) {
-                if (cs.backgroundColor.startsWith('rgba')) continue;
+            const tds = Array.from(document.querySelectorAll('td'));
+            const hist = new Map();
+            let sampled = 0;
+            let redInk = 0,
+                blueInk = 0,
+                greenInk = 0,
+                greyInk = 0;
+            let pinkInk = 0,
+                lightGreenInk = 0,
+                yellowInk = 0;
+            for (const td of tds) {
+                const cs = window.getComputedStyle(td);
+                const bg = parseRgb(cs.backgroundColor);
+                if (!bg) continue;
+                // Skip rgba(0,0,0,0) (transparent default — no fill).
+                if (cs.backgroundColor && /\b0\s*\)$/.test(cs.backgroundColor)) {
+                    if (cs.backgroundColor.startsWith('rgba')) continue;
+                }
+                const { r, g, b } = bg;
+                // Skip near-white (effectively no fill) and pure black.
+                if (r > 240 && g > 240 && b > 240) continue;
+                sampled++;
+                if (r >= 200 && g <= 140 && b <= 140) redInk++;
+                if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
+                if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
+                if (
+                    r >= 140 &&
+                    r <= 180 &&
+                    g >= 140 &&
+                    g <= 180 &&
+                    b >= 140 &&
+                    b <= 180 &&
+                    Math.abs(r - g) <= 10 &&
+                    Math.abs(g - b) <= 10
+                )
+                    greyInk++;
+                if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
+                if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
+                if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
+                const key = `rgb(${r},${g},${b})`;
+                hist.set(key, (hist.get(key) || 0) + 1);
             }
-            const { r, g, b } = bg;
-            // Skip near-white (effectively no fill) and pure black.
-            if (r > 240 && g > 240 && b > 240) continue;
-            sampled++;
-            if (r >= 200 && g <= 140 && b <= 140) redInk++;
-            if (b > r + 30 && b > g + 30 && b >= 150) blueInk++;
-            if (g > r + 30 && g > b + 30 && g >= 80) greenInk++;
-            if (
-                r >= 140 && r <= 180
-                && g >= 140 && g <= 180
-                && b >= 140 && b <= 180
-                && Math.abs(r - g) <= 10
-                && Math.abs(g - b) <= 10
-            ) greyInk++;
-            if (r >= 220 && g >= 180 && g <= 220 && b >= 180 && b <= 220) pinkInk++;
-            if (r >= 180 && r <= 220 && g >= 220 && b >= 180 && b <= 220) lightGreenInk++;
-            if (r >= 200 && g >= 200 && b <= 120) yellowInk++;
-            const key = `rgb(${r},${g},${b})`;
-            hist.set(key, (hist.get(key) || 0) + 1);
-        }
-        const top = Array.from(hist.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxColors);
-        const [dominant, count] = top[0] || [null, 0];
-        // Page-level signals: are there any tables? Sheet headings?
-        const tableCount = document.querySelectorAll('table').length;
-        const sheetHeadings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'))
-            .map((h) => (h.textContent || '').trim())
-            .filter((s) => !!s);
-        // Did the raw fenced JSON make it to the rendered output? If
-        // the renderer regressed (or didn't run), we'd see a `<pre><code>`
-        // block containing the JSON instead of an HTML table.
-        const rawJsonLeak = document.body.innerHTML.includes('"sheetOrder"')
-            || document.body.innerHTML.includes('"workbook-');
-        return {
-            dominant, count, sampled, top,
-            redInk, blueInk, greenInk, greyInk,
-            pinkInk, lightGreenInk, yellowInk,
-            // Preview-pane specific signals.
-            tableCount,
-            sheetHeadings,
-            rawJsonLeak,
-            // For schema parity with the canvas sampler.
-            inkRows: 0,
-            inkRowSpread: 0,
-        };
-    }, { maxColors });
+            const top = Array.from(hist.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, maxColors);
+            const [dominant, count] = top[0] || [null, 0];
+            // Page-level signals: are there any tables? Sheet headings?
+            const tableCount = document.querySelectorAll('table').length;
+            const sheetHeadings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+                .map((h) => (h.textContent || '').trim())
+                .filter((s) => !!s);
+            // Did the raw fenced JSON make it to the rendered output? If
+            // the renderer regressed (or didn't run), we'd see a `<pre><code>`
+            // block containing the JSON instead of an HTML table.
+            const rawJsonLeak =
+                document.body.innerHTML.includes('"sheetOrder"') ||
+                document.body.innerHTML.includes('"workbook-');
+            return {
+                dominant,
+                count,
+                sampled,
+                top,
+                redInk,
+                blueInk,
+                greenInk,
+                greyInk,
+                pinkInk,
+                lightGreenInk,
+                yellowInk,
+                // Preview-pane specific signals.
+                tableCount,
+                sheetHeadings,
+                rawJsonLeak,
+                // For schema parity with the canvas sampler.
+                inkRows: 0,
+                inkRowSpread: 0,
+            };
+        },
+        { maxColors },
+    );
 }
 
 function tableHeaderRowRegion(canvas) {
@@ -1053,9 +1186,7 @@ function tableHeaderRowRegion(canvas) {
     // row. Scale the region by the actual DPR ratio recovered from
     // `canvas.width / canvas.clientWidth`. clientWidth is the CSS
     // size; the ratio is 1 on standard displays and 2 on Retina.
-    const dpr = canvas.clientWidth > 0
-        ? canvas.width / canvas.clientWidth
-        : 1;
+    const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
     const x = Math.round(80 * dpr);
     const y = Math.round(22 * dpr);
     const w = Math.round(400 * dpr);
@@ -1080,10 +1211,12 @@ async function main() {
     try {
         playwright = require('playwright');
     } catch {
-        console.error([
-            'Playwright not installed. Run from repo root:',
-            '    npm install --save-dev playwright',
-        ].join('\n'));
+        console.error(
+            [
+                'Playwright not installed. Run from repo root:',
+                '    npm install --save-dev playwright',
+            ].join('\n'),
+        );
         process.exit(3);
     }
     const { chromium } = playwright;
@@ -1094,7 +1227,9 @@ async function main() {
         const r = await fetch(`${CDP_URL}/json/version`, { signal: AbortSignal.timeout(3000) });
         if (!r.ok) throw new Error(`CDP /json/version → ${r.status}`);
     } catch (e) {
-        throw new Error(`CDP endpoint not reachable at ${CDP_URL}/json/version (${e.message}). Is Joplin running with --remote-debugging-port=${CDP_PORT}? Run scripts/pge/launch-joplin.sh.`);
+        throw new Error(
+            `CDP endpoint not reachable at ${CDP_URL}/json/version (${e.message}). Is Joplin running with --remote-debugging-port=${CDP_PORT}? Run scripts/pge/launch-joplin.sh.`,
+        );
     }
 
     // 2. Attach.
@@ -1110,9 +1245,12 @@ async function main() {
             throw new Error('CDP attach succeeded but no BrowserContexts present.');
         }
         const context = contexts[0];
-        const debug = !!process.env.PGE_DEBUG_CONTEXTS || contexts.length > 1 || context.pages().length > 1;
+        const debug =
+            !!process.env.PGE_DEBUG_CONTEXTS || contexts.length > 1 || context.pages().length > 1;
         if (contexts.length > 1) {
-            console.error(`eval-screenshot: CDP exposes ${contexts.length} contexts; using the first.`);
+            console.error(
+                `eval-screenshot: CDP exposes ${contexts.length} contexts; using the first.`,
+            );
         }
 
         const page = await pickEditorPage(context, debug);
@@ -1136,7 +1274,8 @@ async function main() {
         // Variant-suffixed key first, then the plain feature id. Plain-key
         // fallback preserves prior-cycle behaviour for un-suffixed
         // single-screenshot features.
-        const prefix = TITLE_PREFIX_BY_FEATURE[FEATURE_ID] || TITLE_PREFIX_BY_FEATURE[BASE_FEATURE_ID];
+        const prefix =
+            TITLE_PREFIX_BY_FEATURE[FEATURE_ID] || TITLE_PREFIX_BY_FEATURE[BASE_FEATURE_ID];
         const explicitNote = process.env.PGE_NOTE_ID;
         let didOpenNote = false;
         if (explicitNote) {
@@ -1145,17 +1284,22 @@ async function main() {
             didOpenNote = true;
         } else if (prefix) {
             const hostPort = discoverApiPort();
-            if (!hostPort) throw new Error('Joplin Web Clipper API not found via discover-api-port.sh');
+            if (!hostPort)
+                throw new Error('Joplin Web Clipper API not found via discover-api-port.sh');
             const token = discoverToken();
             if (!token) {
-                throw new Error('No Joplin Web Clipper token found. Set JOPLIN_TOKEN or write the token to .claude/joplin-token.local. Get the token from Joplin → Settings → Web Clipper → Authorization tokens.');
+                throw new Error(
+                    'No Joplin Web Clipper token found. Set JOPLIN_TOKEN or write the token to .claude/joplin-token.local. Get the token from Joplin → Settings → Web Clipper → Authorization tokens.',
+                );
             }
             const noteId = await findLatestNoteByTitle(hostPort, token, prefix);
             console.error(`eval-screenshot: opening note id ${noteId} (prefix="${prefix}")`);
             await openJoplinNote(noteId);
             didOpenNote = true;
         } else {
-            console.error(`eval-screenshot: no title-prefix mapping for "${FEATURE_ID}" and PGE_NOTE_ID unset; capturing current page as-is (verification mode).`);
+            console.error(
+                `eval-screenshot: no title-prefix mapping for "${FEATURE_ID}" and PGE_NOTE_ID unset; capturing current page as-is (verification mode).`,
+            );
             await page.waitForTimeout(1_000);
         }
 
@@ -1176,40 +1320,51 @@ async function main() {
         let previewLocator = null;
         // Resolve the region kind: variant-suffixed key first, then the
         // plain feature id, then the row-0 default.
-        const regionKind = REGION_BY_FEATURE[FEATURE_ID] || REGION_BY_FEATURE[BASE_FEATURE_ID] || 'rowZero';
+        const regionKind =
+            REGION_BY_FEATURE[FEATURE_ID] || REGION_BY_FEATURE[BASE_FEATURE_ID] || 'rowZero';
         // For 'cfAllColumns' regionKind we use the dedicated multi-region
         // sampler `sampleCfColumns` below — no single-region regionFn.
         // For 'previewPane' regionKind we use a separate sampler entirely
         // (samplePreviewPaneInk) and don't read from the canvas.
-        const regionFn = regionKind === 'rotatedRow'
-            ? rotatedRowRegion
-            : regionKind === 'richTextA1A2'
-                ? richTextA1A2Region
-                : regionKind === 'tableHeaderRow'
+        const regionFn =
+            regionKind === 'rotatedRow'
+                ? rotatedRowRegion
+                : regionKind === 'richTextA1A2'
+                  ? richTextA1A2Region
+                  : regionKind === 'tableHeaderRow'
                     ? tableHeaderRowRegion
                     : regionKind === 'floatDomChart'
-                        ? rowZeroRegion // canvas-only sample alongside; PNG post-scan adds chart-palette signals
-                        : rowZeroRegion;
+                      ? rowZeroRegion // canvas-only sample alongside; PNG post-scan adds chart-palette signals
+                      : rowZeroRegion;
         if (didOpenNote && regionKind === 'previewPane') {
             // M16 path: drive Joplin into preview-visible state, find
             // the preview frame, sample CSS-computed background colours
             // of every <td> for the ink aggregates.
             const editorState = await ensurePreviewPaneVisible(page);
             if (!editorState.previewVisible) {
-                console.error('eval-screenshot: preview pane did NOT become visible after toggles; screenshot will fall back to whole page.');
+                console.error(
+                    'eval-screenshot: preview pane did NOT become visible after toggles; screenshot will fall back to whole page.',
+                );
             } else {
                 const previewFrame = await pickPreviewFrame(page);
                 if (!previewFrame) {
-                    console.error('eval-screenshot: preview frame (Note viewer) not found in page.frames(); screenshot will fall back to whole page.');
+                    console.error(
+                        'eval-screenshot: preview frame (Note viewer) not found in page.frames(); screenshot will fall back to whole page.',
+                    );
                 } else {
                     // Wait for the preview frame's <body> to populate.
                     // The preview is rendered async after the editor
                     // switches; without this gate we can sample before
                     // the .notesheet-export div lands.
                     try {
-                        await previewFrame.waitForSelector('table, .notesheet-export, pre', { timeout: 8_000, state: 'attached' });
+                        await previewFrame.waitForSelector('table, .notesheet-export, pre', {
+                            timeout: 8_000,
+                            state: 'attached',
+                        });
                     } catch {
-                        console.error('eval-screenshot: preview frame did not show <table> within 8s; sampling anyway.');
+                        console.error(
+                            'eval-screenshot: preview frame did not show <table> within 8s; sampling anyway.',
+                        );
                     }
                     pixelSummary = await samplePreviewPaneInk(previewFrame);
                     previewLocator = page.locator('iframe.noteTextViewer').first();
@@ -1218,7 +1373,9 @@ async function main() {
         } else if (didOpenNote) {
             captureWebview = await pickNotesheetWebview(page);
             if (!captureWebview) {
-                console.error('eval-screenshot: UserWebviewIndex frame did not appear; the opened note may not be a Notesheet, or the plugin failed to load.');
+                console.error(
+                    'eval-screenshot: UserWebviewIndex frame did not appear; the opened note may not be a Notesheet, or the plugin failed to load.',
+                );
             } else {
                 const sel = await waitForUniverRender(captureWebview);
                 if (sel) {
@@ -1242,26 +1399,44 @@ async function main() {
                                 let sheet = null;
                                 if (wb.getSheets) {
                                     for (const s of wb.getSheets()) {
-                                        const n = s.getSheetName ? s.getSheetName() : (s.getName ? s.getName() : null);
-                                        if (n === name) { sheet = s; break; }
+                                        const n = s.getSheetName
+                                            ? s.getSheetName()
+                                            : s.getName
+                                              ? s.getName()
+                                              : null;
+                                        if (n === name) {
+                                            sheet = s;
+                                            break;
+                                        }
                                     }
                                 }
                                 if (!sheet) return { error: `no sheet named "${name}"` };
                                 if (sheet.activate) sheet.activate();
                                 else if (wb.setActiveSheet) wb.setActiveSheet(sheet);
                                 const active = wb.getActiveSheet ? wb.getActiveSheet() : null;
-                                return { ok: true, activeName: active && (active.getSheetName ? active.getSheetName() : null) };
+                                return {
+                                    ok: true,
+                                    activeName:
+                                        active &&
+                                        (active.getSheetName ? active.getSheetName() : null),
+                                };
                             }, targetSheet);
                             if (result && result.ok) {
-                                console.error(`eval-screenshot: activated sheet "${result.activeName}"`);
+                                console.error(
+                                    `eval-screenshot: activated sheet "${result.activeName}"`,
+                                );
                                 // Give Univer a beat to repaint the new sheet,
                                 // including its float-DOM chart overlay.
                                 await page.waitForTimeout(800);
                             } else {
-                                console.error(`eval-screenshot: PGE_ACTIVATE_SHEET=${targetSheet} failed: ${result?.error ?? 'unknown'}`);
+                                console.error(
+                                    `eval-screenshot: PGE_ACTIVATE_SHEET=${targetSheet} failed: ${result?.error ?? 'unknown'}`,
+                                );
                             }
                         } catch (e) {
-                            console.error(`eval-screenshot: PGE_ACTIVATE_SHEET threw: ${e.message}`);
+                            console.error(
+                                `eval-screenshot: PGE_ACTIVATE_SHEET threw: ${e.message}`,
+                            );
                         }
                     }
                     // Re-pick the frame just before sampling. When opening
@@ -1280,7 +1455,9 @@ async function main() {
                             }
                             if (pixelSummary && !pixelSummary.error) break;
                         } catch (e) {
-                            console.error(`eval-screenshot: pixel sample attempt ${attempt} threw: ${e.message}`);
+                            console.error(
+                                `eval-screenshot: pixel sample attempt ${attempt} threw: ${e.message}`,
+                            );
                         }
                         await page.waitForTimeout(300);
                         const refreshed = await pickNotesheetWebview(page);
@@ -1290,7 +1467,9 @@ async function main() {
                         }
                     }
                     if (pixelSummary && pixelSummary.error) {
-                        console.error(`eval-screenshot: pixel sample returned error after retries: ${pixelSummary.error}`);
+                        console.error(
+                            `eval-screenshot: pixel sample returned error after retries: ${pixelSummary.error}`,
+                        );
                     }
                 }
             }
@@ -1320,7 +1499,9 @@ async function main() {
                 await rootLoc.screenshot({ path: out });
                 captured = true;
             } catch (e) {
-                console.error(`eval-screenshot: floatDomChart root selector "${rootSel}" not visible (${e.message}); falling back to canvas-only screenshot.`);
+                console.error(
+                    `eval-screenshot: floatDomChart root selector "${rootSel}" not visible (${e.message}); falling back to canvas-only screenshot.`,
+                );
             }
             if (!captured && captureCanvas) {
                 await captureWebview.locator(captureCanvas).first().screenshot({ path: out });
@@ -1360,40 +1541,58 @@ async function main() {
         // assert against this without doing their own canvas pluck.
         if (pixelSummary) {
             const sidecar = out.replace(/\.png$/, '.pixels.json');
-            const regionLabel = regionKind === 'rotatedRow'
-                ? 'rotated row band (y 120–320, slab covering rows 4–6 of the fixture)'
-                : regionKind === 'richTextA1A2'
-                    ? 'rich-text A2 band (y 41–58, multi-colour pin-down: Red+default+Blue+default)'
-                    : regionKind === 'tableHeaderRow'
+            const regionLabel =
+                regionKind === 'rotatedRow'
+                    ? 'rotated row band (y 120–320, slab covering rows 4–6 of the fixture)'
+                    : regionKind === 'richTextA1A2'
+                      ? 'rich-text A2 band (y 41–58, multi-colour pin-down: Red+default+Blue+default)'
+                      : regionKind === 'tableHeaderRow'
                         ? 'table header band (x 80–480, y 22–35; cols B+ of A1:_ table header row, excludes A1 active-cell selection border)'
                         : regionKind === 'cfAllColumns'
-                            ? 'CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)'
-                            : regionKind === 'previewPane'
-                                ? 'preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)'
-                                : regionKind === 'floatDomChart'
-                                    ? 'editor canvas + float-DOM (full #notesheet-univer-root container; chart-palette histogram derived from saved PNG)'
-                                    : 'row-0 (top 80px slab of main canvas)';
-            fs.writeFileSync(sidecar, JSON.stringify({
-                source: out,
-                region: regionLabel,
-                regionKind,
-                ...pixelSummary,
-            }, null, 2));
+                          ? 'CF all columns (5 sub-regions A/C/E/G/I, rows 2-11; aggregate is the whole A2:I11 band)'
+                          : regionKind === 'previewPane'
+                            ? 'preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)'
+                            : regionKind === 'floatDomChart'
+                              ? 'editor canvas + float-DOM (full #notesheet-univer-root container; chart-palette histogram derived from saved PNG)'
+                              : 'row-0 (top 80px slab of main canvas)';
+            fs.writeFileSync(
+                sidecar,
+                JSON.stringify(
+                    {
+                        source: out,
+                        region: regionLabel,
+                        regionKind,
+                        ...pixelSummary,
+                    },
+                    null,
+                    2,
+                ),
+            );
             console.error(`eval-screenshot: pixel summary → ${sidecar}`);
-            console.error(`eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`);
+            console.error(
+                `eval-screenshot:   dominant=${pixelSummary.dominant} count=${pixelSummary.count} sampled=${pixelSummary.sampled} inkRows=${pixelSummary.inkRows} inkRowSpread=${pixelSummary.inkRowSpread?.toFixed(3)} redInk=${pixelSummary.redInk} blueInk=${pixelSummary.blueInk} greenInk=${pixelSummary.greenInk} greyInk=${pixelSummary.greyInk}`,
+            );
             if (regionKind === 'previewPane') {
-                console.error(`eval-screenshot:   tableCount=${pixelSummary.tableCount} sheetHeadings=${JSON.stringify(pixelSummary.sheetHeadings)} rawJsonLeak=${pixelSummary.rawJsonLeak} pinkInk=${pixelSummary.pinkInk} lightGreenInk=${pixelSummary.lightGreenInk}`);
+                console.error(
+                    `eval-screenshot:   tableCount=${pixelSummary.tableCount} sheetHeadings=${JSON.stringify(pixelSummary.sheetHeadings)} rawJsonLeak=${pixelSummary.rawJsonLeak} pinkInk=${pixelSummary.pinkInk} lightGreenInk=${pixelSummary.lightGreenInk}`,
+                );
             }
             if (regionKind === 'floatDomChart' && pixelSummary.chartPaletteHits) {
-                console.error(`eval-screenshot:   chartPaletteHitsTotal=${pixelSummary.chartPaletteHitsTotal} paletteSwatchesFound=${pixelSummary.paletteSwatchesFound} dominantNonBackground=${pixelSummary.dominantNonBackground}`);
+                console.error(
+                    `eval-screenshot:   chartPaletteHitsTotal=${pixelSummary.chartPaletteHitsTotal} paletteSwatchesFound=${pixelSummary.paletteSwatchesFound} dominantNonBackground=${pixelSummary.dominantNonBackground}`,
+                );
             }
             if (pixelSummary.cfColumns) {
                 if (pixelSummary.geometrySource) {
-                    console.error(`eval-screenshot:   geometrySource=${pixelSummary.geometrySource} colWidthsCss=${JSON.stringify(pixelSummary.colWidthsCss)}`);
+                    console.error(
+                        `eval-screenshot:   geometrySource=${pixelSummary.geometrySource} colWidthsCss=${JSON.stringify(pixelSummary.colWidthsCss)}`,
+                    );
                 }
                 for (const col of Object.keys(pixelSummary.cfColumns)) {
                     const c = pixelSummary.cfColumns[col];
-                    console.error(`eval-screenshot:   cfColumn[${col}]: dominant=${c.dominant} sampled=${c.sampled} redInk=${c.redInk} blueInk=${c.blueInk} greenInk=${c.greenInk} pinkInk=${c.pinkInk} lightGreenInk=${c.lightGreenInk} yellowInk=${c.yellowInk}`);
+                    console.error(
+                        `eval-screenshot:   cfColumn[${col}]: dominant=${c.dominant} sampled=${c.sampled} redInk=${c.redInk} blueInk=${c.blueInk} greenInk=${c.greenInk} pinkInk=${c.pinkInk} lightGreenInk=${c.lightGreenInk} yellowInk=${c.yellowInk}`,
+                    );
                 }
             }
         }

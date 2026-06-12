@@ -16,33 +16,40 @@ broken — the M13 lesson that prompted this harness.
 ## One-time setup (do these once per machine)
 
 1. **Install Playwright.**
-   ```sh
-   npm install --save-dev playwright
-   npx playwright install chromium
-   ```
-   The Electron driver Playwright bundles by default; no extra
-   package needed.
+
+    ```sh
+    npm install --save-dev playwright
+    npx playwright install chromium
+    ```
+
+    The Electron driver Playwright bundles by default; no extra
+    package needed.
 
 2. **Confirm Joplin desktop installed at the expected path.**
-   ```sh
-   ls /Applications/Joplin.app
-   ```
-   If yours is elsewhere, set `JOPLIN_BIN` in your shell profile.
+
+    ```sh
+    ls /Applications/Joplin.app
+    ```
+
+    If yours is elsewhere, set `JOPLIN_BIN` in your shell profile.
 
 3. **Set up the dev profile.** First time only:
-   ```sh
-   /Applications/Joplin.app/Contents/MacOS/Joplin --env dev
-   ```
-   This creates `~/.config/joplindev-desktop/`. Quit when it opens.
+
+    ```sh
+    /Applications/Joplin.app/Contents/MacOS/Joplin --env dev
+    ```
+
+    This creates `~/.config/joplindev-desktop/`. Quit when it opens.
 
 4. **Enable Web Clipper service in the dev profile.** Launch Joplin
    with `--env dev` again, go to **Tools → Options → Web Clipper**,
    click **Enable Web Clipper service**. The setting persists.
    Verify with:
-   ```sh
-   curl http://localhost:41184/ping
-   # → "JoplinClipperServer"
-   ```
+
+    ```sh
+    curl http://localhost:41184/ping
+    # → "JoplinClipperServer"
+    ```
 
 5. **Quit Joplin.** The harness manages launching it from now on.
 
@@ -61,6 +68,7 @@ claude --agent planner -p "Read OPERATOR_ASK.md and produce the build plan."
 ```
 
 Each `run-cycle.sh` invocation:
+
 - picks the lowest-numbered `passes:false` feature,
 - runs ONE generator session (it builds, installs, screenshots),
 - runs ONE evaluator session in a separate process (it captures its
@@ -88,22 +96,22 @@ Re-run as needed.
 
 ## File map
 
-| File | Owner | Purpose |
-|---|---|---|
-| `.claude/CLAUDE.md` | repo | Generator's runtime contract |
-| `.claude/agents/planner.md` | repo | Planner brief |
-| `.claude/agents/generator.md` | repo | Generator brief |
-| `.claude/agents/evaluator.md` | repo | Evaluator brief |
-| `.claude/hooks/*.sh` | repo | Default-FAIL evidence gate, kill switch, etc. |
-| `.claude/settings.json` | repo | Hook-event wiring |
-| `OPERATOR_ASK.md` | operator | One-line(ish) task for this cycle |
-| `BUILD_PLAN.md` | planner | Per-feature spec + acceptance criteria |
-| `PROGRESS.md` | generator | Session-to-session handoff |
-| `test-results.json` | planner seeds, generator flips bits | The default-FAIL contract |
-| `NEXT_FINDINGS.md` | run-cycle.sh writes after evaluator NEEDS_WORK | Generator reads on next session |
-| `STEER.md` | operator (rare) | Mid-session redirect |
-| `AGENT_STOP` | operator (emergency) | Hard kill switch |
-| `screenshots/<feature-id>/` | gen + eval | Visual evidence (committed) |
+| File                          | Owner                                          | Purpose                                       |
+| ----------------------------- | ---------------------------------------------- | --------------------------------------------- |
+| `.claude/CLAUDE.md`           | repo                                           | Generator's runtime contract                  |
+| `.claude/agents/planner.md`   | repo                                           | Planner brief                                 |
+| `.claude/agents/generator.md` | repo                                           | Generator brief                               |
+| `.claude/agents/evaluator.md` | repo                                           | Evaluator brief                               |
+| `.claude/hooks/*.sh`          | repo                                           | Default-FAIL evidence gate, kill switch, etc. |
+| `.claude/settings.json`       | repo                                           | Hook-event wiring                             |
+| `OPERATOR_ASK.md`             | operator                                       | One-line(ish) task for this cycle             |
+| `BUILD_PLAN.md`               | planner                                        | Per-feature spec + acceptance criteria        |
+| `PROGRESS.md`                 | generator                                      | Session-to-session handoff                    |
+| `test-results.json`           | planner seeds, generator flips bits            | The default-FAIL contract                     |
+| `NEXT_FINDINGS.md`            | run-cycle.sh writes after evaluator NEEDS_WORK | Generator reads on next session               |
+| `STEER.md`                    | operator (rare)                                | Mid-session redirect                          |
+| `AGENT_STOP`                  | operator (emergency)                           | Hard kill switch                              |
+| `screenshots/<feature-id>/`   | gen + eval                                     | Visual evidence (committed)                   |
 
 ## Why the gate works
 
