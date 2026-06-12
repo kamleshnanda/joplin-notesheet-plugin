@@ -71,6 +71,49 @@ interface Snapshot {
     resources?: Array<{ name?: string; data?: string }>;
 }
 
+// ───────── Chart rendering (static SVG) ─────────────────────────────
+//
+// Charts live in the snapshot's SHEET_DRAWING_PLUGIN resource as
+// `componentKey: 'NotesheetChart'` drawings (the same resource the live
+// Chart.js editor reads). The editor renders them to a <canvas>, which
+// does NOT survive into Joplin's static HTML / PDF export. Here we
+// hand-author inline SVG so the chart appears in the preview pane and
+// exported documents too. We deliberately do NOT pull in Chart.js (it's
+// ~250KB and DOM-bound) — these are small SVG primitives.
+
+// MUST match src/charts/extractData.ts:CHART_PALETTE. Duplicated (not
+// imported) to keep the content-script bundle free of the chart.js types
+// that extractData.ts drags in — same decision M16/M17 documented.
+const CHART_SVG_PALETTE = [
+    '#3b82f6',
+    '#ef4444',
+    '#10b981',
+    '#f59e0b',
+    '#8b5cf6',
+    '#ec4899',
+    '#06b6d4',
+    '#84cc16',
+];
+
+const DRAWING_RESOURCE = 'SHEET_DRAWING_PLUGIN';
+
+interface ChartDataset {
+    label?: string;
+    data: number[];
+}
+interface ChartDrawingData {
+    chartId?: string;
+    type?: 'bar' | 'line' | 'pie' | 'doughnut';
+    title?: string;
+    labels?: string[];
+    datasets?: ChartDataset[];
+    meta?: {
+        barDir?: 'bar' | 'col';
+        holeSize?: number;
+        [k: string]: unknown;
+    };
+}
+
 // ───────── Fence detection ──────────────────────────────────────────
 
 // Match the same shape `src/snapshot.ts` uses. The fence body is JSON.
@@ -1001,6 +1044,298 @@ function computeSheetExtent(sheet: SnapshotSheet): { rows: number; cols: number 
     return { rows: maxRow + 1, cols: maxCol + 1 };
 }
 
+// Read all NotesheetChart drawings for one sheet (subUnitId === sheetId)
+// from the snapshot's SHEET_DRAWING_PLUGIN resource, in `order`.
+function readChartsForSheet(snapshot: Snapshot, sheetId: string): ChartDrawingData[] {
+    const resources = Array.isArray(snapshot.resources) ? snapshot.resources : [];
+    const entry = resources.find((r) => r && r.name === DRAWING_RESOURCE);
+    if (!entry || typeof entry.data !== 'string') return [];
+    let parsed: Record<string, { data?: Record<string, any>; order?: string[] }>;
+    try {
+        parsed = JSON.parse(entry.data);
+    } catch {
+        return [];
+    }
+    const sub = parsed?.[sheetId];
+    if (!sub || !sub.data) return [];
+    const order = Array.isArray(sub.order) ? sub.order : Object.keys(sub.data);
+    const out: ChartDrawingData[] = [];
+    for (const id of order) {
+        const d = sub.data[id];
+        if (!d || d.componentKey !== 'NotesheetChart' || !d.data) continue;
+        const data = d.data;
+        out.push({
+            chartId: typeof data.chartId === 'string' ? data.chartId : id,
+            type:
+                data.type === 'bar' ||
+                data.type === 'line' ||
+                data.type === 'pie' ||
+                data.type === 'doughnut'
+                    ? data.type
+                    : 'bar',
+            title: typeof data.title === 'string' ? data.title : '',
+            labels: Array.isArray(data.labels)
+                ? data.labels.map((l: unknown) => String(l ?? ''))
+                : [],
+            datasets: Array.isArray(data.datasets)
+                ? data.datasets.map((ds: any) => ({
+                      label: typeof ds?.label === 'string' ? ds.label : undefined,
+                      data: Array.isArray(ds?.data) ? ds.data.map((v: unknown) => Number(v)) : [],
+                  }))
+                : [],
+            meta: data.meta && typeof data.meta === 'object' ? data.meta : undefined,
+        });
+    }
+    return out;
+}
+
+// SVG geometry constants (a compact, fixed-size chart suitable for a
+// document/preview pane).
+const SVG_W = 480;
+const SVG_H = 300;
+const PLOT_L = 48; // left axis gutter
+const PLOT_R = 12;
+const PLOT_T = 28; // room for title
+const PLOT_B = 40; // room for category labels
+
+function svgColour(i: number): string {
+    return CHART_SVG_PALETTE[i % CHART_SVG_PALETTE.length];
+}
+
+// Format a number for an axis tick / label — trim trailing zeros.
+function fmtNum(n: number): string {
+    if (!Number.isFinite(n)) return '';
+    return Number(n.toFixed(2)).toString();
+}
+
+function svgTitle(title: string | undefined): string {
+    if (!title) return '';
+    return (
+        `<text x="${SVG_W / 2}" y="18" text-anchor="middle" ` +
+        `font-family="sans-serif" font-size="14" font-weight="bold" fill="#333">` +
+        `${escapeHtml(title)}</text>`
+    );
+}
+
+// Bar / column chart. Vertical columns by default; horizontal bars when
+// meta.barDir === 'bar'. Grouped by category, one colour per series.
+function renderBarSvg(chart: ChartDrawingData): string {
+    const labels = chart.labels ?? [];
+    const datasets = (chart.datasets ?? []).filter((d) => d.data.length > 0);
+    const n = labels.length || Math.max(0, ...datasets.map((d) => d.data.length));
+    if (n === 0 || datasets.length === 0) return '';
+    const allVals = datasets.flatMap((d) => d.data).filter((v) => Number.isFinite(v));
+    const maxV = Math.max(0, ...allVals);
+    const minV = Math.min(0, ...allVals);
+    const range = maxV - minV || 1;
+    const plotW = SVG_W - PLOT_L - PLOT_R;
+    const plotH = SVG_H - PLOT_T - PLOT_B;
+    const groupW = plotW / n;
+    const barW = (groupW * 0.8) / datasets.length;
+    const parts: string[] = [];
+    // Zero baseline.
+    const yOf = (v: number) => PLOT_T + plotH - ((v - minV) / range) * plotH;
+    const zeroY = yOf(0);
+    parts.push(
+        `<line x1="${PLOT_L}" y1="${zeroY}" x2="${SVG_W - PLOT_R}" y2="${zeroY}" stroke="#ccc" stroke-width="1"/>`,
+    );
+    for (let gi = 0; gi < n; gi++) {
+        const gx = PLOT_L + gi * groupW + groupW * 0.1;
+        for (let si = 0; si < datasets.length; si++) {
+            const v = datasets[si].data[gi];
+            if (!Number.isFinite(v)) continue;
+            const x = gx + si * barW;
+            const y = Math.min(yOf(v), zeroY);
+            const h = Math.abs(yOf(v) - zeroY);
+            parts.push(
+                `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" ` +
+                    `height="${h.toFixed(1)}" fill="${svgColour(si)}"/>`,
+            );
+        }
+        // Category label.
+        const lbl = labels[gi];
+        if (lbl != null) {
+            parts.push(
+                `<text x="${(PLOT_L + gi * groupW + groupW / 2).toFixed(1)}" y="${SVG_H - PLOT_B + 16}" ` +
+                    `text-anchor="middle" font-family="sans-serif" font-size="10" fill="#666">` +
+                    `${escapeHtml(String(lbl))}</text>`,
+            );
+        }
+    }
+    // Y-axis min/max ticks.
+    parts.push(axisTicks(minV, maxV, plotH));
+    return svgWrap(parts.join(''), chart.title, datasets);
+}
+
+// Line chart — one polyline per series over the category index.
+function renderLineSvg(chart: ChartDrawingData): string {
+    const labels = chart.labels ?? [];
+    const datasets = (chart.datasets ?? []).filter((d) => d.data.length > 0);
+    const n = labels.length || Math.max(0, ...datasets.map((d) => d.data.length));
+    if (n === 0 || datasets.length === 0) return '';
+    const allVals = datasets.flatMap((d) => d.data).filter((v) => Number.isFinite(v));
+    const maxV = Math.max(0, ...allVals);
+    const minV = Math.min(0, ...allVals);
+    const range = maxV - minV || 1;
+    const plotW = SVG_W - PLOT_L - PLOT_R;
+    const plotH = SVG_H - PLOT_T - PLOT_B;
+    const xOf = (i: number) => PLOT_L + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    const yOf = (v: number) => PLOT_T + plotH - ((v - minV) / range) * plotH;
+    const parts: string[] = [];
+    for (let si = 0; si < datasets.length; si++) {
+        const pts = datasets[si].data
+            .map((v, i) =>
+                Number.isFinite(v) ? `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}` : null,
+            )
+            .filter(Boolean)
+            .join(' ');
+        parts.push(
+            `<polyline points="${pts}" fill="none" stroke="${svgColour(si)}" stroke-width="2"/>`,
+        );
+    }
+    for (let gi = 0; gi < n; gi++) {
+        const lbl = labels[gi];
+        if (lbl != null) {
+            parts.push(
+                `<text x="${xOf(gi).toFixed(1)}" y="${SVG_H - PLOT_B + 16}" text-anchor="middle" ` +
+                    `font-family="sans-serif" font-size="10" fill="#666">${escapeHtml(String(lbl))}</text>`,
+            );
+        }
+    }
+    parts.push(axisTicks(minV, maxV, plotH));
+    return svgWrap(parts.join(''), chart.title, datasets);
+}
+
+// Pie / doughnut — single dataset, one slice per value, one colour each.
+function renderPieSvg(chart: ChartDrawingData, doughnut: boolean): string {
+    const ds = (chart.datasets ?? [])[0];
+    const values = (ds?.data ?? []).filter((v) => Number.isFinite(v) && v > 0);
+    const labels = chart.labels ?? [];
+    const total = values.reduce((s, v) => s + v, 0);
+    if (total <= 0 || values.length === 0) return '';
+    const cx = SVG_W / 2;
+    const cy = PLOT_T + (SVG_H - PLOT_T) / 2;
+    const radius = Math.min((SVG_H - PLOT_T) / 2, SVG_W / 2) - 20;
+    const innerR = doughnut ? radius * ((chart.meta?.holeSize ?? 50) / 100) : 0;
+    const parts: string[] = [];
+    let angle = -Math.PI / 2; // start at 12 o'clock
+    for (let i = 0; i < values.length; i++) {
+        const frac = values[i] / total;
+        const a0 = angle;
+        const a1 = angle + frac * 2 * Math.PI;
+        angle = a1;
+        parts.push(arcPath(cx, cy, radius, innerR, a0, a1, svgColour(i)));
+    }
+    // Build a tiny legend below since slices have no inline labels.
+    const legendItems = values.map((_v, i) => ({
+        label: labels[i] != null ? String(labels[i]) : `#${i + 1}`,
+        colour: svgColour(i),
+    }));
+    return svgWrap(parts.join(''), chart.title, undefined, legendItems);
+}
+
+// SVG arc/wedge path for a pie or doughnut slice between two angles.
+function arcPath(
+    cx: number,
+    cy: number,
+    rOuter: number,
+    rInner: number,
+    a0: number,
+    a1: number,
+    fill: string,
+): string {
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const x0 = cx + rOuter * Math.cos(a0);
+    const y0 = cy + rOuter * Math.sin(a0);
+    const x1 = cx + rOuter * Math.cos(a1);
+    const y1 = cy + rOuter * Math.sin(a1);
+    if (rInner <= 0) {
+        return (
+            `<path d="M ${cx.toFixed(1)} ${cy.toFixed(1)} L ${x0.toFixed(1)} ${y0.toFixed(1)} ` +
+            `A ${rOuter.toFixed(1)} ${rOuter.toFixed(1)} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" ` +
+            `fill="${fill}" stroke="#fff" stroke-width="1"/>`
+        );
+    }
+    const ix1 = cx + rInner * Math.cos(a1);
+    const iy1 = cy + rInner * Math.sin(a1);
+    const ix0 = cx + rInner * Math.cos(a0);
+    const iy0 = cy + rInner * Math.sin(a0);
+    return (
+        `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} ` +
+        `A ${rOuter.toFixed(1)} ${rOuter.toFixed(1)} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} ` +
+        `L ${ix1.toFixed(1)} ${iy1.toFixed(1)} ` +
+        `A ${rInner.toFixed(1)} ${rInner.toFixed(1)} 0 ${large} 0 ${ix0.toFixed(1)} ${iy0.toFixed(1)} Z" ` +
+        `fill="${fill}" stroke="#fff" stroke-width="1"/>`
+    );
+}
+
+// Min / max value-axis ticks on the left gutter.
+function axisTicks(minV: number, maxV: number, plotH: number): string {
+    const topY = PLOT_T;
+    const botY = PLOT_T + plotH;
+    return (
+        `<text x="${PLOT_L - 4}" y="${topY + 4}" text-anchor="end" font-family="sans-serif" ` +
+        `font-size="9" fill="#999">${escapeHtml(fmtNum(maxV))}</text>` +
+        `<text x="${PLOT_L - 4}" y="${botY}" text-anchor="end" font-family="sans-serif" ` +
+        `font-size="9" fill="#999">${escapeHtml(fmtNum(minV))}</text>`
+    );
+}
+
+// Wrap chart body in the <svg> element + optional title + legend.
+function svgWrap(
+    body: string,
+    title: string | undefined,
+    seriesLegend?: ChartDataset[],
+    sliceLegend?: Array<{ label: string; colour: string }>,
+): string {
+    const legendParts: string[] = [];
+    const ly = SVG_H - 12;
+    if (seriesLegend && seriesLegend.length > 1) {
+        let lx = PLOT_L;
+        for (let i = 0; i < seriesLegend.length; i++) {
+            const lbl = seriesLegend[i].label ?? `Series ${i + 1}`;
+            legendParts.push(
+                `<rect x="${lx}" y="${ly - 8}" width="9" height="9" fill="${svgColour(i)}"/>` +
+                    `<text x="${lx + 12}" y="${ly}" font-family="sans-serif" font-size="9" fill="#666">${escapeHtml(lbl)}</text>`,
+            );
+            lx += 12 + lbl.length * 6 + 14;
+        }
+    } else if (sliceLegend && sliceLegend.length > 0) {
+        let lx = 12;
+        for (const item of sliceLegend) {
+            legendParts.push(
+                `<rect x="${lx}" y="${ly - 8}" width="9" height="9" fill="${item.colour}"/>` +
+                    `<text x="${lx + 12}" y="${ly}" font-family="sans-serif" font-size="9" fill="#666">${escapeHtml(item.label)}</text>`,
+            );
+            lx += 12 + item.label.length * 6 + 14;
+        }
+    }
+    return (
+        `<svg class="notesheet-chart" xmlns="http://www.w3.org/2000/svg" ` +
+        `width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}" role="img">` +
+        svgTitle(title) +
+        body +
+        legendParts.join('') +
+        `</svg>`
+    );
+}
+
+// Dispatch one chart drawing to its SVG renderer. Returns '' for an
+// empty/degenerate chart (no crash, just nothing drawn).
+function renderChartSvg(chart: ChartDrawingData): string {
+    switch (chart.type) {
+        case 'line':
+            return renderLineSvg(chart);
+        case 'pie':
+            return renderPieSvg(chart, false);
+        case 'doughnut':
+            return renderPieSvg(chart, true);
+        case 'bar':
+        default:
+            return renderBarSvg(chart);
+    }
+}
+
 function renderSheet(
     sheet: SnapshotSheet,
     ctx: RenderContext,
@@ -1079,6 +1414,13 @@ export function renderNotesheetSnapshot(content: string): string | null {
         const rules = cfBySubUnit[sheet.id] ?? cfBySubUnit[sheetId] ?? [];
         const cfFills = evaluateCfFor(sheet, rules);
         parts.push(renderSheet(sheet, ctx, cfFills));
+        // Charts anchored on this sheet, as static SVG (B1). Keyed by
+        // subUnitId, which matches the sheetId in the drawing resource.
+        const charts = readChartsForSheet(snapshot, sheet.id ?? sheetId);
+        for (const chart of charts) {
+            const svg = renderChartSvg(chart);
+            if (svg) parts.push(`<div class="notesheet-chart-wrap">${svg}</div>`);
+        }
     }
     parts.push('</div>');
     return parts.join('');
