@@ -126,7 +126,10 @@ The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable 
 | ✅ | M15 — Conditional formatting full round-trip | [#26](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/26) |
 | ✅ | M16 — Snapshot → HTML for Joplin's PDF / HTML export | [#28](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/28) [#29](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/29) [#30](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/30) [#31](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/31) |
 | ✅ | M17 — Chart import from `.xlsx` (chart definitions + trendlines + pie leader-line labels) | [#32](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/32) [#33](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/33) |
-| ⏳ | M18 — Image / shape drawings round-trip through `.xlsx`; charts in HTML / PDF export; per-series chart colours; rich-text chart titles | planned |
+| ✅ | Roadmap & backlog grooming — collect M0→M17 pending scope ([`BACKLOG.md`](./BACKLOG.md)); split into M18–M20 | [#PENDING](https://github.com/kamleshnanda/joplin-notesheet-plugin/pull/PENDING) |
+| ⏳ | M18 — Drawings & charts: image / shape `.xlsx` round-trip, charts in HTML / PDF export, chart fidelity (per-series colours, rich-text titles, percentStacked, more types, markers, error bars) — backlog groups A–C | planned |
+| ⏳ | M19 — Static-render & import gaps: dataBar / iconSet / rich-text in HTML export, accounting number formats, multi-table workbooks, theme-tinted borders, Univer keybinding bugs — backlog groups D–E | planned |
+| ⏳ | M20 — Codebase health: `uuid` CVE, transitive deprecation cleanup, exceljs watch-item — backlog group F | planned |
 
 ### Dependency hygiene
 
