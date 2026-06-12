@@ -1,0 +1,13 @@
+# Pre-commit gate (earliest practical enforcement of CONTRIBUTING.md).
+# Fast checks only — the full test suite runs in CI, not here, to keep
+# commits snappy. Anything slow or non-staged belongs in CI.
+#
+# 1. lint-staged — ESLint (--fix) + Prettier on STAGED files only.
+# 2. typecheck   — tsc --noEmit (whole project; fast, no emit).
+# 3. check:deps  — block accidental dependency downgrades.
+#
+# Do NOT bypass with `git commit --no-verify`; fix the cause. If a check
+# is itself wrong, fix the check in its own commit and say why.
+npx lint-staged
+npm run typecheck
+npm run check:deps

@@ -3,7 +3,9 @@
 // CJS transform. The helper is identity-tested; the sentinel works
 // just as well as the real plugin reference.
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 // Pin-down regression tests for M12 (formatting fidelity polish).
@@ -30,24 +32,41 @@ import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 const APTOS = path.join(FIXTURES_DIR, 'FormattingSmorgasboard.xlsx');
-const CLASSIC = path.join(FIXTURES_DIR, 'FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx');
+const CLASSIC = path.join(
+    FIXTURES_DIR,
+    'FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx',
+);
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, {
-            v?: unknown; t?: number; s?: string;
-            p?: {
-                body?: {
-                    dataStream?: string;
-                    paragraphs?: Array<{ startIndex: number }>;
-                    sectionBreaks?: Array<{ startIndex: number }>;
-                    customRanges?: Array<{ rangeType?: number; properties?: { url?: string } }>;
-                };
-                documentStyle?: { pageSize?: { width?: number; height?: number } };
-            };
-        }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<
+                number,
+                Record<
+                    number,
+                    {
+                        v?: unknown;
+                        t?: number;
+                        s?: string;
+                        p?: {
+                            body?: {
+                                dataStream?: string;
+                                paragraphs?: Array<{ startIndex: number }>;
+                                sectionBreaks?: Array<{ startIndex: number }>;
+                                customRanges?: Array<{
+                                    rangeType?: number;
+                                    properties?: { url?: string };
+                                }>;
+                            };
+                            documentStyle?: { pageSize?: { width?: number; height?: number } };
+                        };
+                    }
+                >
+            >;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
     defaultStyle?: { ff?: string };
     resources?: Array<{ name: string; data: string }>;
@@ -55,11 +74,13 @@ interface SnapshotShape {
 
 async function importFixture(file: string): Promise<SnapshotShape> {
     const buf = readFileSync(file);
-    return await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+    return (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as SnapshotShape;
 }
 
 async function roundTrip(snap: SnapshotShape): Promise<{ zip: JSZip; wb: ExcelJS.Workbook }> {
-    const out = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+    const out = await snapshotToXlsxBuffer(
+        snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+    );
     const zip = await JSZip.loadAsync(out as ArrayBuffer);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(out as unknown as Parameters<typeof wb.xlsx.load>[0]);
@@ -122,7 +143,9 @@ describe('M12 pin-down — hyperlink documentSkeleton', () => {
         const ws = wb.addWorksheet('Sheet1');
         ws.getCell('A1').value = { text: 'click me', hyperlink: 'https://example.com/' };
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+        const snap = (await xlsxBufferToSnapshot(
+            buf as unknown as Buffer,
+        )) as unknown as SnapshotShape;
         const sheet = snap.sheets[snap.sheetOrder[0]];
         const linkCell = sheet.cellData[0]?.[0];
         expect(linkCell?.p).toBeDefined();
@@ -135,9 +158,7 @@ describe('M12 pin-down — hyperlink documentSkeleton', () => {
 
         // Paragraphs + sectionBreaks must be present at the right offsets.
         const textLen = body.dataStream!.length - 2;
-        expect(body.paragraphs).toEqual([
-            expect.objectContaining({ startIndex: textLen }),
-        ]);
+        expect(body.paragraphs).toEqual([expect.objectContaining({ startIndex: textLen })]);
         expect(body.sectionBreaks).toEqual([{ startIndex: textLen + 1 }]);
 
         // pageSize must be finite. JSON.stringify of Infinity → null, so
@@ -238,7 +259,9 @@ describe('M12 pin-down — synth-styles sidecar', () => {
 
     test('import emits SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN with the source clrScheme', async () => {
         const snap = await importFixture(APTOS);
-        const themeRes = snap.resources?.find((r) => r.name === 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN');
+        const themeRes = snap.resources?.find(
+            (r) => r.name === 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN',
+        );
         expect(themeRes).toBeDefined();
         // Should contain accent1 #156082.
         expect(themeRes!.data).toContain('156082');
@@ -279,13 +302,24 @@ describe('M12 pin-down — header cells DO NOT flip applyFont on export', () => 
             name: 'TM4',
             ref: 'A1',
             headerRow: true,
-            style: { theme: 'TableStyleMedium4', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            style: {
+                theme: 'TableStyleMedium4',
+                showRowStripes: true,
+            } as ExcelJS.TableProperties['style'],
             columns: [{ name: 'Col1' }, { name: 'Col2' }],
-            rows: [['x', 1], ['y', 2], ['z', 3]],
+            rows: [
+                ['x', 1],
+                ['y', 2],
+                ['z', 3],
+            ],
         });
         const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
-        const snap = await xlsxBufferToSnapshot(buf0 as unknown as Buffer) as unknown as SnapshotShape;
-        const out = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const snap = (await xlsxBufferToSnapshot(
+            buf0 as unknown as Buffer,
+        )) as unknown as SnapshotShape;
+        const out = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
 
         // Inspect the raw OOXML of the exported workbook. exceljs's
         // re-parse interprets <font/> entries lazily, so we go to the
@@ -340,7 +374,6 @@ describe('M12 pin-down — header cells DO NOT flip applyFont on export', () => 
 
 describe('M12 pin-down — passthrough table theme', () => {
     test('FLAT_TABLE_THEME_CONFIG keeps userThemes[0] empty + defaultThemeIndex 0', async () => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const mod = await import('../src/univerTableTheme');
         expect(mod.FLAT_TABLE_THEME_CONFIG.defaultThemeIndex).toBe(0);
         expect(mod.FLAT_TABLE_THEME_CONFIG.userThemes).toHaveLength(1);
@@ -367,11 +400,23 @@ describe('M12 round-trip golden — table structure', () => {
 
         // exceljs's parsed view.
         const ws = wb.getWorksheet('Sheet1')!;
-        const tables = (ws as unknown as { getTables: () => Array<{ table: { name: string; columns: Array<{ name: string }> } }> }).getTables();
+        const tables = (
+            ws as unknown as {
+                getTables: () => Array<{
+                    table: { name: string; columns: Array<{ name: string }> };
+                }>;
+            }
+        ).getTables();
         expect(tables).toHaveLength(1);
         expect(tables[0].table.name).toBe('ProjectTracker');
         expect(tables[0].table.columns.map((c) => c.name)).toEqual([
-            'Project', 'Website', 'Budget', 'Spent', '% Complete', 'Start Date', 'Status',
+            'Project',
+            'Website',
+            'Budget',
+            'Spent',
+            '% Complete',
+            'Start Date',
+            'Status',
         ]);
     });
 
@@ -382,10 +427,21 @@ describe('M12 round-trip golden — table structure', () => {
         expect(tableXml).toContain('name="ProductCatalog"');
 
         const ws = wb.getWorksheet('Sheet1')!;
-        const tables = (ws as unknown as { getTables: () => Array<{ table: { name: string; columns: Array<{ name: string }> } }> }).getTables();
+        const tables = (
+            ws as unknown as {
+                getTables: () => Array<{
+                    table: { name: string; columns: Array<{ name: string }> };
+                }>;
+            }
+        ).getTables();
         expect(tables).toHaveLength(1);
         expect(tables[0].table.columns.map((c) => c.name)).toEqual([
-            'Product', 'Website', 'Price', 'Discount', 'Launch Date', 'Revenue',
+            'Product',
+            'Website',
+            'Price',
+            'Discount',
+            'Launch Date',
+            'Revenue',
         ]);
     });
 

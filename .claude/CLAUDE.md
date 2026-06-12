@@ -1,5 +1,13 @@
 # Notesheet — long-running PGE conventions
 
+> **Read first, in order:** [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (the
+> single source of truth for dev / test / code-quality / dependency /
+> milestone rules — applies to everyone) and [`../AGENTS.md`](../AGENTS.md)
+> (the agent operational layer). This file does **not** restate those
+> rules; it is _only_ the PGE harness runtime contract. If anything here
+> appears to conflict with CONTRIBUTING.md, CONTRIBUTING.md wins and this
+> file should be corrected.
+
 This file governs every agent session that runs under the planner →
 generator → evaluator (PGE) harness. It is the generator's runtime
 contract. The planner has a separate brief (`.claude/agents/planner.md`);
@@ -168,12 +176,12 @@ ID:
 
 ```json
 {
-  "feature-1-rotated-text-renders": {
-    "passes": false,
-    "evidence": null,
-    "evaluator_verdict": null,
-    "last_attempted_at": null
-  }
+    "feature-1-rotated-text-renders": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
+    }
 }
 ```
 

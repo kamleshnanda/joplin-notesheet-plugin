@@ -1,52 +1,74 @@
 {
-  "name": "joplin-plugin-notesheet",
-  "version": "1.0.0",
-  "scripts": {
-    "dist": "webpack --env joplin-plugin-config=buildMain && webpack --env joplin-plugin-config=buildExtraScripts && webpack --env joplin-plugin-config=createArchive",
-    "prepare": "npm run dist",
-    "test": "jest",
-    "updateVersion": "webpack --env joplin-plugin-config=updateVersion",
-    "update": "npm install -g generator-joplin && yo joplin --node-package-manager npm --update --force"
-  },
-  "license": "MIT",
-  "keywords": [
-    "joplin-plugin"
-  ],
-  "files": [
-    "publish"
-  ],
-  "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^18.7.13",
-    "@types/react": "^19.2.15",
-    "@types/react-dom": "^19.2.3",
-    "chalk": "^4.1.0",
-    "copy-webpack-plugin": "^14.0.0",
-    "css-loader": "^7.1.4",
-    "fs-extra": "^10.1.0",
-    "glob": "^11.1.0",
-    "jest": "^30.4.2",
-    "playwright": "^1.60.0",
-    "style-loader": "^4.0.0",
-    "tar": "^7.5.9",
-    "ts-jest": "^29.4.11",
-    "ts-loader": "^9.5.7",
-    "typescript": "^5.9.3",
-    "webpack": "^5.107.1",
-    "webpack-cli": "^5.1.4"
-  },
-  "dependencies": {
-    "@univerjs/preset-sheets-conditional-formatting": "^0.23.0",
-    "@univerjs/preset-sheets-core": "^0.23.0",
-    "@univerjs/preset-sheets-drawing": "^0.23.0",
-    "@univerjs/preset-sheets-filter": "^0.23.0",
-    "@univerjs/preset-sheets-hyper-link": "^0.23.0",
-    "@univerjs/preset-sheets-sort": "^0.23.0",
-    "@univerjs/preset-sheets-table": "^0.23.0",
-    "@univerjs/presets": "^0.23.0",
-    "chart.js": "^4.5.1",
-    "exceljs": "^4.4.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
-  }
+    "name": "joplin-plugin-notesheet",
+    "version": "1.0.0",
+    "scripts": {
+        "dist": "webpack --env joplin-plugin-config=buildMain && webpack --env joplin-plugin-config=buildExtraScripts && webpack --env joplin-plugin-config=createArchive",
+        "prepare": "husky && npm run dist",
+        "test": "jest",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"scripts/**/*.ts\"",
+        "lint:fix": "eslint \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"scripts/**/*.ts\" --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "check:deps": "node scripts/check-dep-downgrades.cjs",
+        "verify": "npm run typecheck && npm run lint && npm test",
+        "updateVersion": "webpack --env joplin-plugin-config=updateVersion",
+        "update": "npm install -g generator-joplin && yo joplin --node-package-manager npm --update --force"
+    },
+    "license": "MIT",
+    "lint-staged": {
+        "*.{ts,tsx}": [
+            "eslint --fix",
+            "prettier --write"
+        ],
+        "*.{js,cjs,mjs,json,md}": [
+            "prettier --write"
+        ]
+    },
+    "keywords": [
+        "joplin-plugin"
+    ],
+    "files": [
+        "publish"
+    ],
+    "devDependencies": {
+        "@eslint/js": "9.39.4",
+        "@types/jest": "^30.0.0",
+        "@types/node": "^18.7.13",
+        "@types/react": "^19.2.15",
+        "@types/react-dom": "^19.2.3",
+        "chalk": "^4.1.0",
+        "copy-webpack-plugin": "^14.0.0",
+        "css-loader": "^7.1.4",
+        "eslint": "9.39.4",
+        "fs-extra": "^10.1.0",
+        "glob": "^11.1.0",
+        "husky": "9.1.7",
+        "jest": "^30.4.2",
+        "lint-staged": "15.5.2",
+        "playwright": "^1.60.0",
+        "prettier": "3.8.4",
+        "style-loader": "^4.0.0",
+        "tar": "^7.5.9",
+        "ts-jest": "^29.4.11",
+        "ts-loader": "^9.5.7",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "8.61.0",
+        "webpack": "^5.107.1",
+        "webpack-cli": "^5.1.4"
+    },
+    "dependencies": {
+        "@univerjs/preset-sheets-conditional-formatting": "^0.23.0",
+        "@univerjs/preset-sheets-core": "^0.23.0",
+        "@univerjs/preset-sheets-drawing": "^0.23.0",
+        "@univerjs/preset-sheets-filter": "^0.23.0",
+        "@univerjs/preset-sheets-hyper-link": "^0.23.0",
+        "@univerjs/preset-sheets-sort": "^0.23.0",
+        "@univerjs/preset-sheets-table": "^0.23.0",
+        "@univerjs/presets": "^0.23.0",
+        "chart.js": "^4.5.1",
+        "exceljs": "^4.4.0",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6"
+    }
 }
