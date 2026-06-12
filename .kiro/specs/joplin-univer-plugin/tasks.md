@@ -14,14 +14,14 @@
 ## 2. Core Plugin Infrastructure
 
 - [x] 2.1 Plugin registration in src/index.ts
-  - [x] 2.1.1 Register MarkdownItPlugin content script
-  - [x] 2.1.2 Register CodeMirror content script (no-op stub)
-  - [x] 2.1.3 Register Insert Spreadsheet command
-  - [x] 2.1.4 Register Open Spreadsheet command with dialog editor
-  - [x] 2.1.5 Create toolbar button (EditorToolbar)
-  - [x] 2.1.6 Create menu item (Tools, Ctrl/Cmd+Shift+U)
-  - [x] 2.1.7 Message handlers for content script communication
-  - [x] 2.1.8 Error handling for plugin initialization
+    - [x] 2.1.1 Register MarkdownItPlugin content script
+    - [x] 2.1.2 Register CodeMirror content script (no-op stub)
+    - [x] 2.1.3 Register Insert Spreadsheet command
+    - [x] 2.1.4 Register Open Spreadsheet command with dialog editor
+    - [x] 2.1.5 Create toolbar button (EditorToolbar)
+    - [x] 2.1.6 Create menu item (Tools, Ctrl/Cmd+Shift+U)
+    - [x] 2.1.7 Message handlers for content script communication
+    - [x] 2.1.8 Error handling for plugin initialization
 
 - [x] 2.2 manifest.json metadata
 
@@ -76,17 +76,17 @@
 - [x] 8.4 Console logging
 - [x] 8.5 Validate userDataGet() return value
 - [x] 8.6 Input validation for cell content
-  - [x] 8.6.1 Cell content length (10K char max)
-  - [x] 8.6.2 JSON size before save (5 MB limit)
-  - [x] 8.6.3 Spreadsheet dimensions (500 rows, 52 cols)
-  - [x] 8.6.4 HTML escaping for cell display values
+    - [x] 8.6.1 Cell content length (10K char max)
+    - [x] 8.6.2 JSON size before save (5 MB limit)
+    - [x] 8.6.3 Spreadsheet dimensions (500 rows, 52 cols)
+    - [x] 8.6.4 HTML escaping for cell display values
 
 ## 9. Formula Engine (dialogScript.js)
 
 - [x] 9.1 Formula detection (= prefix)
 - [x] 9.2 Cell reference resolution (A1, B2)
 - [x] 9.3 Range expansion (A1:C3)
-- [x] 9.4 Arithmetic: +, -, *, / with operator precedence
+- [x] 9.4 Arithmetic: +, -, \*, / with operator precedence
 - [x] 9.5 Comparison operators: >, <, >=, <=, =, <>
 - [x] 9.6 SUM, AVERAGE, COUNT, MIN, MAX
 - [x] 9.7 IF(condition, true_val, false_val)
@@ -103,8 +103,8 @@
 
 - [x] 10.1 README.md with formula docs
 - [x] 10.2 Code comments in all source files
-- [ ]* 10.3 User documentation with screenshots
-- [ ]* 10.4 Developer/contribution guide
+- [ ]\* 10.3 User documentation with screenshots
+- [ ]\* 10.4 Developer/contribution guide
 
 ## 11. Build and Deployment
 
@@ -112,20 +112,20 @@
 - [x] 11.2 .jpl file generation
 - [x] 11.3 package.json metadata
 - [x] 11.4 Version 2.3.0 in manifest.json and package.json
-- [ ]* 11.5 Publish to npm
-- [ ]* 11.6 GitHub release
+- [ ]\* 11.5 Publish to npm
+- [ ]\* 11.6 GitHub release
 
 ## 12. Optional Advanced Features
 
-- [ ]* 12.1 Excel import/export
-- [ ]* 12.2 Spreadsheet templates
-- [ ]* 12.3 Cell formatting (colors, bold, borders)
-- [ ]* 12.4 Chart support
-- [ ]* 12.5 Auto-save mechanism
+- [ ]\* 12.1 Excel import/export
+- [ ]\* 12.2 Spreadsheet templates
+- [ ]\* 12.3 Cell formatting (colors, bold, borders)
+- [ ]\* 12.4 Chart support
+- [ ]\* 12.5 Auto-save mechanism
 - [x] 12.6 Add/delete row/column buttons
 
 ## Notes
 
-- Tasks marked with * are optional enhancements
+- Tasks marked with \* are optional enhancements
 - Formula engine is client-side JS, no external dependencies
 - Formulas stored in cellData as {f: "=SUM(A1:A3)", v: ""}

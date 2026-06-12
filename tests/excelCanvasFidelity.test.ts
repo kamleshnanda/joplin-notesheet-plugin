@@ -162,16 +162,16 @@ const STRIP_TOLERANCE = 32;
  */
 function latestEvalPng(variant: 'aptos' | 'classic'): string {
     const prefix = `eval-${variant}-`;
-    const matches = readdirSync(FEATURE_DIR).filter((n) =>
-        n.startsWith(prefix) && n.endsWith('.png'),
+    const matches = readdirSync(FEATURE_DIR).filter(
+        (n) => n.startsWith(prefix) && n.endsWith('.png'),
     );
     if (matches.length === 0) {
         throw new Error(
             `No ${prefix}*.png in ${FEATURE_DIR}. ` +
-            `Re-run scripts/pge/eval-screenshot.sh feature-1-m13-theme-aware-banding:${variant}.`,
+                `Re-run scripts/pge/eval-screenshot.sh feature-1-m13-theme-aware-banding:${variant}.`,
         );
     }
-    matches.sort();  // ISO timestamp → lexicographic === chronological
+    matches.sort(); // ISO timestamp → lexicographic === chronological
     return path.join(FEATURE_DIR, matches[matches.length - 1]);
 }
 
@@ -183,8 +183,10 @@ function latestEvalPng(variant: 'aptos' | 'classic'): string {
  */
 function findColouredStrip(
     img: DecodedPng,
-    xMin: number, xMax: number,
-    yStart: number, yEnd: number,
+    xMin: number,
+    xMax: number,
+    yStart: number,
+    yEnd: number,
     targetHex: string,
     tolerance: number,
     minHeight: number,
@@ -235,8 +237,10 @@ function findColouredStrip(
  */
 function findAllColouredStripsByMatchFrac(
     img: DecodedPng,
-    xMin: number, xMax: number,
-    yStart: number, yEnd: number,
+    xMin: number,
+    xMax: number,
+    yStart: number,
+    yEnd: number,
     targetHex: string,
     tolerance: number,
     minMatchFrac = 0.5,
@@ -251,10 +255,15 @@ function findAllColouredStripsByMatchFrac(
         let matches = 0;
         for (let x = xMin; x <= xMax; x++) {
             const idx = (y * img.width + x) * img.channels;
-            const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
-            if (Math.abs(r - target[0]) <= tolerance &&
+            const r = img.data[idx],
+                g = img.data[idx + 1],
+                b = img.data[idx + 2];
+            if (
+                Math.abs(r - target[0]) <= tolerance &&
                 Math.abs(g - target[1]) <= tolerance &&
-                Math.abs(b - target[2]) <= tolerance) matches++;
+                Math.abs(b - target[2]) <= tolerance
+            )
+                matches++;
         }
         if (matches >= minMatchPx) {
             if (runStart < 0) runStart = y;
@@ -285,8 +294,10 @@ function findAllColouredStripsByMatchFrac(
  */
 function findAllColouredStrips(
     img: DecodedPng,
-    xMin: number, xMax: number,
-    yStart: number, yEnd: number,
+    xMin: number,
+    xMax: number,
+    yStart: number,
+    yEnd: number,
     targetHex: string,
     tolerance: number,
 ): Array<{ yMin: number; yMax: number; hex: string }> {
@@ -321,7 +332,7 @@ function expectRgbWithin(actualHex: string, expectedHex: string, tol: number, la
     if (d.max > tol) {
         throw new Error(
             `${label}: expected ${expectedHex} ±${tol}, got ${actualHex.toUpperCase()} ` +
-            `(ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB})`,
+                `(ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB})`,
         );
     }
 }
@@ -345,13 +356,25 @@ function runFixtureChecks(probe: FixtureProbe): void {
 
     // --- Header band ----------------------------------------------------
     const refHeader = findColouredStrip(
-        ref, probe.excelXMin, probe.excelXMax, 50, ref.height - 1,
-        probe.expected.headerHex, REGION_TOLERANCE, 6,
+        ref,
+        probe.excelXMin,
+        probe.excelXMax,
+        50,
+        ref.height - 1,
+        probe.expected.headerHex,
+        REGION_TOLERANCE,
+        6,
     );
     expect(refHeader).not.toBeNull();
     const joplinHeader = findColouredStrip(
-        joplin, probe.joplinXMin, probe.joplinXMax, 30, joplin.height - 1,
-        probe.expected.headerHex, REGION_TOLERANCE, 6,
+        joplin,
+        probe.joplinXMin,
+        probe.joplinXMax,
+        30,
+        joplin.height - 1,
+        probe.expected.headerHex,
+        REGION_TOLERANCE,
+        6,
     );
     expect(joplinHeader).not.toBeNull();
 
@@ -365,8 +388,12 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // previous test didn't gate on; folded it into the canvas-render
     // shortcoming list rather than tightening the gate against a
     // shipped render that already matches Excel within ΔR=14.)
-    expectRgbWithin(joplinHeader!.hex, refHeader!.hex, ASSERT_TOLERANCE,
-        `${probe.label} header band: Joplin vs Excel`);
+    expectRgbWithin(
+        joplinHeader!.hex,
+        refHeader!.hex,
+        ASSERT_TOLERANCE,
+        `${probe.label} header band: Joplin vs Excel`,
+    );
 
     // --- First banded data row -----------------------------------------
     // Search starts just below the header band. Use a tighter tolerance
@@ -375,17 +402,33 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // fill itself is a TALL strip (≥10px), so requiring minHeight=10
     // also rules out 1-2px decorations.
     const refBanded = findColouredStrip(
-        ref, probe.excelXMin, probe.excelXMax, refHeader!.yMax + 4, ref.height - 1,
-        probe.expected.bandedHex, 12, 10,
+        ref,
+        probe.excelXMin,
+        probe.excelXMax,
+        refHeader!.yMax + 4,
+        ref.height - 1,
+        probe.expected.bandedHex,
+        12,
+        10,
     );
     expect(refBanded).not.toBeNull();
     const joplinBanded = findColouredStrip(
-        joplin, probe.joplinXMin, probe.joplinXMax, joplinHeader!.yMax + 4, joplin.height - 1,
-        probe.expected.bandedHex, 12, 10,
+        joplin,
+        probe.joplinXMin,
+        probe.joplinXMax,
+        joplinHeader!.yMax + 4,
+        joplin.height - 1,
+        probe.expected.bandedHex,
+        12,
+        10,
     );
     expect(joplinBanded).not.toBeNull();
-    expectRgbWithin(joplinBanded!.hex, refBanded!.hex, ASSERT_TOLERANCE,
-        `${probe.label} banded data row 1: Joplin vs Excel`);
+    expectRgbWithin(
+        joplinBanded!.hex,
+        refBanded!.hex,
+        ASSERT_TOLERANCE,
+        `${probe.label} banded data row 1: Joplin vs Excel`,
+    );
 
     // --- Find the table's bottom edge before scanning for strips -------
     // Joplin's screenshot is a full-window capture so default Univer
@@ -395,7 +438,12 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // strip in each image — that's structurally either an inter-row
     // boundary OR the totals-bottom strip — then add a small buffer to
     // include it. Anything past that buffer is post-table noise.
-    function lastInterRowStripY(img: DecodedPng, xMin: number, xMax: number, yStart: number): number {
+    function lastInterRowStripY(
+        img: DecodedPng,
+        xMin: number,
+        xMax: number,
+        yStart: number,
+    ): number {
         // Walk row-by-row; stop ONCE we cross out of "consistent
         // strip-or-fill" territory. Specifically: find the last
         // 1-2px-tall (≤4px DPR=1, ≤8px DPR=2) strip in the
@@ -404,8 +452,13 @@ function runFixtureChecks(probe: FixtureProbe): void {
         // post-table whitespace ends, so the LAST strip before the
         // gridline tail is what we want.
         const allStrips = findAllColouredStrips(
-            img, xMin, xMax, yStart, img.height - 1,
-            probe.expected.interRowStripHex, REGION_TOLERANCE,
+            img,
+            xMin,
+            xMax,
+            yStart,
+            img.height - 1,
+            probe.expected.interRowStripHex,
+            REGION_TOLERANCE,
         ).filter((s) => s.yMax - s.yMin <= 8);
         if (allStrips.length === 0) return yStart;
         // Walk pairs from the end forward: drop trailing strips that
@@ -426,8 +479,18 @@ function runFixtureChecks(probe: FixtureProbe): void {
         }
         return trimmed[trimmed.length - 1].yMax;
     }
-    const refLastStripY = lastInterRowStripY(ref, probe.excelXMin, probe.excelXMax, refHeader!.yMax + 1);
-    const joplinLastStripY = lastInterRowStripY(joplin, probe.joplinXMin, probe.joplinXMax, joplinHeader!.yMax + 1);
+    const refLastStripY = lastInterRowStripY(
+        ref,
+        probe.excelXMin,
+        probe.excelXMax,
+        refHeader!.yMax + 1,
+    );
+    const joplinLastStripY = lastInterRowStripY(
+        joplin,
+        probe.joplinXMin,
+        probe.joplinXMax,
+        joplinHeader!.yMax + 1,
+    );
     // Tiny buffer (5px) below the last legitimate strip so it's
     // included in the bounded search.
     const refSearchEnd = Math.min(ref.height - 1, refLastStripY + 5);
@@ -451,13 +514,23 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // (one per banded row) and the totals-bottom strip is
     // structurally followed by 50+ px of white before any gridline.
     const refInterRowStrips = findAllColouredStrips(
-        ref, probe.excelXMin, probe.excelXMax, refHeader!.yMax + 1, refSearchEnd,
-        probe.expected.interRowStripHex, REGION_TOLERANCE,
-    ).filter((s) => s.yMax - s.yMin <= 4);  // strips, not fills
+        ref,
+        probe.excelXMin,
+        probe.excelXMax,
+        refHeader!.yMax + 1,
+        refSearchEnd,
+        probe.expected.interRowStripHex,
+        REGION_TOLERANCE,
+    ).filter((s) => s.yMax - s.yMin <= 4); // strips, not fills
     const joplinInterRowStrips = findAllColouredStrips(
-        joplin, probe.joplinXMin, probe.joplinXMax, joplinHeader!.yMax + 1, joplinSearchEnd,
-        probe.expected.interRowStripHex, REGION_TOLERANCE,
-    ).filter((s) => s.yMax - s.yMin <= 8);  // Joplin DPR=2, allow up to 8px
+        joplin,
+        probe.joplinXMin,
+        probe.joplinXMax,
+        joplinHeader!.yMax + 1,
+        joplinSearchEnd,
+        probe.expected.interRowStripHex,
+        REGION_TOLERANCE,
+    ).filter((s) => s.yMax - s.yMin <= 8); // Joplin DPR=2, allow up to 8px
 
     // Excel reference must show inter-row strips for the gate to be
     // meaningful. Aptos wide ref has 8 above-data + 1 below-totals = 9.
@@ -471,9 +544,9 @@ function runFixtureChecks(probe: FixtureProbe): void {
     if (Math.abs(joplinInterRowStrips.length - refInterRowStrips.length) > 3) {
         throw new Error(
             `${probe.label} inter-row strip count drift: Excel ${refInterRowStrips.length} strips, ` +
-            `Joplin ${joplinInterRowStrips.length} strips (expect ±3). ` +
-            `Excel y-positions: ${refInterRowStrips.map((s) => s.yMin).join(',')}. ` +
-            `Joplin y-positions: ${joplinInterRowStrips.map((s) => s.yMin).join(',')}.`,
+                `Joplin ${joplinInterRowStrips.length} strips (expect ±3). ` +
+                `Excel y-positions: ${refInterRowStrips.map((s) => s.yMin).join(',')}. ` +
+                `Joplin y-positions: ${joplinInterRowStrips.map((s) => s.yMin).join(',')}.`,
         );
     }
 
@@ -483,8 +556,12 @@ function runFixtureChecks(probe: FixtureProbe): void {
         // table, not anti-aliased against header/totals).
         const refMid = refInterRowStrips[Math.floor(refInterRowStrips.length / 2)];
         const joplinMid = joplinInterRowStrips[Math.floor(joplinInterRowStrips.length / 2)];
-        expectRgbWithin(joplinMid.hex, refMid.hex, STRIP_TOLERANCE,
-            `${probe.label} inter-row strip colour: Joplin vs Excel`);
+        expectRgbWithin(
+            joplinMid.hex,
+            refMid.hex,
+            STRIP_TOLERANCE,
+            `${probe.label} inter-row strip colour: Joplin vs Excel`,
+        );
     }
 
     // --- Totals-row top border (DOUBLE-line) ----------------------------
@@ -498,12 +575,24 @@ function runFixtureChecks(probe: FixtureProbe): void {
     // the target across the row, which catches the strip even when it
     // doesn't dominate the row.
     const refDarkStrips = findAllColouredStripsByMatchFrac(
-        ref, probe.excelXMin, probe.excelXMax, refBanded!.yMax + 4, refSearchEnd,
-        probe.expected.totalsTopHex, REGION_TOLERANCE, 0.5,
+        ref,
+        probe.excelXMin,
+        probe.excelXMax,
+        refBanded!.yMax + 4,
+        refSearchEnd,
+        probe.expected.totalsTopHex,
+        REGION_TOLERANCE,
+        0.5,
     ).filter((s) => s.yMax - s.yMin <= 4);
     const joplinDarkStrips = findAllColouredStripsByMatchFrac(
-        joplin, probe.joplinXMin, probe.joplinXMax, joplinBanded!.yMax + 4, joplinSearchEnd,
-        probe.expected.totalsTopHex, REGION_TOLERANCE, 0.5,
+        joplin,
+        probe.joplinXMin,
+        probe.joplinXMax,
+        joplinBanded!.yMax + 4,
+        joplinSearchEnd,
+        probe.expected.totalsTopHex,
+        REGION_TOLERANCE,
+        0.5,
     ).filter((s) => s.yMax - s.yMin <= 8);
 
     // Excel reference: must have at least 2 dark strips (the double-line
@@ -511,8 +600,8 @@ function runFixtureChecks(probe: FixtureProbe): void {
     if (refDarkStrips.length < 2) {
         throw new Error(
             `${probe.label} reference image missing totals-top double-line strips ` +
-            `(found ${refDarkStrips.length} dark strips matching ${probe.expected.totalsTopHex}±${REGION_TOLERANCE}). ` +
-            `Re-capture the reference at a wider zoom — narrow captures suffer text-glyph noise that obliterates 2px strips.`,
+                `(found ${refDarkStrips.length} dark strips matching ${probe.expected.totalsTopHex}±${REGION_TOLERANCE}). ` +
+                `Re-capture the reference at a wider zoom — narrow captures suffer text-glyph noise that obliterates 2px strips.`,
         );
     }
     const refStripA = refDarkStrips[refDarkStrips.length - 2];
@@ -521,8 +610,8 @@ function runFixtureChecks(probe: FixtureProbe): void {
     if (refGap > 6) {
         throw new Error(
             `${probe.label} reference last two dark strips are not a DOUBLE-line pair ` +
-            `(gap ${refGap}px > 6). y-positions: ${refStripA.yMin}-${refStripA.yMax} and ` +
-            `${refStripB.yMin}-${refStripB.yMax}.`,
+                `(gap ${refGap}px > 6). y-positions: ${refStripA.yMin}-${refStripA.yMax} and ` +
+                `${refStripB.yMin}-${refStripB.yMax}.`,
         );
     }
 
@@ -530,9 +619,9 @@ function runFixtureChecks(probe: FixtureProbe): void {
     if (joplinDarkStrips.length < 2) {
         throw new Error(
             `${probe.label} Joplin canvas missing totals-top double-line — ` +
-            `expected ≥ 2 dark strips matching ${probe.expected.totalsTopHex}±${REGION_TOLERANCE}, ` +
-            `found ${joplinDarkStrips.length}. Recipe must emit ` +
-            `BorderStyleTypes.DOUBLE (s:7) on the totals-top.`,
+                `expected ≥ 2 dark strips matching ${probe.expected.totalsTopHex}±${REGION_TOLERANCE}, ` +
+                `found ${joplinDarkStrips.length}. Recipe must emit ` +
+                `BorderStyleTypes.DOUBLE (s:7) on the totals-top.`,
         );
     }
     const joplinStripA = joplinDarkStrips[joplinDarkStrips.length - 2];
@@ -542,14 +631,18 @@ function runFixtureChecks(probe: FixtureProbe): void {
     if (joplinGap < 1 || joplinGap > 8) {
         throw new Error(
             `${probe.label} Joplin totals-top double-line malformed: ` +
-            `last two dark strips at y=${joplinStripA.yMin}-${joplinStripA.yMax} and ` +
-            `y=${joplinStripB.yMin}-${joplinStripB.yMax} (gap=${joplinGap}px, expected 1-8).`,
+                `last two dark strips at y=${joplinStripA.yMin}-${joplinStripA.yMax} and ` +
+                `y=${joplinStripB.yMin}-${joplinStripB.yMax} (gap=${joplinGap}px, expected 1-8).`,
         );
     }
 
     // Colour parity at the totals-top double-line.
-    expectRgbWithin(joplinStripB.hex, refStripB.hex, STRIP_TOLERANCE,
-        `${probe.label} totals-top double-line colour: Joplin vs Excel`);
+    expectRgbWithin(
+        joplinStripB.hex,
+        refStripB.hex,
+        STRIP_TOLERANCE,
+        `${probe.label} totals-top double-line colour: Joplin vs Excel`,
+    );
 }
 
 describe('Canvas vs Excel fidelity — TableStyleMedium4 (M13/E rework)', () => {
@@ -613,20 +706,25 @@ const CF_VARIANTS_REF = path.join(REFERENCES_DIR, 'ConditionalFormatting-Variant
 const CF_FEATURE_DIR = path.join(REPO_ROOT, 'screenshots', 'feature-1-m15-conditional-formatting');
 
 function existsSync(p: string): boolean {
-    try { statSync(p); return true; } catch { return false; }
+    try {
+        statSync(p);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function latestCfEvalPng(): string | null {
     if (!existsSync(CF_FEATURE_DIR)) return null;
-    const matches = readdirSync(CF_FEATURE_DIR).filter((n) =>
-        n.startsWith('eval-') && n.endsWith('.png'),
+    const matches = readdirSync(CF_FEATURE_DIR).filter(
+        (n) => n.startsWith('eval-') && n.endsWith('.png'),
     );
     if (matches.length === 0) return null;
     // Lexicographic === chronological for ISO-timestamped filenames,
     // and unlike mtime it survives a fresh git checkout. See
     // `latestEvalPng` for context.
     matches.sort();
-    matches.reverse();  // newest first (rest of code reads matches[0])
+    matches.reverse(); // newest first (rest of code reads matches[0])
     return path.join(CF_FEATURE_DIR, matches[0]);
 }
 
@@ -637,7 +735,7 @@ const CF_EVAL_PRESENT = !!latestCfEvalPng();
 // loudly when ground truth is missing, run when present). The
 // evaluator unskips by capturing the reference; the tests fail-fast
 // inside `beforeAll` if the reference is later removed.
-const cfDescribe = (CF_REF_PRESENT && CF_EVAL_PRESENT) ? describe : describe.skip;
+const cfDescribe = CF_REF_PRESENT && CF_EVAL_PRESENT ? describe : describe.skip;
 
 cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', () => {
     let refImg: DecodedPng;
@@ -647,16 +745,16 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         if (!CF_REF_PRESENT) {
             throw new Error(
                 `Excel reference PNG missing at ${CF_VARIANTS_REF}. ` +
-                `Operator must capture from real Excel: open ` +
-                `tests/fixtures/formatting-testdata/ConditionalFormatting-Variants.xlsx ` +
-                `in Excel and screenshot the visible CF columns A..I.`,
+                    `Operator must capture from real Excel: open ` +
+                    `tests/fixtures/formatting-testdata/ConditionalFormatting-Variants.xlsx ` +
+                    `in Excel and screenshot the visible CF columns A..I.`,
             );
         }
         const evalPath = latestCfEvalPng();
         if (!evalPath) {
             throw new Error(
                 `No eval-*.png in ${CF_FEATURE_DIR}. ` +
-                `Re-run scripts/pge/eval-screenshot.sh feature-1-m15-conditional-formatting.`,
+                    `Re-run scripts/pge/eval-screenshot.sh feature-1-m15-conditional-formatting.`,
             );
         }
         refImg = decodePng(CF_VARIANTS_REF);
@@ -676,8 +774,20 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         // Joplin canvas at DPR=2: col A starts at x≈92 (row header 46
         // CSS px ≈ 92 device px). Median row y depends on canvas size;
         // we sample a slab.
-        const refDom = dominantColor(refImg, 0, refImg.width, Math.floor(refImg.height * 0.4), Math.floor(refImg.height * 0.5));
-        const joplinDom = dominantColor(joplinImg, 92, 200, Math.floor(joplinImg.height * 0.4), Math.floor(joplinImg.height * 0.5));
+        const refDom = dominantColor(
+            refImg,
+            0,
+            refImg.width,
+            Math.floor(refImg.height * 0.4),
+            Math.floor(refImg.height * 0.5),
+        );
+        const joplinDom = dominantColor(
+            joplinImg,
+            92,
+            200,
+            Math.floor(joplinImg.height * 0.4),
+            Math.floor(joplinImg.height * 0.5),
+        );
         // Both should carry yellow-ish ink on the gradient mid-band.
         // We don't pin to #FFEB84 explicitly — the assertion is
         // dominant-colour parity within Δ ≤ 24 (gradient anti-aliasing
@@ -686,7 +796,7 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         if (d.max > 24) {
             throw new Error(
                 `Column A gradient parity: Excel reference dominant ${refDom.hex}, ` +
-                `Joplin canvas dominant ${joplinDom.hex} (Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+                    `Joplin canvas dominant ${joplinDom.hex} (Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
             );
         }
     });
@@ -721,17 +831,18 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         }
         // Sanity: both should be in the blue family (B > R AND B > G).
         const refIsBlue = refDom.rgb[2] > refDom.rgb[0] && refDom.rgb[2] > refDom.rgb[1];
-        const joplinIsBlue = joplinDom.rgb[2] > joplinDom.rgb[0] && joplinDom.rgb[2] > joplinDom.rgb[1];
+        const joplinIsBlue =
+            joplinDom.rgb[2] > joplinDom.rgb[0] && joplinDom.rgb[2] > joplinDom.rgb[1];
         if (!refIsBlue) {
             throw new Error(
                 `Column C dataBar: Excel ref dominant ${refDom.hex} is not blue-dominant — ` +
-                `the sampling region may be off; re-derive from screenshots/excel-reference/ConditionalFormatting-Variants.png.`,
+                    `the sampling region may be off; re-derive from screenshots/excel-reference/ConditionalFormatting-Variants.png.`,
             );
         }
         if (!joplinIsBlue) {
             throw new Error(
                 `Column C dataBar: Joplin canvas dominant ${joplinDom.hex} is not blue-dominant. ` +
-                `Excel ref dominant ${refDom.hex}. The data bar at C11 (value 90) should render in the #638EC6 blue family.`,
+                    `Excel ref dominant ${refDom.hex}. The data bar at C11 (value 90) should render in the #638EC6 blue family.`,
             );
         }
     });
@@ -748,7 +859,7 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         if (d.max > 24) {
             throw new Error(
                 `Column E cellIs>50 parity: Excel ${refDom.hex}, Joplin ${joplinDom.hex} ` +
-                `(Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+                    `(Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
             );
         }
     });
@@ -769,7 +880,7 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         if (d.max > 24) {
             throw new Error(
                 `Column G top-3 parity: Excel ${refDom.hex}, Joplin ${joplinDom.hex} ` +
-                `(Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
+                    `(Δmax=${d.max}, ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB}).`,
             );
         }
     });
@@ -795,17 +906,18 @@ cfDescribe('Canvas vs Excel fidelity — ConditionalFormatting-Variants (M15)', 
         }
         // Both should be green-dominant (G > R AND G > B).
         const refIsGreen = refDom.rgb[1] > refDom.rgb[0] && refDom.rgb[1] > refDom.rgb[2];
-        const joplinIsGreen = joplinDom.rgb[1] > joplinDom.rgb[0] && joplinDom.rgb[1] > joplinDom.rgb[2];
+        const joplinIsGreen =
+            joplinDom.rgb[1] > joplinDom.rgb[0] && joplinDom.rgb[1] > joplinDom.rgb[2];
         if (!refIsGreen) {
             throw new Error(
                 `Column I 3-Arrows: Excel reference dominant ${refDom.hex} is not green-dominant — ` +
-                `the sampling region may be off; re-derive from screenshots/excel-reference/ConditionalFormatting-Variants.png.`,
+                    `the sampling region may be off; re-derive from screenshots/excel-reference/ConditionalFormatting-Variants.png.`,
             );
         }
         if (!joplinIsGreen) {
             throw new Error(
                 `Column I 3-Arrows: Joplin canvas dominant ${joplinDom.hex} is not green-dominant. ` +
-                `Excel ref dominant ${refDom.hex}. The arrow glyph for I11 (value 90) should render as green-up.`,
+                    `Excel ref dominant ${refDom.hex}. The arrow glyph for I11 (value 90) should render as green-up.`,
             );
         }
     });

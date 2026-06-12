@@ -55,7 +55,8 @@ function wrapSnapshot(snap) {
     return '```notesheet v=1\n' + JSON.stringify(snap) + '\n```';
 }
 
-const title = process.argv[2] || `PGE seeded smoke ${new Date().toISOString().replace(/[:.]/g, '-')}`;
+const title =
+    process.argv[2] || `PGE seeded smoke ${new Date().toISOString().replace(/[:.]/g, '-')}`;
 const body = wrapSnapshot(emptySnapshot());
 
 const tmp = path.join(require('os').tmpdir(), `pge-seeded-${process.pid}.md`);

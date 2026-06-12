@@ -8,7 +8,9 @@
 // by Jest. This test is that gate.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -18,15 +20,8 @@ import JSZip from 'jszip';
 import { xlsxBufferToSnapshot } from '../src/xlsx';
 import { decodeCellRef } from '../src/charts/xlsxChartImport';
 import { extractDataFromSnapshot } from '../src/charts/extractData';
-import {
-    pushChartUpdate,
-    subscribeChartUpdate,
-    _resetChartBus,
-} from '../src/charts/dataBus';
-import {
-    populateTrackedChartsFromSnapshot,
-    trackedCharts,
-} from '../src/charts/trackedCharts';
+import { pushChartUpdate, subscribeChartUpdate, _resetChartBus } from '../src/charts/dataBus';
+import { populateTrackedChartsFromSnapshot, trackedCharts } from '../src/charts/trackedCharts';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'charts');
 
@@ -42,7 +37,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing: ChartDrawing }> {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -52,7 +48,8 @@ function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing
         const order: string[] = sub.order ?? Object.keys(sub.data);
         for (const id of order) {
             const d = sub.data[id];
-            if (d?.componentKey === 'NotesheetChart') out.push({ subUnitId, drawing: d as ChartDrawing });
+            if (d?.componentKey === 'NotesheetChart')
+                out.push({ subUnitId, drawing: d as ChartDrawing });
         }
     }
     return out;
@@ -192,11 +189,7 @@ describe('M17 feature-4: imported charts wire into the live data bus', () => {
         const chartId = drawings[0].drawing.data.chartId;
         const tracked = trackedCharts.get(chartId)!;
 
-        const fresh = extractDataFromSnapshot(
-            snap,
-            tracked.sourceRange,
-            tracked.sourceSheetName,
-        );
+        const fresh = extractDataFromSnapshot(snap, tracked.sourceRange, tracked.sourceSheetName);
 
         // labels = header row + cat-cache values (truth.labels are data-only).
         expect(fresh.labels.length).toBe(truth.labels.length + 1);
@@ -206,7 +199,9 @@ describe('M17 feature-4: imported charts wire into the live data bus', () => {
         expect(fresh.datasets[0].data.slice(1)).toEqual(truth.datasetsData[0]);
 
         const received: Array<typeof fresh> = [];
-        subscribeChartUpdate(chartId, (data) => { received.push(data); });
+        subscribeChartUpdate(chartId, (data) => {
+            received.push(data);
+        });
         pushChartUpdate(chartId, fresh);
         expect(received).toHaveLength(1);
         expect(received[0].labels.slice(1)).toEqual(truth.labels);

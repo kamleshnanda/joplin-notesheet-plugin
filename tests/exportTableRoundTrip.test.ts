@@ -7,9 +7,12 @@ import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, { v?: unknown; f?: string; s?: string }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<number, Record<number, { v?: unknown; f?: string; s?: string }>>;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
     resources?: Array<{ name: string; data: string }>;
 }
@@ -53,29 +56,49 @@ describe('M9 — export preserves tables from snapshot resources', () => {
             },
             // Univer tables persist here. Exact shape comes from
             // @univerjs/sheets-table; this is a minimal plausible value.
-            resources: [{
-                name: 'SHEET_TABLE_PLUGIN',
-                data: JSON.stringify({
-                    s1: {
-                        tables: [{
-                            id: 'tbl-1',
-                            name: 'Table1',
-                            range: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 1 },
-                            options: { showHeader: true },
-                            filters: {},
-                            columns: [
-                                { id: 'col-vendor', displayName: 'Vendor', dataType: 'string', formula: '', meta: {}, style: {} },
-                                { id: 'col-inv', displayName: 'Investment', dataType: 'number', formula: '', meta: {}, style: {} },
+            resources: [
+                {
+                    name: 'SHEET_TABLE_PLUGIN',
+                    data: JSON.stringify({
+                        s1: {
+                            tables: [
+                                {
+                                    id: 'tbl-1',
+                                    name: 'Table1',
+                                    range: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 1 },
+                                    options: { showHeader: true },
+                                    filters: {},
+                                    columns: [
+                                        {
+                                            id: 'col-vendor',
+                                            displayName: 'Vendor',
+                                            dataType: 'string',
+                                            formula: '',
+                                            meta: {},
+                                            style: {},
+                                        },
+                                        {
+                                            id: 'col-inv',
+                                            displayName: 'Investment',
+                                            dataType: 'number',
+                                            formula: '',
+                                            meta: {},
+                                            style: {},
+                                        },
+                                    ],
+                                    meta: {},
+                                },
                             ],
-                            meta: {},
-                        }],
-                        tableFilteredOutRows: [],
-                    },
-                }),
-            }],
+                            tableFilteredOutRows: [],
+                        },
+                    }),
+                },
+            ],
         };
 
-        const xlsxBuf = await snapshotToXlsxBuffer(snapshot as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const xlsxBuf = await snapshotToXlsxBuffer(
+            snapshot as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(Buffer.from(xlsxBuf) as unknown as Parameters<typeof wb.xlsx.load>[0]);
 
@@ -88,7 +111,14 @@ describe('M9 — export preserves tables from snapshot resources', () => {
 
         // M9 makes export emit table definitions. Confirm the table came
         // through with the right name and column shape.
-        const tables = (ws as unknown as { getTables: () => Array<{ name: string; table: { columns: Array<{ name: string }> } }> }).getTables();
+        const tables = (
+            ws as unknown as {
+                getTables: () => Array<{
+                    name: string;
+                    table: { columns: Array<{ name: string }> };
+                }>;
+            }
+        ).getTables();
         expect(tables.length).toBe(1);
         expect(tables[0].name).toBe('Table1');
         expect(tables[0].table.columns.map((c) => c.name)).toEqual(['Vendor', 'Investment']);
@@ -117,7 +147,16 @@ describe('M9 — import builds SHEET_TABLE_PLUGIN resource from xlsx tables', ()
         expect(tableEntry).toBeDefined();
         // Critical contract: data is JSON-stringified, not an object.
         expect(typeof tableEntry!.data).toBe('string');
-        const parsed = JSON.parse(tableEntry!.data) as Record<string, { tables: Array<{ name: string; range: { endRow: number }; columns: Array<{ displayName: string }> }> }>;
+        const parsed = JSON.parse(tableEntry!.data) as Record<
+            string,
+            {
+                tables: Array<{
+                    name: string;
+                    range: { endRow: number };
+                    columns: Array<{ displayName: string }>;
+                }>;
+            }
+        >;
         const sheetIds = Object.keys(parsed);
         expect(sheetIds.length).toBe(1);
         const tables = parsed[sheetIds[0]].tables;
@@ -165,7 +204,14 @@ describe('M9 — import builds SHEET_TABLE_PLUGIN resource from xlsx tables', ()
         const wb2 = new ExcelJS.Workbook();
         await wb2.xlsx.load(Buffer.from(buf2) as unknown as Parameters<typeof wb2.xlsx.load>[0]);
         const ws2 = wb2.getWorksheet('Sheet1')!;
-        const tables = (ws2 as unknown as { getTables: () => Array<{ name: string; table: { columns: Array<{ name: string }> } }> }).getTables();
+        const tables = (
+            ws2 as unknown as {
+                getTables: () => Array<{
+                    name: string;
+                    table: { columns: Array<{ name: string }> };
+                }>;
+            }
+        ).getTables();
         expect(tables.length).toBe(1);
         expect(tables[0].name).toBe('SalesTable');
         expect(tables[0].table.columns.map((c) => c.name)).toEqual(['Region', 'Q1', 'Q2']);
@@ -184,7 +230,9 @@ describe('M9 — table import bypasses exceljs read bugs', () => {
         // perspective table.xml and verify our reader handles all 8 columns.
         const JSZipMod = (await import('jszip')).default;
         const zip = new JSZipMod();
-        zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+        zip.file(
+            '[Content_Types].xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
@@ -192,23 +240,38 @@ describe('M9 — table import bypasses exceljs read bugs', () => {
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>`);
-        zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?>
+</Types>`,
+        );
+        zip.file(
+            '_rels/.rels',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`);
-        zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8"?>
+</Relationships>`,
+        );
+        zip.file(
+            'xl/workbook.xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`);
-        zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+</workbook>`,
+        );
+        zip.file(
+            'xl/_rels/workbook.xml.rels',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`);
-        zip.file('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>`);
+</Relationships>`,
+        );
+        zip.file(
+            'xl/styles.xml',
+            `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>`,
+        );
         // Worksheet has 8 columns of headers in row 1 and one data row in row 2.
-        zip.file('xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8"?>
+        zip.file(
+            'xl/worksheets/sheet1.xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <dimension ref="A1:H2"/>
 <sheetData>
@@ -216,15 +279,21 @@ describe('M9 — table import bypasses exceljs read bugs', () => {
 <row r="2"><c r="A2" t="str"><v>Acme</v></c><c r="C2"><v>100</v></c></row>
 </sheetData>
 <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
-</worksheet>`);
-        zip.file('xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+</worksheet>`,
+        );
+        zip.file(
+            'xl/worksheets/_rels/sheet1.xml.rels',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
-</Relationships>`);
+</Relationships>`,
+        );
         // Table.xml: 8 columns; the 5th column has a <calculatedColumnFormula>
         // child (the bug-trigger). headerRowCount attribute is absent (per
         // OOXML spec the default is 1, but exceljs reads false).
-        zip.file('xl/tables/table1.xml', `<?xml version="1.0" encoding="UTF-8"?>
+        zip.file(
+            'xl/tables/table1.xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Table1" ref="A1:H2" totalsRowShown="0">
 <tableColumns count="8">
 <tableColumn id="1" name="Vendor"/>
@@ -237,20 +306,37 @@ describe('M9 — table import bypasses exceljs read bugs', () => {
 <tableColumn id="8" name="Producing"/>
 </tableColumns>
 <tableStyleInfo name="TableStyleMedium2"/>
-</table>`);
+</table>`,
+        );
 
         const buf = Buffer.from(await zip.generateAsync({ type: 'nodebuffer' }));
         const snap = (await xlsxBufferToSnapshot(buf)) as unknown as SnapshotShape;
 
         const entry = snap.resources!.find((r) => r.name === 'SHEET_TABLE_PLUGIN');
         expect(entry).toBeDefined();
-        const parsed = JSON.parse(entry!.data) as Record<string, { tables: Array<{ name: string; columns: Array<{ displayName: string }>; options: { showHeader?: boolean } }> }>;
+        const parsed = JSON.parse(entry!.data) as Record<
+            string,
+            {
+                tables: Array<{
+                    name: string;
+                    columns: Array<{ displayName: string }>;
+                    options: { showHeader?: boolean };
+                }>;
+            }
+        >;
         const sheetId = Object.keys(parsed)[0];
         const tables = parsed[sheetId].tables;
         expect(tables.length).toBe(1);
         // The whole point: 8 columns, not 5.
         expect(tables[0].columns.map((c) => c.displayName)).toEqual([
-            'Vendor', 'Start Date', 'Investment', 'Balance', 'Profit', 'Quoted Return', 'Type', 'Producing',
+            'Vendor',
+            'Start Date',
+            'Investment',
+            'Balance',
+            'Profit',
+            'Quoted Return',
+            'Type',
+            'Producing',
         ]);
         // OOXML default for missing headerRowCount is 1 (true).
         expect(tables[0].options.showHeader).toBe(true);
@@ -264,7 +350,9 @@ describe('M9 — table style + stripes round-trip', () => {
         // Same shape as the column-truncation test, but the tableStyleInfo
         // declares TableStyleMedium2 + showRowStripes="1" (matching the
         // user's real source file).
-        zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+        zip.file(
+            '[Content_Types].xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
@@ -272,22 +360,37 @@ describe('M9 — table style + stripes round-trip', () => {
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
 <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>`);
-        zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?>
+</Types>`,
+        );
+        zip.file(
+            '_rels/.rels',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`);
-        zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8"?>
+</Relationships>`,
+        );
+        zip.file(
+            'xl/workbook.xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`);
-        zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+</workbook>`,
+        );
+        zip.file(
+            'xl/_rels/workbook.xml.rels',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`);
-        zip.file('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>`);
-        zip.file('xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8"?>
+</Relationships>`,
+        );
+        zip.file(
+            'xl/styles.xml',
+            `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>`,
+        );
+        zip.file(
+            'xl/worksheets/sheet1.xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <dimension ref="A1:B2"/>
 <sheetData>
@@ -295,19 +398,26 @@ describe('M9 — table style + stripes round-trip', () => {
 <row r="2"><c r="A2"><v>1</v></c><c r="B2"><v>2</v></c></row>
 </sheetData>
 <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
-</worksheet>`);
-        zip.file('xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+</worksheet>`,
+        );
+        zip.file(
+            'xl/worksheets/_rels/sheet1.xml.rels',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
-</Relationships>`);
-        zip.file('xl/tables/table1.xml', `<?xml version="1.0" encoding="UTF-8"?>
+</Relationships>`,
+        );
+        zip.file(
+            'xl/tables/table1.xml',
+            `<?xml version="1.0" encoding="UTF-8"?>
 <table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Table1" ref="A1:B2">
 <tableColumns count="2">
 <tableColumn id="1" name="X"/>
 <tableColumn id="2" name="Y"/>
 </tableColumns>
 <tableStyleInfo name="TableStyleMedium2" showRowStripes="1"/>
-</table>`);
+</table>`,
+        );
 
         const buf1 = Buffer.from(await zip.generateAsync({ type: 'nodebuffer' }));
         const snap = await xlsxBufferToSnapshot(buf1);

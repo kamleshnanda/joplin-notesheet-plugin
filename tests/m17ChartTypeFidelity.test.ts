@@ -13,7 +13,9 @@
 // Per feedback_pge_fidelity_test_gap.md.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -21,10 +23,7 @@ import path from 'path';
 import JSZip from 'jszip';
 
 import { xlsxBufferToSnapshot } from '../src/xlsx';
-import {
-    buildSyntheticChartXlsx,
-    RADAR_CHART_BODY,
-} from './util/m17BuildSyntheticXlsx';
+import { buildSyntheticChartXlsx, RADAR_CHART_BODY } from './util/m17BuildSyntheticXlsx';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'charts');
 
@@ -39,7 +38,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): ChartDrawing[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -64,7 +64,9 @@ async function readSourceType(fixturePath: string): Promise<string> {
     const chartFile = zip.file('xl/charts/chart1.xml');
     if (!chartFile) throw new Error(`no chart1.xml in ${fixturePath}`);
     const xml = await chartFile.async('string');
-    const m = xml.match(/<c:(bar|line|pie|doughnut|radar|scatter|area|bubble|surface|stock)Chart\b/);
+    const m = xml.match(
+        /<c:(bar|line|pie|doughnut|radar|scatter|area|bubble|surface|stock)Chart\b/,
+    );
     if (!m) throw new Error(`no chart-type element found in ${fixturePath}`);
     return m[1];
 }
@@ -121,7 +123,9 @@ describe('M17 feature-2: chart type fidelity', () => {
 
     test('radar chart falls back to bar with meta.unsupportedSourceType=radar + console.warn', async () => {
         const buf = await buildSyntheticChartXlsx({ chartXml: RADAR_CHART_BODY });
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => { /* swallow */ });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+            /* swallow */
+        });
         try {
             const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
             const drawings = collectChartDrawings(snap);

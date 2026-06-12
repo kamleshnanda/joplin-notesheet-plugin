@@ -11,7 +11,9 @@
 // trendline is, then assert import captured it and export reproduces it.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -24,7 +26,8 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'charts');
 const FIXTURE = '10-bar-with-trendline.xlsx';
 
 function firstChartMeta(snap: unknown): Record<string, any> | undefined {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return undefined;
     const parsed = JSON.parse(entry.data);

@@ -7,7 +7,10 @@ const { execFileSync } = require('child_process');
 
 async function main() {
     const noteId = process.argv[2];
-    if (!noteId) { console.error('usage: probe-chart-dom.js <noteId>'); process.exit(2); }
+    if (!noteId) {
+        console.error('usage: probe-chart-dom.js <noteId>');
+        process.exit(2);
+    }
     execFileSync('open', [`joplin://x-callback-url/openNote?id=${noteId}`]);
     await new Promise((r) => setTimeout(r, 2000));
 
@@ -18,8 +21,11 @@ async function main() {
         let frame = null;
         for (let i = 0; i < 30 && !frame; i++) {
             for (const p of pages) {
-                const c = p.frames().find(f => /UserWebviewIndex\.html/.test(f.url()));
-                if (c) { frame = c; break; }
+                const c = p.frames().find((f) => /UserWebviewIndex\.html/.test(f.url()));
+                if (c) {
+                    frame = c;
+                    break;
+                }
             }
             if (!frame) await pages[0].waitForTimeout(200);
         }
@@ -31,7 +37,11 @@ async function main() {
             // Look for float-DOM containers — Univer typically wraps
             // each in a div whose computed transform / left+top tells
             // the story.
-            const candidates = Array.from(document.querySelectorAll('canvas')).filter((c) => !c.id.includes('univer-sheet-main-canvas') && !c.id.includes('univer-sheet-engine-render'));
+            const candidates = Array.from(document.querySelectorAll('canvas')).filter(
+                (c) =>
+                    !c.id.includes('univer-sheet-main-canvas') &&
+                    !c.id.includes('univer-sheet-engine-render'),
+            );
             for (const c of candidates) {
                 let el = c;
                 let depth = 0;
@@ -42,7 +52,12 @@ async function main() {
                         tag: el.tagName,
                         cls: typeof el.className === 'string' ? el.className.slice(0, 80) : '',
                         id: el.id,
-                        rect: { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
+                        rect: {
+                            left: Math.round(rect.left),
+                            top: Math.round(rect.top),
+                            width: Math.round(rect.width),
+                            height: Math.round(rect.height),
+                        },
                         canvasW: el.tagName === 'CANVAS' ? el.width : null,
                         canvasH: el.tagName === 'CANVAS' ? el.height : null,
                     });
@@ -70,10 +85,17 @@ async function main() {
                         }
                     }
                 }
-            } catch (e) { out.snapErr = e.message; }
+            } catch (e) {
+                out.snapErr = e.message;
+            }
             return out;
         });
         console.log(JSON.stringify(r, null, 2));
-    } finally { await browser.close(); }
+    } finally {
+        await browser.close();
+    }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+});

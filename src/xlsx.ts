@@ -239,14 +239,19 @@ function sortedJsonStringify(value: unknown): string {
     }
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj).sort();
-    return '{' + keys.map((k) => JSON.stringify(k) + ':' + sortedJsonStringify(obj[k])).join(',') + '}';
+    return (
+        '{' + keys.map((k) => JSON.stringify(k) + ':' + sortedJsonStringify(obj[k])).join(',') + '}'
+    );
 }
 
 function styleKey(style: Record<string, unknown>): string {
     return sortedJsonStringify(style);
 }
 
-function buildStyleFromExcelCell(cell: ExcelJS.Cell, themePalette: ThemePalette | null = null): Record<string, unknown> | null {
+function buildStyleFromExcelCell(
+    cell: ExcelJS.Cell,
+    themePalette: ThemePalette | null = null,
+): Record<string, unknown> | null {
     const style: Record<string, unknown> = {};
 
     const font = cell.font;
@@ -298,7 +303,10 @@ function buildStyleFromExcelCell(cell: ExcelJS.Cell, themePalette: ThemePalette 
     if (border) {
         const bd: Record<string, { s: number; cl: { rgb: string } }> = {};
         const SIDES: Array<['t' | 'r' | 'b' | 'l', keyof ExcelJS.Borders]> = [
-            ['t', 'top'], ['r', 'right'], ['b', 'bottom'], ['l', 'left'],
+            ['t', 'top'],
+            ['r', 'right'],
+            ['b', 'bottom'],
+            ['l', 'left'],
         ];
         for (const [univerKey, exceljsKey] of SIDES) {
             const side = border[exceljsKey] as Partial<ExcelJS.Border> | undefined;
@@ -320,7 +328,8 @@ function buildStyleFromExcelCell(cell: ExcelJS.Cell, themePalette: ThemePalette 
             //   3. side.color is absent or empty → Excel's "automatic" =
             //      black. Use #000000.
             const argb = (side.color as { argb?: string } | undefined)?.argb;
-            const isThemeRef = side.color && typeof side.color === 'object' && 'theme' in (side.color as object);
+            const isThemeRef =
+                side.color && typeof side.color === 'object' && 'theme' in (side.color as object);
             let rgb: string | null = null;
             if (typeof argb === 'string' && /^[0-9A-Fa-f]{8}$/.test(argb)) {
                 rgb = '#' + argb.slice(2).toUpperCase();
@@ -438,13 +447,19 @@ function buildHyperlinkCellP(text: string, url: string): Record<string, unknown>
             textRuns: [{ st: 0, ed: len, ts: {} }],
             paragraphs: [{ startIndex: len, paragraphStyle: {} }],
             sectionBreaks: [{ startIndex: len + 1 }],
-            customRanges: [{
-                startIndex: 0,
-                endIndex: Math.max(0, len - 1),
-                rangeId: 'lnk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-                rangeType: 0, // CustomRangeType.HYPERLINK
-                properties: { url },
-            }],
+            customRanges: [
+                {
+                    startIndex: 0,
+                    endIndex: Math.max(0, len - 1),
+                    rangeId:
+                        'lnk-' +
+                        Date.now().toString(36) +
+                        '-' +
+                        Math.random().toString(36).slice(2, 8),
+                    rangeType: 0, // CustomRangeType.HYPERLINK
+                    properties: { url },
+                },
+            ],
         },
         documentStyle: {
             pageSize: {
@@ -465,7 +480,9 @@ function extractCellValue(
     // Formula cell: { formula: '...', result: ... }
     if (typeof raw === 'object' && 'formula' in raw && raw.formula) {
         const result = (raw as { result?: unknown }).result;
-        const out: { f: string; v?: string | number | boolean; t?: number } = { f: '=' + (raw.formula as string) };
+        const out: { f: string; v?: string | number | boolean; t?: number } = {
+            f: '=' + (raw.formula as string),
+        };
         if (typeof result === 'number') {
             out.v = result;
             out.t = VALUE_NUMBER;
@@ -482,11 +499,20 @@ function extractCellValue(
     // Shared formula: only the master holds .formula; followers carry sharedFormula.
     if (typeof raw === 'object' && 'sharedFormula' in raw && raw.sharedFormula) {
         const shared = raw as ExcelJS.CellSharedFormulaValue;
-        const out: { f: string; v?: string | number | boolean; t?: number } = { f: '=' + (shared.formula || shared.sharedFormula) };
+        const out: { f: string; v?: string | number | boolean; t?: number } = {
+            f: '=' + (shared.formula || shared.sharedFormula),
+        };
         const result = shared.result;
-        if (typeof result === 'number') { out.v = result; out.t = VALUE_NUMBER; }
-        else if (typeof result === 'string') { out.v = result; out.t = VALUE_STRING; }
-        else if (typeof result === 'boolean') { out.v = result; out.t = VALUE_BOOLEAN; }
+        if (typeof result === 'number') {
+            out.v = result;
+            out.t = VALUE_NUMBER;
+        } else if (typeof result === 'string') {
+            out.v = result;
+            out.t = VALUE_STRING;
+        } else if (typeof result === 'boolean') {
+            out.v = result;
+            out.t = VALUE_BOOLEAN;
+        }
         return out;
     }
 
@@ -511,8 +537,13 @@ function extractCellValue(
     // Single-run "rich text" (length 1) collapses to a plain string —
     // emitting cell.p just for one uniformly-styled run would bloat
     // every cell exceljs sometimes wraps as a 1-element richText.
-    if (typeof raw === 'object' && 'richText' in raw && Array.isArray((raw as { richText: unknown }).richText)) {
-        const segments = (raw as { richText: Array<{ text?: string; font?: ExcelJS.Font }> }).richText;
+    if (
+        typeof raw === 'object' &&
+        'richText' in raw &&
+        Array.isArray((raw as { richText: unknown }).richText)
+    ) {
+        const segments = (raw as { richText: Array<{ text?: string; font?: ExcelJS.Font }> })
+            .richText;
         const plain = segments.map((s) => s.text ?? '').join('');
         if (segments.length <= 1) {
             return { v: plain, t: VALUE_STRING };
@@ -548,8 +579,20 @@ function extractCellValue(
 // Sniff a column's data type from the values in the source xlsx. We only
 // need to be in the right ballpark — Univer uses dataType for filter UX, not
 // formula resolution. Falls back to 'string' on mixed/empty.
-function inferColumnDataType(ws: ExcelJS.Worksheet, colNumber: number, startRow: number, endRow: number): string {
-    let nNum = 0, nDate = 0, nBool = 0, nString = 0, total = 0;
+function inferColumnDataType(
+    ws: ExcelJS.Worksheet,
+    colNumber: number,
+    startRow: number,
+    endRow: number,
+): string {
+    // _nString counts string cells for symmetry but isn't read — 'string'
+    // is the fallback return, so it needs no threshold. Underscore-prefixed
+    // to mark it intentionally unused.
+    let nNum = 0,
+        nDate = 0,
+        nBool = 0,
+        _nString = 0,
+        total = 0;
     for (let r = startRow; r <= endRow; r++) {
         const v = ws.getCell(r, colNumber).value;
         if (v === null || v === undefined || v === '') continue;
@@ -557,7 +600,7 @@ function inferColumnDataType(ws: ExcelJS.Worksheet, colNumber: number, startRow:
         if (v instanceof Date) nDate++;
         else if (typeof v === 'number') nNum++;
         else if (typeof v === 'boolean') nBool++;
-        else nString++;
+        else _nString++;
     }
     if (total === 0) return 'string';
     if (nDate / total > 0.5) return 'date';
@@ -568,7 +611,9 @@ function inferColumnDataType(ws: ExcelJS.Worksheet, colNumber: number, startRow:
 
 // Parse "B2:E15" or "A1" into 0-based row/col bounds. Returns null on
 // malformed input. Single-cell refs ("A1") yield a 1x1 range.
-function parseA1Range(ref: string): { startRow: number; endRow: number; startColumn: number; endColumn: number } | null {
+function parseA1Range(
+    ref: string,
+): { startRow: number; endRow: number; startColumn: number; endColumn: number } | null {
     const cellRe = /^([A-Z]+)(\d+)$/;
     const parts = ref.split(':');
     if (parts.length === 0 || parts.length > 2) return null;
@@ -654,7 +699,7 @@ function parseTableXml(xml: string): RawTable | null {
     }
 
     const styleTagMatch = /<tableStyleInfo\b[^>]*\/?>/.exec(xml);
-    const styleName = styleTagMatch ? getAttr(styleTagMatch[0], 'name') ?? undefined : undefined;
+    const styleName = styleTagMatch ? (getAttr(styleTagMatch[0], 'name') ?? undefined) : undefined;
     const stripesAttr = styleTagMatch ? getAttr(styleTagMatch[0], 'showRowStripes') : null;
     // Per OOXML default, showRowStripes is false when omitted. Mirror what
     // the source xlsx asked for so we don't add stripes the user didn't have.
@@ -671,7 +716,9 @@ function parseTableXml(xml: string): RawTable | null {
 // rather than on individual cells, so cells with no explicit font.name
 // inherit from this. exceljs doesn't expose the theme XML, hence direct
 // zip access. Returns null if the file or attribute is absent.
-async function readThemeFont(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<{ minor?: string; major?: string } | null> {
+async function readThemeFont(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<{ minor?: string; major?: string } | null> {
     let zip: JSZip;
     try {
         zip = await JSZip.loadAsync(buffer as ArrayBuffer);
@@ -698,7 +745,9 @@ async function readThemeFont(buffer: ArrayBuffer | Uint8Array | Buffer): Promise
 // 12pt source workbook round-tripped to 11pt (the font-shrink bug). We
 // capture it here and patch the exported styles.xml default back. Returns
 // undefined when absent or unparseable (caller keeps exceljs's default).
-async function readDefaultFontSizeFromXlsx(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<number | undefined> {
+async function readDefaultFontSizeFromXlsx(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<number | undefined> {
     let zip: JSZip;
     try {
         zip = await JSZip.loadAsync(buffer as ArrayBuffer);
@@ -732,7 +781,9 @@ interface ThemePalette {
     raw: string;
     rgb: string[]; // index 0..11 → '#RRGGBB'
 }
-async function readThemeClrScheme(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<ThemePalette | null> {
+async function readThemeClrScheme(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<ThemePalette | null> {
     let zip: JSZip;
     try {
         zip = await JSZip.loadAsync(buffer as ArrayBuffer);
@@ -750,14 +801,41 @@ async function readThemeClrScheme(buffer: ArrayBuffer | Uint8Array | Buffer): Pr
     // 4=accent1..9=accent6, 10=hlink, 11=folHlink. Note that the cell
     // index swaps lt1↔dk1 and lt2↔dk2 relative to the scheme's element
     // order.
-    const ELEMENT_ORDER: Array<'lt1' | 'dk1' | 'lt2' | 'dk2' | 'accent1' | 'accent2' | 'accent3' | 'accent4' | 'accent5' | 'accent6' | 'hlink' | 'folHlink'> = [
-        'lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink',
+    const ELEMENT_ORDER: Array<
+        | 'lt1'
+        | 'dk1'
+        | 'lt2'
+        | 'dk2'
+        | 'accent1'
+        | 'accent2'
+        | 'accent3'
+        | 'accent4'
+        | 'accent5'
+        | 'accent6'
+        | 'hlink'
+        | 'folHlink'
+    > = [
+        'lt1',
+        'dk1',
+        'lt2',
+        'dk2',
+        'accent1',
+        'accent2',
+        'accent3',
+        'accent4',
+        'accent5',
+        'accent6',
+        'hlink',
+        'folHlink',
     ];
     const rgb: string[] = [];
     for (const elName of ELEMENT_ORDER) {
         const elRe = new RegExp(`<a:${elName}\\b[^>]*>([\\s\\S]*?)</a:${elName}>`);
         const elMatch = elRe.exec(raw);
-        if (!elMatch) { rgb.push('#000000'); continue; }
+        if (!elMatch) {
+            rgb.push('#000000');
+            continue;
+        }
         const inner = elMatch[1];
         // Either <a:srgbClr val="RRGGBB"/> or <a:sysClr val="..." lastClr="RRGGBB"/>.
         const srgb = /<a:srgbClr\b[^>]*\bval="([0-9A-Fa-f]{6})"/.exec(inner);
@@ -923,7 +1001,10 @@ function cfRefToRanges(ref: string | undefined): UniverCfRange[] {
 // Translate one cfvo entry to Univer's IValueConfig.
 // exceljs cfvo: { type: 'min'|'max'|'percentile'|'percent'|'num'|'formula', value?: number|string }
 // Univer:       { type, value? }
-function translateCfvoToUniver(cfvo: { type?: string; value?: number | string }): { type: string; value?: number | string } {
+function translateCfvoToUniver(cfvo: { type?: string; value?: number | string }): {
+    type: string;
+    value?: number | string;
+} {
     const type = cfvo.type ?? 'num';
     const out: { type: string; value?: number | string } = { type };
     if (cfvo.value !== undefined && cfvo.value !== null) {
@@ -939,7 +1020,10 @@ function translateCfvoToUniver(cfvo: { type?: string; value?: number | string })
 }
 
 // Inverse: Univer IValueConfig → exceljs cfvo entry.
-function translateCfvoToExceljs(uvo: { type: string; value?: number | string }): { type: string; value?: number | string } {
+function translateCfvoToExceljs(uvo: { type: string; value?: number | string }): {
+    type: string;
+    value?: number | string;
+} {
     const out: { type: string; value?: number | string } = { type: uvo.type };
     if (uvo.value !== undefined && uvo.value !== null) out.value = uvo.value;
     return out;
@@ -960,20 +1044,27 @@ function nextCfId(): string {
 // Sources from Univer's source: `iconGroup` in
 // @univerjs/sheets-conditional-formatting/.../models/icon-map.
 const ICON_SET_LENGTH: Record<string, number> = {
-    '3Arrows': 3, '3ArrowsGray': 3,
-    '4Arrows': 4, '4ArrowsGray': 4,
-    '5Arrows': 5, '5ArrowsGray': 5,
+    '3Arrows': 3,
+    '3ArrowsGray': 3,
+    '4Arrows': 4,
+    '4ArrowsGray': 4,
+    '5Arrows': 5,
+    '5ArrowsGray': 5,
     '3Triangles': 3,
-    '3TrafficLights1': 3, '3TrafficLights2': 3,
+    '3TrafficLights1': 3,
+    '3TrafficLights2': 3,
     '3Signs': 3,
     '4RedToBlack': 4,
     '4TrafficLights': 4,
-    '3Symbols': 3, '3Symbols2': 3,
+    '3Symbols': 3,
+    '3Symbols2': 3,
     '3Flags': 3,
     '4Rating': 4,
-    '5Rating': 5, '5Quarters': 5, '5Boxes': 5,
+    '5Rating': 5,
+    '5Quarters': 5,
+    '5Boxes': 5,
     '3Stars': 3,
-    '_5Felling': 5,
+    _5Felling: 5,
 };
 
 interface ExceljsCfRuleColorScale {
@@ -1027,7 +1118,10 @@ interface ExceljsConditionalFormatting {
 // Returns null for rule types we don't (yet) support; the caller drops
 // them and the round-trip test pin-down treats unsupported types as
 // out of scope.
-function translateExceljsCfRuleToUniver(rule: ExceljsCfRule, ranges: UniverCfRange[]): UniverCfRuleEntry | null {
+function translateExceljsCfRuleToUniver(
+    rule: ExceljsCfRule,
+    ranges: UniverCfRange[],
+): UniverCfRuleEntry | null {
     if (!rule || !rule.type) return null;
     const cfId = nextCfId();
     const stopIfTrue = false;
@@ -1036,7 +1130,11 @@ function translateExceljsCfRuleToUniver(rule: ExceljsCfRule, ranges: UniverCfRan
             const r = rule as ExceljsCfRuleColorScale;
             if (!Array.isArray(r.cfvo) || !Array.isArray(r.color)) return null;
             // Univer's colorScale shape: config: [{index, color, value}, ...]
-            const config: Array<{ index: number; color: string; value: { type: string; value?: number | string } }> = [];
+            const config: Array<{
+                index: number;
+                color: string;
+                value: { type: string; value?: number | string };
+            }> = [];
             for (let i = 0; i < r.cfvo.length; i++) {
                 const colorArgb = r.color[i]?.argb;
                 const hex = argbToHex(colorArgb) ?? '#000000';
@@ -1160,8 +1258,7 @@ function translateExceljsCfRuleToUniver(rule: ExceljsCfRule, ranges: UniverCfRan
                     // `length`, but be defensive against malformed
                     // sources by using a safe cfvo when missing.
                     const cfvoIdx = cfvos.length - 1 - i;
-                    const v = cfvos[cfvoIdx >= 0 ? cfvoIdx : 0]
-                        ?? { type: 'percent', value: 0 };
+                    const v = cfvos[cfvoIdx >= 0 ? cfvoIdx : 0] ?? { type: 'percent', value: 0 };
                     config.push({
                         operator: 'greaterThanOrEqual',
                         value: v,
@@ -1207,21 +1304,30 @@ function translateExceljsCfRuleToUniver(rule: ExceljsCfRule, ranges: UniverCfRan
 // Inverse: Univer rule → exceljs CF rule. Returns null for rule shapes
 // we don't recognize (e.g. CF rules added via the UI for highlightCell
 // subTypes other than `number` / `rank`).
-function translateUniverCfRuleToExceljs(entry: UniverCfRuleEntry, priority: number): {
+function translateUniverCfRuleToExceljs(
+    entry: UniverCfRuleEntry,
+    priority: number,
+): {
     rule: ExceljsCfRule | null;
     sqref: string;
 } | null {
-    if (!entry || !entry.rule || !Array.isArray(entry.ranges) || entry.ranges.length === 0) return null;
-    const sqref = entry.ranges.map((r) => {
-        const tl = colLetters(r.startColumn) + (r.startRow + 1);
-        const br = colLetters(r.endColumn) + (r.endRow + 1);
-        return tl === br ? tl : `${tl}:${br}`;
-    }).join(' ');
+    if (!entry || !entry.rule || !Array.isArray(entry.ranges) || entry.ranges.length === 0)
+        return null;
+    const sqref = entry.ranges
+        .map((r) => {
+            const tl = colLetters(r.startColumn) + (r.startRow + 1);
+            const br = colLetters(r.endColumn) + (r.endRow + 1);
+            return tl === br ? tl : `${tl}:${br}`;
+        })
+        .join(' ');
     const rule = entry.rule as Record<string, unknown>;
     const type = rule.type as string;
     switch (type) {
         case 'colorScale': {
-            const config = rule.config as Array<{ color: string; value: { type: string; value?: number | string } }>;
+            const config = rule.config as Array<{
+                color: string;
+                value: { type: string; value?: number | string };
+            }>;
             if (!Array.isArray(config) || config.length === 0) return null;
             const cfvo = config.map((e) => translateCfvoToExceljs(e.value));
             const color = config.map((e) => ({ argb: hexToArgb(e.color) }));
@@ -1231,7 +1337,11 @@ function translateUniverCfRuleToExceljs(entry: UniverCfRuleEntry, priority: numb
             };
         }
         case 'dataBar': {
-            const config = rule.config as { min: { type: string; value?: number | string }; max: { type: string; value?: number | string }; positiveColor: string };
+            const config = rule.config as {
+                min: { type: string; value?: number | string };
+                max: { type: string; value?: number | string };
+                positiveColor: string;
+            };
             if (!config) return null;
             return {
                 sqref,
@@ -1248,7 +1358,13 @@ function translateUniverCfRuleToExceljs(entry: UniverCfRuleEntry, priority: numb
             const style = rule.style as { bg?: { rgb?: string } } | undefined;
             const bgArgb = hexToArgb(style?.bg?.rgb);
             const dxfStyle = bgArgb
-                ? { fill: { type: 'pattern' as const, pattern: 'solid' as const, bgColor: { argb: bgArgb } } }
+                ? {
+                      fill: {
+                          type: 'pattern' as const,
+                          pattern: 'solid' as const,
+                          bgColor: { argb: bgArgb },
+                      },
+                  }
                 : undefined;
             if (subType === 'number') {
                 const op = (rule.operator as string) ?? 'greaterThan';
@@ -1286,7 +1402,11 @@ function translateUniverCfRuleToExceljs(entry: UniverCfRuleEntry, priority: numb
             return null;
         }
         case 'iconSet': {
-            const config = rule.config as Array<{ iconType: string; iconId: string; value: { type: string; value?: number | string } }>;
+            const config = rule.config as Array<{
+                iconType: string;
+                iconId: string;
+                value: { type: string; value?: number | string };
+            }>;
             if (!Array.isArray(config) || config.length === 0) return null;
             const iconSet = config[0].iconType;
             // Inverse mapping from Univer's descending-threshold layout
@@ -1304,8 +1424,8 @@ function translateUniverCfRuleToExceljs(entry: UniverCfRuleEntry, priority: numb
             //   { type:percent, value:33 },            // band 1
             //   { type:percent, value:67 },            // band 2
             // ]
-            const real = config.slice(0, -1);            // drop the catch-all
-            const ascending = real.slice().reverse();    // descend → ascend
+            const real = config.slice(0, -1); // drop the catch-all
+            const ascending = real.slice().reverse(); // descend → ascend
             const cfvo: Array<{ type: string; value?: number | string }> = [
                 // Excel's first cfvo is always the lowest band — we
                 // synthesize one for it (always 0% / min) since Univer
@@ -1336,8 +1456,10 @@ function applyOoxmlTint(hex: string, tint: number): string {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
     const b = parseInt(hex.slice(5, 7), 16) / 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h = 0, s = 0;
+    const max = Math.max(r, g, b),
+        min = Math.min(r, g, b);
+    let h = 0,
+        s = 0;
     let l = (max + min) / 2;
     if (max !== min) {
         const d = max - min;
@@ -1358,15 +1480,19 @@ function applyOoxmlTint(hex: string, tint: number): string {
         return p;
     };
     let r2: number, g2: number, b2: number;
-    if (s === 0) { r2 = g2 = b2 = l; }
-    else {
+    if (s === 0) {
+        r2 = g2 = b2 = l;
+    } else {
         const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
         const p = 2 * l - q;
         r2 = hue2rgb(p, q, h + 1 / 3);
         g2 = hue2rgb(p, q, h);
         b2 = hue2rgb(p, q, h - 1 / 3);
     }
-    const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
+    const toHex = (x: number) =>
+        Math.round(x * 255)
+            .toString(16)
+            .padStart(2, '0');
     return ('#' + toHex(r2) + toHex(g2) + toHex(b2)).toUpperCase();
 }
 
@@ -1377,19 +1503,26 @@ function applyOoxmlTint(hex: string, tint: number): string {
 // Returns null when no resolvable color is present (e.g. {tint: 0.4} alone
 // or a missing palette). Callers should treat null as "no color set".
 type ExceljsColor = { argb?: string; theme?: number; tint?: number } | null | undefined;
-function resolveExceljsColor(color: ExceljsColor, palette: ThemePalette | null): string | undefined {
+function resolveExceljsColor(
+    color: ExceljsColor,
+    palette: ThemePalette | null,
+): string | undefined {
     if (!color || typeof color !== 'object') return undefined;
     const direct = argbToHex(color.argb);
     if (direct) return direct;
     if (typeof color.theme === 'number' && palette) {
         const base = palette.rgb[color.theme];
         if (!base) return undefined;
-        return typeof color.tint === 'number' && color.tint !== 0 ? applyOoxmlTint(base, color.tint) : base;
+        return typeof color.tint === 'number' && color.tint !== 0
+            ? applyOoxmlTint(base, color.tint)
+            : base;
     }
     return undefined;
 }
 
-async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<RawTableMap> {
+async function readTablesFromXlsxZip(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<RawTableMap> {
     const result: RawTableMap = new Map();
     let zip: JSZip;
     try {
@@ -1414,7 +1547,8 @@ async function readTablesFromXlsxZip(buffer: ArrayBuffer | Uint8Array | Buffer):
         const sheetIndex = parseInt(m[1], 10);
         const xml = await zip.files[path].async('string');
         // <Relationship Id="..." Type=".../table" Target="../tables/tableN.xml"/>
-        const relRe = /<Relationship\b[^>]*Type="[^"]*\/table"[^>]*Target="[^"]*tables\/(table\d+\.xml)"[^>]*\/?>/gi;
+        const relRe =
+            /<Relationship\b[^>]*Type="[^"]*\/table"[^>]*Target="[^"]*tables\/(table\d+\.xml)"[^>]*\/?>/gi;
         const tables: RawTable[] = [];
         let rm: RegExpExecArray | null;
         while ((rm = relRe.exec(xml)) !== null) {
@@ -1562,7 +1696,11 @@ function resolveTableStylePalette(
         styleName: catalog.styleName,
         headerBg: resolve(recipe.headerBg, catalog.headerBg, ov.headerBg)!,
         headerFg: resolve(recipe.headerFg, catalog.headerFg, ov.headerFg)!,
-        bandedRowEvenBg: resolve(recipe.bandedRowEvenBg, catalog.bandedRowEvenBg, ov.bandedRowEvenBg),
+        bandedRowEvenBg: resolve(
+            recipe.bandedRowEvenBg,
+            catalog.bandedRowEvenBg,
+            ov.bandedRowEvenBg,
+        ),
         bandedRowOddBg: resolve(recipe.bandedRowOddBg, catalog.bandedRowOddBg, ov.bandedRowOddBg),
         totalsBg: resolve(recipe.totalsBg, catalog.totalsBg, ov.totalsBg),
         totalsFg: resolve(recipe.totalsFg, catalog.totalsFg, ov.totalsFg),
@@ -1602,8 +1740,11 @@ function synthesizeTableStyleAssignments(
     // table styling. Borders merge per side (we only add a side if the
     // existing bd doesn't already have that side set).
     const overlay = (
-        row: number, col: number,
-        addBg?: string, addFg?: string, bold?: boolean,
+        row: number,
+        col: number,
+        addBg?: string,
+        addFg?: string,
+        bold?: boolean,
         addBorders?: Partial<Record<BorderSide, BorderEntry>>,
     ) => {
         const key = `${row}:${col}`;
@@ -1623,7 +1764,8 @@ function synthesizeTableStyleAssignments(
             addedFields.push('bl');
         }
         if (addBorders) {
-            const existingBd = (existing.bd as Partial<Record<BorderSide, BorderEntry>> | undefined) ?? {};
+            const existingBd =
+                (existing.bd as Partial<Record<BorderSide, BorderEntry>> | undefined) ?? {};
             const mergedBd: Partial<Record<BorderSide, BorderEntry>> = { ...existingBd };
             let added = false;
             for (const side of Object.keys(addBorders) as BorderSide[]) {
@@ -1645,18 +1787,29 @@ function synthesizeTableStyleAssignments(
     // drawn when showRowStripes is on — the alternating fill is the
     // separator. Skip border synthesis if the catalog has no borderColor.
     const borderRgb = palette.borderColor;
-    const thinBorder: BorderEntry | undefined = borderRgb ? { s: BORDER_STYLE_TO_UNIVER.thin, cl: { rgb: borderRgb } } : undefined;
+    const thinBorder: BorderEntry | undefined = borderRgb
+        ? { s: BORDER_STYLE_TO_UNIVER.thin, cl: { rgb: borderRgb } }
+        : undefined;
 
     // Header row.
     if (headerRows === 1) {
         for (let c = range.startColumn; c <= range.endColumn; c++) {
-            const headerBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder ? {
-                t: thinBorder,
-                b: thinBorder,
-                ...(c === range.startColumn ? { l: thinBorder } : {}),
-                ...(c === range.endColumn ? { r: thinBorder } : {}),
-            } : undefined;
-            overlay(range.startRow, c, palette.headerBg, palette.headerFg, /* bold */ true, headerBorders);
+            const headerBorders: Partial<Record<BorderSide, BorderEntry>> | undefined = thinBorder
+                ? {
+                      t: thinBorder,
+                      b: thinBorder,
+                      ...(c === range.startColumn ? { l: thinBorder } : {}),
+                      ...(c === range.endColumn ? { r: thinBorder } : {}),
+                  }
+                : undefined;
+            overlay(
+                range.startRow,
+                c,
+                palette.headerBg,
+                palette.headerFg,
+                /* bold */ true,
+                headerBorders,
+            );
         }
     }
 
@@ -1690,7 +1843,8 @@ function synthesizeTableStyleAssignments(
                     if (r === dataEndRow && totalRows === 0) rowBorders.b = thinBorder;
                 }
                 const hasBorders = Object.keys(rowBorders).length > 0;
-                if (useBg || hasBorders) overlay(r, c, useBg, undefined, false, hasBorders ? rowBorders : undefined);
+                if (useBg || hasBorders)
+                    overlay(r, c, useBg, undefined, false, hasBorders ? rowBorders : undefined);
             }
         }
     } else if (thinBorder) {
@@ -1702,7 +1856,8 @@ function synthesizeTableStyleAssignments(
                     ...(c === range.endColumn ? { r: thinBorder } : {}),
                     ...(r === dataEndRow && totalRows === 0 ? { b: thinBorder } : {}),
                 };
-                if (Object.keys(rowBorders).length > 0) overlay(r, c, undefined, undefined, false, rowBorders);
+                if (Object.keys(rowBorders).length > 0)
+                    overlay(r, c, undefined, undefined, false, rowBorders);
             }
         }
     }
@@ -1756,10 +1911,16 @@ function synthesizeTableStyleAssignments(
                 if (c === range.startColumn) totalsBorders.l = thinBorder;
                 if (c === range.endColumn) totalsBorders.r = thinBorder;
             }
-            const useBg = palette.totalsBg && palette.totalsBg.toUpperCase() !== '#FFFFFF' ? palette.totalsBg : undefined;
+            const useBg =
+                palette.totalsBg && palette.totalsBg.toUpperCase() !== '#FFFFFF'
+                    ? palette.totalsBg
+                    : undefined;
             overlay(
-                range.endRow, c,
-                useBg, palette.totalsFg, /* bold */ true,
+                range.endRow,
+                c,
+                useBg,
+                palette.totalsFg,
+                /* bold */ true,
                 Object.keys(totalsBorders).length > 0 ? totalsBorders : undefined,
             );
         }
@@ -1783,7 +1944,12 @@ function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): T
         const columns: TableColumnJson[] = t.columns.map((cname, idx) => ({
             id: `tblcol-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
             displayName: cname,
-            dataType: inferColumnDataType(ws, range.startColumn + idx + 1, dataStartRow + 1, dataEndRow + 1),
+            dataType: inferColumnDataType(
+                ws,
+                range.startColumn + idx + 1,
+                dataStartRow + 1,
+                dataEndRow + 1,
+            ),
             formula: '',
             meta: {},
             style: {},
@@ -1809,7 +1975,9 @@ function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): T
     return out;
 }
 
-export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Buffer): Promise<UniverSnapshot> {
+export async function xlsxBufferToSnapshot(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<UniverSnapshot> {
     const wb = new ExcelJS.Workbook();
     // exceljs accepts Buffer in Node and ArrayBuffer in the browser; both are valid
     // at runtime but the .d.ts only types Buffer. Cast away to satisfy TS.
@@ -1829,7 +1997,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     try {
         importedCharts = await readChartsFromXlsxZip(buffer);
     } catch (e) {
-        console.warn('[Notesheet] M17: readChartsFromXlsxZip threw; continuing without chart import', e);
+        console.warn(
+            '[Notesheet] M17: readChartsFromXlsxZip threw; continuing without chart import',
+            e,
+        );
         importedCharts = [];
     }
     // Build a chart-stripped buffer iff there's at least one chart drawing
@@ -1841,7 +2012,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         try {
             bufferForLoad = await stripChartPartsFromZip(buffer);
         } catch (e) {
-            console.warn('[Notesheet] M17: stripChartPartsFromZip failed; loading original buffer (may crash)', e);
+            console.warn(
+                '[Notesheet] M17: stripChartPartsFromZip failed; loading original buffer (may crash)',
+                e,
+            );
             bufferForLoad = buffer;
         }
     }
@@ -1916,7 +2090,8 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // Per-subUnit table state, keyed by our generated sheetId. Filled during
     // the eachSheet walk and serialized into the SHEET_TABLE_PLUGIN resource
     // at the end so Univer's formula engine sees the tables on snapshot load.
-    const tableResource: Record<string, { tables: TableJson[]; tableFilteredOutRows: number[] }> = {};
+    const tableResource: Record<string, { tables: TableJson[]; tableFilteredOutRows: number[] }> =
+        {};
 
     // Per-cell record of which style fields the M12 table-style synthesizer
     // added on top of the source cell's own style. Keyed `${sheetId}` →
@@ -1968,9 +2143,9 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
                 // string value isn't always a link, only when explicitly
                 // styled with the named-Hyperlink xf.
                 if (
-                    !value.p
-                    && typeof value.v === 'string'
-                    && namedHyperlinkCells.has(cell.address)
+                    !value.p &&
+                    typeof value.v === 'string' &&
+                    namedHyperlinkCells.has(cell.address)
                 ) {
                     value.p = buildHyperlinkCellP(value.v, value.v);
                 }
@@ -1990,9 +2165,21 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             });
         });
 
-        const mergeData: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }> = [];
+        const mergeData: Array<{
+            startRow: number;
+            endRow: number;
+            startColumn: number;
+            endColumn: number;
+        }> = [];
         // exceljs exposes _merges as an internal map of "tlAddr:brAddr".
-        const merges = (ws as unknown as { _merges?: Record<string, { model: { top: number; left: number; bottom: number; right: number } }> })._merges;
+        const merges = (
+            ws as unknown as {
+                _merges?: Record<
+                    string,
+                    { model: { top: number; left: number; bottom: number; right: number } }
+                >;
+            }
+        )._merges;
         if (merges) {
             for (const key of Object.keys(merges)) {
                 const m = merges[key]?.model;
@@ -2080,9 +2267,8 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             // same w*7+5 approximation columnData uses (keeps the Univer
             // canvas default consistent with explicit per-column widths).
             // Falls back to Univer's 73px default when the source had none.
-            defaultColumnWidth: defaultColWidthChars !== undefined
-                ? Math.round(defaultColWidthChars * 7 + 5)
-                : 73,
+            defaultColumnWidth:
+                defaultColWidthChars !== undefined ? Math.round(defaultColWidthChars * 7 + 5) : 73,
             defaultRowHeight: 19,
             mergeData,
             rowData,
@@ -2105,7 +2291,9 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
         // shape via translateExceljsCfRuleToUniver and accumulate into
         // the per-subUnit resource.
         const wsAny = ws as unknown as { conditionalFormattings?: ExceljsConditionalFormatting[] };
-        const cfList = Array.isArray(wsAny.conditionalFormattings) ? wsAny.conditionalFormattings : [];
+        const cfList = Array.isArray(wsAny.conditionalFormattings)
+            ? wsAny.conditionalFormattings
+            : [];
         if (cfList.length > 0) {
             const ruleEntries: UniverCfRuleEntry[] = [];
             for (const block of cfList) {
@@ -2210,7 +2398,10 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             // Find the sheet whose displayed `name` matches sourceSheetName.
             let target: { cellData?: Record<number, Record<number, { v?: unknown }>> } | undefined;
             for (const id of Object.keys(sheets)) {
-                if (sheets[id]?.name === sheetName) { target = sheets[id]; break; }
+                if (sheets[id]?.name === sheetName) {
+                    target = sheets[id];
+                    break;
+                }
             }
             if (!target?.cellData) return null;
             const sr = chart.sourceRange;
@@ -2230,7 +2421,12 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             // backgroundColor from each dataset). Without this the live
             // Chart.js renderer falls back to its own neutral default
             // and the chart looks generic.
-            const datasets: Array<{ label?: string; data: number[]; backgroundColor: string; borderColor: string }> = [];
+            const datasets: Array<{
+                label?: string;
+                data: number[];
+                backgroundColor: string;
+                borderColor: string;
+            }> = [];
             for (let c = sr.startColumn + 1; c <= sr.endColumn; c++) {
                 const labelV = target.cellData[headerRow]?.[c]?.v;
                 const data: number[] = [];
@@ -2251,7 +2447,8 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
             return { labels, datasets };
         };
 
-        const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> = {};
+        const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> =
+            {};
         for (const chart of importedCharts) {
             const subUnitId = `sheet-${chart.sheetIndex}`;
             // Skip charts whose host sheet didn't survive the import — e.g.
@@ -2382,12 +2579,13 @@ export async function xlsxBufferToSnapshot(buffer: ArrayBuffer | Uint8Array | Bu
     // instead of Univer's hardcoded fallback. `fs` carries the workbook
     // default font size (points) so a 12pt workbook doesn't shrink to
     // exceljs's 11pt fallback on export.
-    const defaultStyle = (themeFont?.minor || defaultFontSize !== undefined)
-        ? {
-            ...(themeFont?.minor ? { ff: themeFont.minor } : {}),
-            ...(defaultFontSize !== undefined ? { fs: defaultFontSize } : {}),
-        }
-        : undefined;
+    const defaultStyle =
+        themeFont?.minor || defaultFontSize !== undefined
+            ? {
+                  ...(themeFont?.minor ? { ff: themeFont.minor } : {}),
+                  ...(defaultFontSize !== undefined ? { fs: defaultFontSize } : {}),
+              }
+            : undefined;
 
     return {
         id: 'workbook-' + Date.now(),
@@ -2417,7 +2615,9 @@ function resolveStyle(snapshot: UniverSnapshot, ref: unknown): Record<string, un
 // Used on export when a multi-run cell.p needs to come out as
 // `cell.value = { richText: [{font, text}, ...] }` so Excel renders
 // the per-run formatting.
-function buildExceljsFontFromTextStyle(ts: Record<string, unknown> | undefined): Partial<ExcelJS.Font> {
+function buildExceljsFontFromTextStyle(
+    ts: Record<string, unknown> | undefined,
+): Partial<ExcelJS.Font> {
     if (!ts) return {};
     const font: Partial<ExcelJS.Font> = {};
     if (typeof ts.ff === 'string') font.name = ts.ff;
@@ -2443,13 +2643,19 @@ function buildExceljsFontFromTextStyle(ts: Record<string, unknown> | undefined):
 //
 // The returned array is in exceljs's RichText shape: each element has a
 // `text` field and an optional `font` carrying the run's formatting.
-function extractRichTextRunsFromCellP(p: unknown): Array<{ text: string; font?: Partial<ExcelJS.Font> }> | null {
+function extractRichTextRunsFromCellP(
+    p: unknown,
+): Array<{ text: string; font?: Partial<ExcelJS.Font> }> | null {
     if (!p || typeof p !== 'object') return null;
-    const body = (p as { body?: {
-        dataStream?: string;
-        textRuns?: Array<{ st: number; ed: number; ts?: Record<string, unknown> }>;
-        customRanges?: Array<{ rangeType?: number }>;
-    } }).body;
+    const body = (
+        p as {
+            body?: {
+                dataStream?: string;
+                textRuns?: Array<{ st: number; ed: number; ts?: Record<string, unknown> }>;
+                customRanges?: Array<{ rangeType?: number }>;
+            };
+        }
+    ).body;
     if (!body) return null;
     // Skip when a hyperlink customRange is present — Pattern A handles it.
     const ranges = body.customRanges;
@@ -2478,7 +2684,11 @@ function extractRichTextRunsFromCellP(p: unknown): Array<{ text: string; font?: 
 // cell-value format, which it serializes into <hyperlinks> + rels.
 function extractHyperlinkFromCellP(p: unknown): string | null {
     if (!p || typeof p !== 'object') return null;
-    const body = (p as { body?: { customRanges?: Array<{ rangeType?: number; properties?: { url?: unknown } }> } }).body;
+    const body = (
+        p as {
+            body?: { customRanges?: Array<{ rangeType?: number; properties?: { url?: unknown } }> };
+        }
+    ).body;
     const ranges = body?.customRanges;
     if (!Array.isArray(ranges)) return null;
     for (const r of ranges) {
@@ -2548,7 +2758,10 @@ function applyStyleToCell(
     if (bd && typeof bd === 'object') {
         const out: Partial<ExcelJS.Borders> = {};
         const SIDES: Array<['t' | 'r' | 'b' | 'l', keyof ExcelJS.Borders]> = [
-            ['t', 'top'], ['r', 'right'], ['b', 'bottom'], ['l', 'left'],
+            ['t', 'top'],
+            ['r', 'right'],
+            ['b', 'bottom'],
+            ['l', 'left'],
         ];
         for (const [univerKey, exceljsKey] of SIDES) {
             if (skip.has('bd.' + univerKey)) continue;
@@ -2584,7 +2797,8 @@ function colLetters(idx: number): string {
 // malformed resources because the rest of the export should still produce a
 // valid xlsx (just without table definitions).
 function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: TableJson[] }> {
-    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> })
+        .resources;
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === TABLE_PLUGIN_NAME);
     if (!entry || typeof entry.data !== 'string') return {};
@@ -2601,8 +2815,11 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
 // fields the M12 table-style synthesizer added during import. Returns a
 // `${sheetId}` → `${row}:${col}` → string[] map; the exporter consults this
 // to skip those fields so Excel's TableStyle paint isn't doubled up by ours.
-function readSynthStylesSidecar(snapshot: UniverSnapshot): Record<string, Record<string, string[]>> {
-    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+function readSynthStylesSidecar(
+    snapshot: UniverSnapshot,
+): Record<string, Record<string, string[]>> {
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> })
+        .resources;
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === NOTESHEET_SYNTH_STYLES_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
@@ -2621,7 +2838,8 @@ function readSynthStylesSidecar(snapshot: UniverSnapshot): Record<string, Record
 // matching worksheet's `conditionalFormattings` field before
 // `writeBuffer()`.
 function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEntry[]> {
-    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> })
+        .resources;
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === CONDITIONAL_FORMATTING_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
@@ -2674,7 +2892,8 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
         // columns without an explicit width inherit it instead of
         // collapsing to exceljs's 8.43 default.
         if (typeof sheet.defaultColWidthChars === 'number' && sheet.defaultColWidthChars > 0) {
-            (ws.properties as unknown as { defaultColWidth?: number }).defaultColWidth = sheet.defaultColWidthChars;
+            (ws.properties as unknown as { defaultColWidth?: number }).defaultColWidth =
+                sheet.defaultColWidthChars;
         }
 
         const synthForSheet = synthStylesBySheet[sheetId] ?? {};
@@ -2728,7 +2947,8 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 const style = resolveStyle(snapshot, data.s);
                 if (style) {
                     const skipFields = synthForSheet[`${r}:${c}`];
-                    const skip = skipFields && skipFields.length > 0 ? new Set(skipFields) : undefined;
+                    const skip =
+                        skipFields && skipFields.length > 0 ? new Set(skipFields) : undefined;
                     applyStyleToCell(cell, style, skip);
                 }
                 // Workbook-default font (Aptos Narrow / Calibri / etc.) is
@@ -2786,7 +3006,10 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 const headerRow = t.options?.showHeader !== false;
                 const totalsRow = !!t.options?.showFooter;
                 const totalHeight = t.range.endRow - t.range.startRow + 1;
-                const dataRowCount = Math.max(0, totalHeight - (headerRow ? 1 : 0) - (totalsRow ? 1 : 0));
+                const dataRowCount = Math.max(
+                    0,
+                    totalHeight - (headerRow ? 1 : 0) - (totalsRow ? 1 : 0),
+                );
                 const tlRef = colLetters(t.range.startColumn) + (t.range.startRow + 1);
                 // Reconstruct the original Excel table style from meta we
                 // stashed on import. Falls back to exceljs's default
@@ -2828,14 +3051,18 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 blocksByRef.set(translated.sqref, list);
                 priority++;
             }
-            const conditionalFormattings = Array.from(blocksByRef.entries()).map(([ref, rules]) => ({
-                ref,
-                rules,
-            }));
+            const conditionalFormattings = Array.from(blocksByRef.entries()).map(
+                ([ref, rules]) => ({
+                    ref,
+                    rules,
+                }),
+            );
             // exceljs assigns this directly onto ws; the CF blocks are
             // serialized into <conditionalFormatting> elements at
             // writeBuffer time.
-            (ws as unknown as { conditionalFormattings: typeof conditionalFormattings }).conditionalFormattings = conditionalFormattings;
+            (
+                ws as unknown as { conditionalFormattings: typeof conditionalFormattings }
+            ).conditionalFormattings = conditionalFormattings;
         }
     }
 
@@ -2866,13 +3093,17 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
 }
 
 function readSourceClrScheme(snapshot: UniverSnapshot): string | null {
-    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> }).resources;
+    const resources = (snapshot as { resources?: Array<{ name?: string; data?: string }> })
+        .resources;
     if (!Array.isArray(resources)) return null;
     const entry = resources.find((r) => r?.name === NOTESHEET_THEME_CLR_SCHEME_RESOURCE);
     return entry && typeof entry.data === 'string' ? entry.data : null;
 }
 
-async function patchThemeClrScheme(buffer: ArrayBuffer, clrSchemeXml: string): Promise<ArrayBuffer> {
+async function patchThemeClrScheme(
+    buffer: ArrayBuffer,
+    clrSchemeXml: string,
+): Promise<ArrayBuffer> {
     try {
         const zip = await JSZip.loadAsync(buffer);
         const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p));
@@ -2886,7 +3117,7 @@ async function patchThemeClrScheme(buffer: ArrayBuffer, clrSchemeXml: string): P
         const patched = xml.replace(re, clrSchemeXml);
         if (patched === xml) return buffer;
         zip.file(themePath, patched);
-        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+        return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
     } catch (e) {
         console.warn('[Notesheet] patchThemeClrScheme failed; theme keeps exceljs defaults', e);
         return buffer;
@@ -2914,7 +3145,7 @@ async function patchThemeFont(buffer: ArrayBuffer, fontName: string): Promise<Ar
             .replace(/(<a:minorFont>\s*<a:latin\b[^>]*\btypeface=")[^"]*(")/, `$1${safeName}$2`);
         if (patched === xml) return buffer;
         zip.file(themePath, patched);
-        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+        return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
     } catch (e) {
         console.warn('[Notesheet] patchThemeFont failed; theme keeps Calibri default', e);
         return buffer;
@@ -2946,7 +3177,7 @@ async function patchDefaultFontSize(buffer: ArrayBuffer, sizePts: number): Promi
         if (patchedFont === firstFont) return buffer;
         const patched = xml.replace(firstFont, patchedFont);
         zip.file(stylesPath, patched);
-        return await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer;
+        return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
     } catch (e) {
         console.warn('[Notesheet] patchDefaultFontSize failed; keeping exceljs default size', e);
         return buffer;

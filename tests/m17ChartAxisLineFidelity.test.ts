@@ -14,7 +14,9 @@
 // the import→export round-trip of the catAxisLine/valAxisLine meta.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -85,12 +87,15 @@ describe('M17 axis-line fidelity (issues 1/2/7)', () => {
     test('catAxisLine/valAxisLine meta round-trips import → export', async () => {
         const buf = readFileSync(path.join(FIXTURES_DIR, '01-bar-simple.xlsx'));
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
-        const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+        const resources =
+            (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
         const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
         expect(entry).toBeDefined();
         const parsed = JSON.parse(entry!.data);
         const sub = Object.values(parsed)[0] as { data: Record<string, any> };
-        const drawing = Object.values(sub.data)[0] as { data: { meta?: { catAxisLine?: string; valAxisLine?: string } } };
+        const drawing = Object.values(sub.data)[0] as {
+            data: { meta?: { catAxisLine?: string; valAxisLine?: string } };
+        };
         // Import captured the source's modern-template axis lines.
         expect(drawing.data.meta?.catAxisLine).toBe('grey');
         expect(drawing.data.meta?.valAxisLine).toBe('none');
@@ -104,12 +109,19 @@ describe('M17 axis-line fidelity (issues 1/2/7)', () => {
             'sheet-1': {
                 data: {
                     'chart-x': {
-                        unitId: 'workbook', subUnitId: 'sheet-1', drawingId: 'chart-x',
-                        drawingType: 8, componentKey: 'NotesheetChart', allowTransform: true,
+                        unitId: 'workbook',
+                        subUnitId: 'sheet-1',
+                        drawingId: 'chart-x',
+                        drawingType: 8,
+                        componentKey: 'NotesheetChart',
+                        allowTransform: true,
                         data: {
-                            chartId: 'chart-x', type: 'bar', title: 'T',
+                            chartId: 'chart-x',
+                            type: 'bar',
+                            title: 'T',
                             sourceRange: { startRow: 0, endRow: 2, startColumn: 0, endColumn: 1 },
-                            labels: ['a', 'b'], datasets: [{ label: 's', data: [1, 2] }],
+                            labels: ['a', 'b'],
+                            datasets: [{ label: 's', data: [1, 2] }],
                             meta: { catAxisLine: 'grey', valAxisLine: 'grey' },
                         },
                         axisAlignSheetTransform: {
@@ -122,8 +134,21 @@ describe('M17 axis-line fidelity (issues 1/2/7)', () => {
             },
         };
         const snap = {
-            id: 'wb', sheetOrder: ['sheet-1'], name: 'S', appVersion: '0.1.0', locale: 'enUS',
-            styles: {}, sheets: { 'sheet-1': { id: 'sheet-1', name: 'Sheet1', cellData: {}, rowCount: 100, columnCount: 26 } },
+            id: 'wb',
+            sheetOrder: ['sheet-1'],
+            name: 'S',
+            appVersion: '0.1.0',
+            locale: 'enUS',
+            styles: {},
+            sheets: {
+                'sheet-1': {
+                    id: 'sheet-1',
+                    name: 'Sheet1',
+                    cellData: {},
+                    rowCount: 100,
+                    columnCount: 26,
+                },
+            },
             resources: [{ name: 'SHEET_DRAWING_PLUGIN', data: JSON.stringify(drawingResource) }],
         };
         const out = await snapshotToXlsxBuffer(snap as unknown as Record<string, unknown>);

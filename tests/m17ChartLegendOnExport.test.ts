@@ -5,7 +5,9 @@
 // NotesheetChart component shows one. This test pins the export side.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -26,7 +28,9 @@ async function exportedChartXml(buf: Buffer): Promise<string> {
 
 describe('M17 chart legend on export', () => {
     test('multi-series line chart (02) exports with <c:legend> at source position', async () => {
-        const xml = await exportedChartXml(readFileSync(path.join(FIXTURES_DIR, '02-line-multi-series.xlsx')));
+        const xml = await exportedChartXml(
+            readFileSync(path.join(FIXTURES_DIR, '02-line-multi-series.xlsx')),
+        );
         expect(xml).toMatch(/<c:legend>/);
         // 02's source XML has <c:legendPos val="b"/> (bottom) — the
         // round-trip should preserve it via meta.legendPos. If the
@@ -36,24 +40,32 @@ describe('M17 chart legend on export', () => {
     });
 
     test('pie chart (03) exports with <c:legend>', async () => {
-        const xml = await exportedChartXml(readFileSync(path.join(FIXTURES_DIR, '03-pie-single.xlsx')));
+        const xml = await exportedChartXml(
+            readFileSync(path.join(FIXTURES_DIR, '03-pie-single.xlsx')),
+        );
         expect(xml).toMatch(/<c:legend>/);
     });
 
     test('doughnut chart (04) exports with <c:legend>', async () => {
-        const xml = await exportedChartXml(readFileSync(path.join(FIXTURES_DIR, '04-doughnut.xlsx')));
+        const xml = await exportedChartXml(
+            readFileSync(path.join(FIXTURES_DIR, '04-doughnut.xlsx')),
+        );
         expect(xml).toMatch(/<c:legend>/);
     });
 
     test('single-series bar chart (01) exports without <c:legend> (Excel default)', async () => {
-        const xml = await exportedChartXml(readFileSync(path.join(FIXTURES_DIR, '01-bar-simple.xlsx')));
+        const xml = await exportedChartXml(
+            readFileSync(path.join(FIXTURES_DIR, '01-bar-simple.xlsx')),
+        );
         expect(xml).not.toMatch(/<c:legend>/);
     });
 
     test('legend element sits between </c:plotArea> and <c:plotVisOnly> per ECMA-376', async () => {
         // Order inside <c:chart>: title, autoTitleDeleted, plotArea,
         // legend, plotVisOnly, dispBlanksAs. Excel rejects out-of-order.
-        const xml = await exportedChartXml(readFileSync(path.join(FIXTURES_DIR, '02-line-multi-series.xlsx')));
+        const xml = await exportedChartXml(
+            readFileSync(path.join(FIXTURES_DIR, '02-line-multi-series.xlsx')),
+        );
         const plotAreaEnd = xml.indexOf('</c:plotArea>');
         const legendStart = xml.indexOf('<c:legend>');
         const plotVisOnly = xml.indexOf('<c:plotVisOnly');

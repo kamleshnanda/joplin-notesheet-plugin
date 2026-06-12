@@ -78,7 +78,9 @@ function getFlag(args, name) {
 async function main() {
     const [, , cmd, ...rest] = process.argv;
     if (!cmd) {
-        console.error('usage: joplin-api.js <create-note|list-notes|create-folder|delete-note> [options]');
+        console.error(
+            'usage: joplin-api.js <create-note|list-notes|create-folder|delete-note> [options]',
+        );
         process.exit(2);
     }
 
@@ -121,4 +123,7 @@ async function main() {
     process.exit(2);
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+main().catch((e) => {
+    console.error(e.message);
+    process.exit(1);
+});

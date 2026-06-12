@@ -2,7 +2,9 @@
 // the SUT) doesn't drag the whole Univer ESM graph through jest's CJS
 // transform. Mirrors the pattern in m12FixturePinDowns.test.ts.
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 // Pin-down regression tests for M12 import-error recovery.
@@ -68,7 +70,8 @@ describe('M12 import recovery — crashing fixtures throw typed errors', () => {
         expect(err).toBeNull();
         const buf = readFileSync(path.join(FIXTURES_DIR, 'MultiSheet.xlsx'));
         const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
-        const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+        const resources =
+            (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
         const drawing = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
         expect(drawing).toBeDefined();
         const parsed = JSON.parse(drawing!.data);

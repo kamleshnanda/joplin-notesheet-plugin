@@ -85,7 +85,7 @@ This document specifies the requirements for a Joplin plugin that integrates Uni
 #### Acceptance Criteria
 
 1. WHEN a user enters a formula starting with "=", THE Formula_Engine SHALL evaluate the formula
-2. THE Formula_Engine SHALL support basic arithmetic operations (+, -, *, /)
+2. THE Formula_Engine SHALL support basic arithmetic operations (+, -, \*, /)
 3. THE Formula_Engine SHALL support common functions (SUM, AVERAGE, COUNT, MIN, MAX)
 4. WHEN a formula references other cells, THE Formula_Engine SHALL update when referenced cells change
 5. IF a formula contains an error, THEN THE Spreadsheet_Component SHALL display an error indicator
@@ -169,8 +169,8 @@ This document specifies the requirements for a Joplin plugin that integrates Uni
 
 #### Acceptance Criteria
 
-1. THE  Plugin SHALL contain code that can be used in opensource without license.
-2. THE  Plugin SHALL provide installation setup that is minimal and works out of the box after installation.
+1. THE Plugin SHALL contain code that can be used in opensource without license.
+2. THE Plugin SHALL provide installation setup that is minimal and works out of the box after installation.
 3. THE Plugin code SHALL following github structure with appropriate project level documentation for other users to be able to contribute.
 4. THE Plugin should be buildable and produce packages that can be published on Joplin plugin repository.
 5. The Plugin once published on Joplin plugin repository should be discoverable with the following keywords "Excel", "Spreadsheet", "Univer", "Kamlesh"

@@ -18,7 +18,9 @@
 // parsed from the source XML, never from what Notesheet emits.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -49,7 +51,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): ChartDrawing[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -105,7 +108,9 @@ describe('M17 axis + label fidelity round-trip', () => {
         // we'd plumb it; today the assertion is that we don't emit
         // ticks where source has none.
         const xml = await exportedChartXml(path.join(FIXTURES_DIR, '01-bar-simple.xlsx'));
-        const tickMarkValues = [...xml.matchAll(/<c:majorTickMark\s+val="([^"]+)"/g)].map((m) => m[1]);
+        const tickMarkValues = [...xml.matchAll(/<c:majorTickMark\s+val="([^"]+)"/g)].map(
+            (m) => m[1],
+        );
         expect(tickMarkValues.length).toBeGreaterThanOrEqual(2);
         for (const v of tickMarkValues) {
             expect(v).toBe('none');
@@ -115,8 +120,9 @@ describe('M17 axis + label fidelity round-trip', () => {
     test('pie chart (03) imports + re-exports with chart-level <c:dLbls>', async () => {
         const fp = path.join(FIXTURES_DIR, '03-pie-single.xlsx');
         // Source has chart-level dLbls.
-        const sourceXml = await JSZip.loadAsync(readFileSync(fp) as unknown as ArrayBuffer)
-            .then((z) => z.file('xl/charts/chart1.xml')!.async('string'));
+        const sourceXml = await JSZip.loadAsync(readFileSync(fp) as unknown as ArrayBuffer).then(
+            (z) => z.file('xl/charts/chart1.xml')!.async('string'),
+        );
         // Source's pie has dLbls present. Confirm by grep.
         expect(sourceXml).toMatch(/<c:dLbls>/);
 

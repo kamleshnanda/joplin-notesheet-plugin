@@ -14,7 +14,9 @@
 // correct.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync, readdirSync } from 'fs';
@@ -53,7 +55,8 @@ interface ChartDrawing {
 // Walk the snapshot's SHEET_DRAWING_PLUGIN resource and return a flat
 // list of ALL chart drawings across all subUnits, preserving order.
 function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing: ChartDrawing }> {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -63,7 +66,8 @@ function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing
         const order: string[] = sub.order ?? Object.keys(sub.data);
         for (const id of order) {
             const d = sub.data[id];
-            if (d?.componentKey === 'NotesheetChart') out.push({ subUnitId, drawing: d as ChartDrawing });
+            if (d?.componentKey === 'NotesheetChart')
+                out.push({ subUnitId, drawing: d as ChartDrawing });
         }
     }
     return out;
@@ -71,16 +75,18 @@ function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing
 
 // Parse the fixture's chart XML to extract the source-of-truth values
 // the snapshot must match. Returns the raw values from the source XML.
-async function readSourceTruth(fixturePath: string): Promise<Array<{
-    chartFile: string;
-    drawingFile: string;
-    anchorIndex: number;
-    typeFromXml: string;
-    sourceSheetName: string;
-    sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
-    anchorFrom: { col: number; row: number };
-    anchorTo: { col: number; row: number };
-}>> {
+async function readSourceTruth(fixturePath: string): Promise<
+    Array<{
+        chartFile: string;
+        drawingFile: string;
+        anchorIndex: number;
+        typeFromXml: string;
+        sourceSheetName: string;
+        sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
+        anchorFrom: { col: number; row: number };
+        anchorTo: { col: number; row: number };
+    }>
+> {
     const buf = readFileSync(fixturePath);
     const zip = await JSZip.loadAsync(buf as unknown as ArrayBuffer);
     const out: Array<{
@@ -107,7 +113,9 @@ async function readSourceTruth(fixturePath: string): Promise<Array<{
         const drawingFile = zip.file(drawingPath);
         if (!drawingFile) continue;
         const drawingXml = await drawingFile.async('string');
-        const drawingRelsXml = await zip.file(drawingPath.replace(/^(.*\/)([^/]+)$/, '$1_rels/$2.rels'))!.async('string');
+        const drawingRelsXml = await zip
+            .file(drawingPath.replace(/^(.*\/)([^/]+)$/, '$1_rels/$2.rels'))!
+            .async('string');
 
         // Build rId -> chart path map.
         const relMap = new Map<string, string>();
@@ -120,7 +128,8 @@ async function readSourceTruth(fixturePath: string): Promise<Array<{
         }
 
         // Walk anchors in document order.
-        const anchorRe = /<xdr:(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[^>]*>([\s\S]*?)<\/xdr:\1>/g;
+        const anchorRe =
+            /<xdr:(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[^>]*>([\s\S]*?)<\/xdr:\1>/g;
         let anchorIndex = 0;
         let anchorMatchIter: RegExpExecArray | null;
         while ((anchorMatchIter = anchorRe.exec(drawingXml)) !== null) {
@@ -139,13 +148,17 @@ async function readSourceTruth(fixturePath: string): Promise<Array<{
                 col: parseInt(fromBody.match(/<xdr:col>(\d+)<\/xdr:col>/)![1], 10),
                 row: parseInt(fromBody.match(/<xdr:row>(\d+)<\/xdr:row>/)![1], 10),
             };
-            const anchorTo = toBody ? {
-                col: parseInt(toBody[1].match(/<xdr:col>(\d+)<\/xdr:col>/)![1], 10),
-                row: parseInt(toBody[1].match(/<xdr:row>(\d+)<\/xdr:row>/)![1], 10),
-            } : { col: anchorFrom.col + 6, row: anchorFrom.row + 14 };
+            const anchorTo = toBody
+                ? {
+                      col: parseInt(toBody[1].match(/<xdr:col>(\d+)<\/xdr:col>/)![1], 10),
+                      row: parseInt(toBody[1].match(/<xdr:row>(\d+)<\/xdr:row>/)![1], 10),
+                  }
+                : { col: anchorFrom.col + 6, row: anchorFrom.row + 14 };
 
             // Type from XML: regex over chart-type element name.
-            const typeMatch = chartXml.match(/<c:(bar|line|pie|doughnut|radar|scatter|area)Chart\b/);
+            const typeMatch = chartXml.match(
+                /<c:(bar|line|pie|doughnut|radar|scatter|area)Chart\b/,
+            );
             const typeFromXml = typeMatch ? typeMatch[1] : 'unknown';
 
             // Source range — bounding box of the cat-ref + each val-ref. Note
@@ -153,7 +166,13 @@ async function readSourceTruth(fixturePath: string): Promise<Array<{
             // <c:tx><c:strRef>; categories come SECOND inside <c:cat>, values
             // THIRD inside <c:val>. We must explicitly scope to the cat+val
             // sub-elements rather than grabbing the first <c:f>.
-            const refs: { startRow: number; endRow: number; startColumn: number; endColumn: number; sheet: string }[] = [];
+            const refs: {
+                startRow: number;
+                endRow: number;
+                startColumn: number;
+                endColumn: number;
+                sheet: string;
+            }[] = [];
             const seriesRe = /<c:ser>([\s\S]*?)<\/c:ser>/g;
             let seriesMatchIter: RegExpExecArray | null;
             let labelsRangeRow: number | null = null;
@@ -408,7 +427,11 @@ describe('M17 feature-1: chart import does not crash', () => {
         // the legacy `anchors` reference error. The wrap still
         // produces NotesheetImportError — the error class is intact.
         expect(NotesheetImportError).toBeDefined();
-        const dummy = new NotesheetImportError('xlsx-charts-unsupported', 'test', new Error('original'));
+        const dummy = new NotesheetImportError(
+            'xlsx-charts-unsupported',
+            'test',
+            new Error('original'),
+        );
         expect(dummy.code).toBe('xlsx-charts-unsupported');
     });
 });

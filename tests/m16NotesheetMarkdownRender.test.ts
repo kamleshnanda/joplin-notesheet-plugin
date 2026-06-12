@@ -101,10 +101,7 @@ describe('M16 notesheetRenderer — base shape', () => {
         // position (1,1) — which is inside the merge range — should not
         // produce an extra <td>.
         // Row 1 has 2 <td>s emitted: anchor (with colspan=2) + (1,2).
-        const row1Tds = html
-            .split('<tr>')[2]
-            ?.split('</tr>')[0]
-            ?.match(/<td/g) ?? [];
+        const row1Tds = html.split('<tr>')[2]?.split('</tr>')[0]?.match(/<td/g) ?? [];
         // <tr>...</tr> for row 1: expect 2 <td>s (anchor + col 2)
         expect(row1Tds.length).toBe(2);
     });
@@ -228,7 +225,15 @@ describe('M16 notesheetRenderer — FormattingSmorgasboard (criterion 3)', () =>
         // that's actually in the fixture, sourced from the snapshot's
         // row-0 cellData rather than a hardcoded list, so a future
         // fixture rebuild that adds/removes columns doesn't false-fail.
-        const sheets = (snapshot as { sheets?: Record<string, { cellData?: Record<string, Record<string, { v?: unknown }>> }> }).sheets ?? {};
+        const sheets =
+            (
+                snapshot as {
+                    sheets?: Record<
+                        string,
+                        { cellData?: Record<string, Record<string, { v?: unknown }>> }
+                    >;
+                }
+            ).sheets ?? {};
         const sheetIds = (snapshot as { sheetOrder?: string[] }).sheetOrder ?? [];
         const firstSheet = sheets[sheetIds[0]];
         const row0 = (firstSheet?.cellData ?? {})[0] ?? (firstSheet?.cellData ?? {})['0'] ?? {};
@@ -403,12 +408,16 @@ describe('M16 numFmt — Tier 2 (synthetic NumberFormats.xlsx)', () => {
 describe('M16 numFmt — Tier 3 (complex patterns; documented approximations)', () => {
     test('[$-409]m/d/yy h:mm AM/PM;@ → 3/15/23 6:00 PM (locale code stripped, ;@ section honoured)', () => {
         // 45000.75 = 2023-03-15 18:00 UTC (3/4 of a day past midnight).
-        const html = renderNotesheetSnapshot(buildSingleCellSnapshot(45000.75, '[$-409]m/d/yy h:mm AM/PM;@'));
+        const html = renderNotesheetSnapshot(
+            buildSingleCellSnapshot(45000.75, '[$-409]m/d/yy h:mm AM/PM;@'),
+        );
         expect(extractFirstCell(html ?? '')).toBe('3/15/23 6:00 PM');
     });
 
     test('[Red]#,##0.00;[Blue]#,##0.00 → negative wrapped in red span', () => {
-        const html = renderNotesheetSnapshot(buildSingleCellSnapshot(-1234.56, '[Red]#,##0.00;[Blue]#,##0.00'));
+        const html = renderNotesheetSnapshot(
+            buildSingleCellSnapshot(-1234.56, '[Red]#,##0.00;[Blue]#,##0.00'),
+        );
         const cell = extractFirstCell(html ?? '');
         // Negative value uses section[1] which has [Blue] — hence the
         // value is rendered in blue. The leading - is preserved (we
@@ -420,7 +429,9 @@ describe('M16 numFmt — Tier 3 (complex patterns; documented approximations)', 
     });
 
     test('[Red]#,##0.00;[Blue]#,##0.00 → positive wrapped in red span', () => {
-        const html = renderNotesheetSnapshot(buildSingleCellSnapshot(1234.56, '[Red]#,##0.00;[Blue]#,##0.00'));
+        const html = renderNotesheetSnapshot(
+            buildSingleCellSnapshot(1234.56, '[Red]#,##0.00;[Blue]#,##0.00'),
+        );
         const cell = extractFirstCell(html ?? '');
         // Positive uses section[0] which has [Red].
         expect(cell).toContain('color: red');
@@ -475,7 +486,9 @@ describe('M16 numFmt — Tier 3 (complex patterns; documented approximations)', 
 describe('M16 numFmt — fall-through on unknown patterns', () => {
     test('unknown pattern returns raw stringified value', () => {
         // Use a pattern we don't model (e.g. fictional locale variant).
-        const html = renderNotesheetSnapshot(buildSingleCellSnapshot(1234.56, '???-NO-SUCH-PATTERN-???'));
+        const html = renderNotesheetSnapshot(
+            buildSingleCellSnapshot(1234.56, '???-NO-SUCH-PATTERN-???'),
+        );
         expect(extractFirstCell(html ?? '')).toBe('1234.56');
     });
     test('cells without a numFmt pattern render the raw value', () => {

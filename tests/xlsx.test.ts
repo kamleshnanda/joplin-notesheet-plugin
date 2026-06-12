@@ -2,7 +2,9 @@ import ExcelJS from 'exceljs';
 import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
 // Build a fresh xlsx from exceljs and feed it through xlsxBufferToSnapshot.
-async function buildXlsx(populate: (ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) => void): Promise<Buffer> {
+async function buildXlsx(
+    populate: (ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) => void,
+): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Sheet1');
     populate(ws, wb);
@@ -19,12 +21,20 @@ interface CellRecord {
 
 interface Snapshot {
     sheetOrder: string[];
-    sheets: Record<string, {
-        id: string;
-        name: string;
-        cellData: Record<number, Record<number, CellRecord>>;
-        mergeData?: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            id: string;
+            name: string;
+            cellData: Record<number, Record<number, CellRecord>>;
+            mergeData?: Array<{
+                startRow: number;
+                endRow: number;
+                startColumn: number;
+                endColumn: number;
+            }>;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
 }
 
@@ -46,7 +56,10 @@ describe('xlsx → snapshot import', () => {
         const buf = await buildXlsx((ws) => {
             ws.getCell('A1').value = 1;
             ws.getCell('A2').value = 2;
-            ws.getCell('A3').value = { formula: 'SUM(A1:A2)', result: 3 } as ExcelJS.CellFormulaValue;
+            ws.getCell('A3').value = {
+                formula: 'SUM(A1:A2)',
+                result: 3,
+            } as ExcelJS.CellFormulaValue;
         });
         const snap = (await xlsxBufferToSnapshot(buf)) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
@@ -58,7 +71,13 @@ describe('xlsx → snapshot import', () => {
         const buf = await buildXlsx((ws) => {
             const c = ws.getCell('A1');
             c.value = 'styled';
-            c.font = { bold: true, italic: true, color: { argb: 'FFFF0000' }, size: 14, name: 'Arial' };
+            c.font = {
+                bold: true,
+                italic: true,
+                color: { argb: 'FFFF0000' },
+                size: 14,
+                name: 'Arial',
+            };
         });
         const snap = (await xlsxBufferToSnapshot(buf)) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
@@ -117,9 +136,7 @@ describe('xlsx → snapshot import', () => {
         });
         const snap = (await xlsxBufferToSnapshot(buf)) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
-        expect(sheet.mergeData).toEqual([
-            { startRow: 0, endRow: 1, startColumn: 0, endColumn: 2 },
-        ]);
+        expect(sheet.mergeData).toEqual([{ startRow: 0, endRow: 1, startColumn: 0, endColumn: 2 }]);
     });
 
     test('identical styles share a single style id', async () => {
@@ -171,9 +188,15 @@ describe('snapshot → xlsx export', () => {
             sheetOrder: ['s1'],
             styles: {
                 'style-1': {
-                    bl: 1, it: 1, fs: 12, ff: 'Calibri',
-                    cl: { rgb: '#0000FF' }, bg: { rgb: '#CCCCCC' },
-                    ht: 2, vt: 2, tb: 3,
+                    bl: 1,
+                    it: 1,
+                    fs: 12,
+                    ff: 'Calibri',
+                    cl: { rgb: '#0000FF' },
+                    bg: { rgb: '#CCCCCC' },
+                    ht: 2,
+                    vt: 2,
+                    tb: 3,
                     n: { pattern: '#,##0.00' },
                 },
             },
@@ -193,14 +216,14 @@ describe('snapshot → xlsx export', () => {
                             0: { f: '=SUM(A1:A2)', v: 150, t: 2 },
                         },
                     },
-                    mergeData: [
-                        { startRow: 0, endRow: 0, startColumn: 2, endColumn: 4 },
-                    ],
+                    mergeData: [{ startRow: 0, endRow: 0, startColumn: 2, endColumn: 4 }],
                 },
             },
         };
 
-        const xlsx = await snapshotToXlsxBuffer(original as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const xlsx = await snapshotToXlsxBuffer(
+            original as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const reimported = (await xlsxBufferToSnapshot(Buffer.from(xlsx))) as unknown as Snapshot;
         const sheet = reimported.sheets[reimported.sheetOrder[0]];
 
@@ -223,9 +246,7 @@ describe('snapshot → xlsx export', () => {
         expect(style.tb).toBe(3);
         expect(style.n).toEqual({ pattern: '#,##0.00' });
 
-        expect(sheet.mergeData).toEqual([
-            { startRow: 0, endRow: 0, startColumn: 2, endColumn: 4 },
-        ]);
+        expect(sheet.mergeData).toEqual([{ startRow: 0, endRow: 0, startColumn: 2, endColumn: 4 }]);
     });
 
     test('empty snapshot exports a workbook with one sheet', async () => {
@@ -234,7 +255,9 @@ describe('snapshot → xlsx export', () => {
             sheets: {},
             styles: {},
         };
-        const xlsx = await snapshotToXlsxBuffer(empty as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const xlsx = await snapshotToXlsxBuffer(
+            empty as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         expect(xlsx.byteLength).toBeGreaterThan(0);
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(Buffer.from(xlsx) as unknown as Parameters<typeof wb.xlsx.load>[0]);

@@ -180,15 +180,24 @@ function linearFit(values: number[]): { slope: number; intercept: number; r2: nu
     }
     const n = pts.length;
     if (n < 2) return null;
-    let sx = 0, sy = 0, sxy = 0, sxx = 0;
-    for (const p of pts) { sx += p.x; sy += p.y; sxy += p.x * p.y; sxx += p.x * p.x; }
+    let sx = 0,
+        sy = 0,
+        sxy = 0,
+        sxx = 0;
+    for (const p of pts) {
+        sx += p.x;
+        sy += p.y;
+        sxy += p.x * p.y;
+        sxx += p.x * p.x;
+    }
     const denom = n * sxx - sx * sx;
     if (denom === 0) return null;
     const slope = (n * sxy - sx * sy) / denom;
     const intercept = (sy - slope * sx) / n;
     // R²: 1 - SS_res/SS_tot.
     const meanY = sy / n;
-    let ssRes = 0, ssTot = 0;
+    let ssRes = 0,
+        ssTot = 0;
     for (const p of pts) {
         const pred = slope * p.x + intercept;
         ssRes += (p.y - pred) ** 2;
@@ -215,10 +224,12 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // slice per data point). Bar/line use one color per series.
     if ((type === 'pie' || type === 'doughnut') && datasets.length > 0) {
         const ds = datasets[0];
-        datasets = [{
-            ...ds,
-            backgroundColor: ds.data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
-        }];
+        datasets = [
+            {
+                ...ds,
+                backgroundColor: ds.data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
+            },
+        ];
     } else if (type === 'bar' || type === 'line') {
         // Bar/line: assign each series an explicit CHART_PALETTE colour
         // when the dataset didn't already carry one. Excel-cached charts
@@ -260,7 +271,8 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         if (fit) {
             const fitData = base.map((_, i) => fit.slope * i + fit.intercept);
             const labelParts: string[] = [];
-            if (tl.dispEq) labelParts.push(`y = ${fit.slope.toFixed(2)}x + ${fit.intercept.toFixed(2)}`);
+            if (tl.dispEq)
+                labelParts.push(`y = ${fit.slope.toFixed(2)}x + ${fit.intercept.toFixed(2)}`);
             if (tl.dispRSqr) labelParts.push(`R² = ${fit.r2.toFixed(4)}`);
             trendlineAnnotation = labelParts.length > 0 ? labelParts.join('   ') : null;
             datasets = [
@@ -288,7 +300,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // val="col" = vertical (Excel's default). Chart.js expresses this
     // via `options.indexAxis`: 'y' = horizontal, 'x' (default) = vertical.
     // Only meaningful when type === 'bar'.
-    const indexAxis = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'y' : 'x';
+    const indexAxis = type === 'bar' && data?.meta?.barDir === 'bar' ? 'y' : 'x';
 
     // Grouping. Excel: 'clustered' | 'stacked' | 'percentStacked' |
     // 'standard'. For bar charts we set the categorical axis stacked
@@ -298,13 +310,22 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     const grouping = data?.meta?.barGrouping;
     const isStacked = grouping === 'stacked' || grouping === 'percentStacked';
     if (type === 'bar' && isStacked) {
-        datasets = datasets.map((ds) => ({ ...ds, stack: 'stack0' } as ChartData['datasets'][number] & { stack: string }));
+        datasets = datasets.map(
+            (ds) =>
+                ({ ...ds, stack: 'stack0' }) as ChartData['datasets'][number] & { stack: string },
+        );
     }
     if (type === 'line' && isStacked) {
         // Chart.js stacked-line: each dataset fills from the curve below
         // it. First dataset fills from the X-axis (origin); subsequent
         // datasets fill from the dataset at index-1.
-        datasets = datasets.map((ds, i) => ({ ...ds, fill: i === 0 ? 'origin' : ('-1' as const) } as ChartData['datasets'][number] & { fill: string }));
+        datasets = datasets.map(
+            (ds, i) =>
+                ({
+                    ...ds,
+                    fill: i === 0 ? 'origin' : ('-1' as const),
+                }) as ChartData['datasets'][number] & { fill: string },
+        );
     }
 
     // Bar width. Excel's <c:gapWidth val="N"/> is "gap between bar
@@ -313,23 +334,36 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // bars occupy". gap = N% of barWidth means gap + barWidth =
     // (1 + N/100) * barWidth, so categoryPercentage = 100/(100+N).
     // Excel default 150 → 0.4 (Chart.js default is 0.8 — much wider).
-    if (type === 'bar' && typeof data?.meta?.barGapWidth === 'number' && data.meta.barGapWidth >= 0) {
+    if (
+        type === 'bar' &&
+        typeof data?.meta?.barGapWidth === 'number' &&
+        data.meta.barGapWidth >= 0
+    ) {
         const cp = 100 / (100 + data.meta.barGapWidth);
-        datasets = datasets.map((ds) => ({
-            ...ds,
-            categoryPercentage: cp,
-            barPercentage: 1.0,
-        } as ChartData['datasets'][number] & { categoryPercentage: number; barPercentage: number }));
+        datasets = datasets.map(
+            (ds) =>
+                ({
+                    ...ds,
+                    categoryPercentage: cp,
+                    barPercentage: 1.0,
+                }) as ChartData['datasets'][number] & {
+                    categoryPercentage: number;
+                    barPercentage: number;
+                },
+        );
     }
 
     // Line smoothing — Chart.js `tension`. 0 = polylines, 0.4 = a
     // pleasant Bézier spline matching what Excel's "Smoothed Line"
     // option looks like.
     if (type === 'line' && data?.meta?.lineSmooth) {
-        datasets = datasets.map((ds) => ({
-            ...ds,
-            tension: 0.4,
-        } as ChartData['datasets'][number] & { tension: number }));
+        datasets = datasets.map(
+            (ds) =>
+                ({
+                    ...ds,
+                    tension: 0.4,
+                }) as ChartData['datasets'][number] & { tension: number },
+        );
     }
 
     // Line markers on/off. Chart.js: pointRadius=0 hides points;
@@ -337,10 +371,13 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // Chart.js's default visible-marker size).
     if (type === 'line') {
         const radius = data?.meta?.lineMarkerOn ? 3 : 0;
-        datasets = datasets.map((ds) => ({
-            ...ds,
-            pointRadius: radius,
-        } as ChartData['datasets'][number] & { pointRadius: number }));
+        datasets = datasets.map(
+            (ds) =>
+                ({
+                    ...ds,
+                    pointRadius: radius,
+                }) as ChartData['datasets'][number] & { pointRadius: number },
+        );
     }
 
     // Legend position. Excel cf. <c:legendPos>: r/l/t/b/tr. Chart.js
@@ -349,7 +386,11 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // matching position. Default to 'right' (Excel's default and
     // Chart.js's default for Notesheet's component).
     const legendPosMap: Record<string, 'right' | 'left' | 'top' | 'bottom'> = {
-        r: 'right', l: 'left', t: 'top', b: 'bottom', tr: 'right',
+        r: 'right',
+        l: 'left',
+        t: 'top',
+        b: 'bottom',
+        tr: 'right',
     };
     const legendPosition = data?.meta?.legendPos
         ? (legendPosMap[data.meta.legendPos] ?? 'right')
@@ -374,7 +415,7 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
 
     // Bar orientation matters for which axis carries the values.
     // Vertical bars / lines: y is values. Horizontal bars: x is values.
-    const valAxisKey = (type === 'bar' && data?.meta?.barDir === 'bar') ? 'x' : 'y';
+    const valAxisKey = type === 'bar' && data?.meta?.barDir === 'bar' ? 'x' : 'y';
 
     // Horizontal bars (barDir='bar' → indexAxis='y'): Chart.js draws the
     // FIRST category at the TOP of the y-axis and counts down; Excel draws
@@ -411,9 +452,12 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // strings; we use percent so it scales with the chart. Excel's
     // value is a 1-90 percent. Default to 50 (Excel and Chart.js's
     // typical doughnut). Pie charts ignore this.
-    const cutout = type === 'doughnut'
-        ? (typeof data?.meta?.holeSize === 'number' ? `${data.meta.holeSize}%` : '50%')
-        : undefined;
+    const cutout =
+        type === 'doughnut'
+            ? typeof data?.meta?.holeSize === 'number'
+                ? `${data.meta.holeSize}%`
+                : '50%'
+            : undefined;
 
     // Slice data labels (pie/doughnut). Excel keeps these flags on
     // meta.dLbls (showCatName / showPercent / showVal). Our custom
@@ -422,8 +466,10 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     // pie/doughnut when at least one label flag is set, so bar/line
     // charts (and pies with labels off) are never touched.
     const dl = data?.meta?.dLbls;
-    const wantsSliceLabels = (type === 'pie' || type === 'doughnut')
-        && !!dl && !!(dl.showCatName || dl.showPercent || dl.showVal);
+    const wantsSliceLabels =
+        (type === 'pie' || type === 'doughnut') &&
+        !!dl &&
+        !!(dl.showCatName || dl.showPercent || dl.showVal);
     const pieLabelsConfig = {
         enabled: wantsSliceLabels,
         flags: {
@@ -518,7 +564,11 @@ const NotesheetChart: React.FC<Props> = ({ data }) => {
         }
 
         if (chartRef.current) {
-            try { chartRef.current.destroy(); } catch { /* ignore */ }
+            try {
+                chartRef.current.destroy();
+            } catch {
+                /* ignore */
+            }
             chartRef.current = null;
         }
 
@@ -546,17 +596,27 @@ const NotesheetChart: React.FC<Props> = ({ data }) => {
         if (typeof ResizeObserver === 'undefined') return;
         const ro = new ResizeObserver(() => {
             if (chartRef.current) {
-                try { chartRef.current.resize(); } catch { /* ignore */ }
+                try {
+                    chartRef.current.resize();
+                } catch {
+                    /* ignore */
+                }
             }
         });
         ro.observe(container);
-        return () => { ro.disconnect(); };
+        return () => {
+            ro.disconnect();
+        };
     }, []);
 
     React.useEffect(() => {
         return () => {
             if (chartRef.current) {
-                try { chartRef.current.destroy(); } catch { /* ignore */ }
+                try {
+                    chartRef.current.destroy();
+                } catch {
+                    /* ignore */
+                }
                 chartRef.current = null;
             }
         };

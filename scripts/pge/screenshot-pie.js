@@ -19,7 +19,10 @@ async function main() {
     const noteId = process.argv[2];
     const outPath = process.argv[3] || `/tmp/pie-${Date.now()}.png`;
     const scrollX = parseInt(process.argv[4] || '700', 10);
-    if (!noteId) { console.error('usage: screenshot-pie.js <noteId> [outPath] [scrollCol]'); process.exit(2); }
+    if (!noteId) {
+        console.error('usage: screenshot-pie.js <noteId> [outPath] [scrollCol]');
+        process.exit(2);
+    }
 
     // Prep the window the same way eval-screenshot.sh does (maximize +
     // hide sidebar + note list + close DevTools). Without this the left
@@ -27,7 +30,10 @@ async function main() {
     try {
         execFileSync('bash', [path.join(__dirname, 'prep-joplin-window.sh')], { stdio: 'inherit' });
     } catch (e) {
-        console.error('screenshot-pie: prep-joplin-window.sh failed (continuing, capture may be cropped):', e.message);
+        console.error(
+            'screenshot-pie: prep-joplin-window.sh failed (continuing, capture may be cropped):',
+            e.message,
+        );
     }
 
     execFileSync('open', [`joplin://x-callback-url/openNote?id=${noteId}`]);
@@ -38,14 +44,27 @@ async function main() {
         const ctx = browser.contexts()[0];
         let editorPage = null;
         for (const p of ctx.pages()) {
-            try { if ((await p.title()) === 'Joplin') { editorPage = p; break; } } catch { /* ignore */ }
+            try {
+                if ((await p.title()) === 'Joplin') {
+                    editorPage = p;
+                    break;
+                }
+            } catch {
+                /* ignore */
+            }
         }
-        if (!editorPage) { console.error('no editor page'); process.exit(1); }
+        if (!editorPage) {
+            console.error('no editor page');
+            process.exit(1);
+        }
 
         // Find the UserWebviewIndex frame (where Univer mounts).
         await editorPage.waitForTimeout(1500);
         const frame = editorPage.frames().find((f) => /UserWebviewIndex\.html/.test(f.url()));
-        if (!frame) { console.error('no UserWebviewIndex frame — note may not be a Notesheet'); process.exit(1); }
+        if (!frame) {
+            console.error('no UserWebviewIndex frame — note may not be a Notesheet');
+            process.exit(1);
+        }
 
         // Scroll the Univer sheet so the off-screen chart shows. Use the
         // FUniver facade exposed on the frame (window.__notesheetUniverAPI):
@@ -65,13 +84,20 @@ async function main() {
                 else if (sheet.setActiveSelection) sheet.setActiveSelection(range);
                 if (sheet.scrollToCell) sheet.scrollToCell(0, col);
                 return 'ok col=' + col;
-            } catch (e) { return 'scroll threw: ' + e.message; }
+            } catch (e) {
+                return 'scroll threw: ' + e.message;
+            }
         }, targetCol);
         console.error('scroll:', scrollResult);
         await editorPage.waitForTimeout(1800);
 
         await editorPage.screenshot({ path: outPath, fullPage: false });
         console.log(outPath);
-    } finally { await browser.close(); }
+    } finally {
+        await browser.close();
+    }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+});

@@ -20,7 +20,9 @@
 // tests/fixtures/formatting-testdata/.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -34,19 +36,38 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, {
-            v?: unknown; t?: number; s?: string;
-            f?: string;
-            p?: {
-                body?: {
-                    dataStream?: string;
-                    customRanges?: Array<{ rangeType?: number; properties?: { url?: string } }>;
-                };
-            };
-        }>>;
-        mergeData?: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<
+                number,
+                Record<
+                    number,
+                    {
+                        v?: unknown;
+                        t?: number;
+                        s?: string;
+                        f?: string;
+                        p?: {
+                            body?: {
+                                dataStream?: string;
+                                customRanges?: Array<{
+                                    rangeType?: number;
+                                    properties?: { url?: string };
+                                }>;
+                            };
+                        };
+                    }
+                >
+            >;
+            mergeData?: Array<{
+                startRow: number;
+                endRow: number;
+                startColumn: number;
+                endColumn: number;
+            }>;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
     defaultStyle?: { ff?: string };
     resources?: Array<{ name: string; data: string }>;
@@ -54,7 +75,7 @@ interface SnapshotShape {
 
 async function importFixture(file: string): Promise<SnapshotShape> {
     const buf = readFileSync(path.join(FIXTURES_DIR, file));
-    return await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+    return (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as SnapshotShape;
 }
 
 interface RoundTripped {
@@ -64,7 +85,9 @@ interface RoundTripped {
 }
 
 async function roundTrip(snap: SnapshotShape): Promise<RoundTripped> {
-    const out = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+    const out = await snapshotToXlsxBuffer(
+        snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+    );
     const zip = await JSZip.loadAsync(out as ArrayBuffer);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(out as unknown as Parameters<typeof wb.xlsx.load>[0]);
@@ -77,7 +100,12 @@ async function roundTrip(snap: SnapshotShape): Promise<RoundTripped> {
     };
 }
 
-function snapshotCell(snap: SnapshotShape, sheetIdx: number, row: number, col: number): {
+function snapshotCell(
+    snap: SnapshotShape,
+    sheetIdx: number,
+    row: number,
+    col: number,
+): {
     v?: unknown;
     style: Record<string, unknown> | null;
     hasP: boolean;
@@ -104,9 +132,17 @@ describe('M12 round-trip — BordersAndCellColors fixture', () => {
     // generator (border style names start at row 2 = R1, theme rows
     // appear after a blank gap row at R12; see generate_excel_samples.py).
     const STYLE_ROWS: Array<[number, string, number]> = [
-        [1, 'thin', 1], [2, 'hair', 2], [3, 'dotted', 3], [4, 'dashed', 4],
-        [5, 'dashDot', 5], [6, 'dashDotDot', 6], [7, 'double', 7], [8, 'medium', 8],
-        [9, 'mediumDashed', 9], [10, 'mediumDashDot', 10], [11, 'thick', 13],
+        [1, 'thin', 1],
+        [2, 'hair', 2],
+        [3, 'dotted', 3],
+        [4, 'dashed', 4],
+        [5, 'dashDot', 5],
+        [6, 'dashDotDot', 6],
+        [7, 'double', 7],
+        [8, 'medium', 8],
+        [9, 'mediumDashed', 9],
+        [10, 'mediumDashDot', 10],
+        [11, 'thick', 13],
     ];
 
     test.each(STYLE_ROWS)(
@@ -147,7 +183,7 @@ describe('M12 round-trip — BordersAndCellColors fixture', () => {
         // workbook theme differs.
         const snap = await importFixture('BordersAndCellColors.xlsx');
         const cell = snapshotCell(snap, 0, 14, 1);
-        const bd = (cell.style!.bd as Record<string, { s: number; cl: { rgb: string } }>);
+        const bd = cell.style!.bd as Record<string, { s: number; cl: { rgb: string } }>;
         expect(bd.t.s).toBe(8); // medium
         expect(bd.t.cl.rgb).toBe('#95B3D7');
         expect(bd.r.cl.rgb).toBe('#95B3D7');
@@ -169,7 +205,7 @@ describe('M12 round-trip — BordersAndCellColors fixture', () => {
         // wrong hue. M13 fix: make the in-Joplin renderer theme-aware.
         const snap = await importFixture('BordersAndCellColors.xlsx');
         const cell = snapshotCell(snap, 0, 14, 1);
-        const bd = (cell.style!.bd as Record<string, { s: number; cl: { rgb: string } }>);
+        const bd = cell.style!.bd as Record<string, { s: number; cl: { rgb: string } }>;
         // Documenting the shortcoming: the resolved RGB is hardcoded by
         // the active palette at import time, not by the source workbook
         // theme name.
@@ -215,12 +251,22 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
         const snap = await importFixture('ConditionalFormatting-Variants.xlsx');
 
         // Snapshot now carries the CF resource.
-        const cfResource = (snap.resources ?? []).find((r) => r.name === 'SHEET_CONDITIONAL_FORMATTING_PLUGIN');
+        const cfResource = (snap.resources ?? []).find(
+            (r) => r.name === 'SHEET_CONDITIONAL_FORMATTING_PLUGIN',
+        );
         expect(cfResource).toBeDefined();
-        const cfData = JSON.parse(cfResource!.data) as Record<string, Array<{
-            ranges: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
-            rule: { type: string; subType?: string };
-        }>>;
+        const cfData = JSON.parse(cfResource!.data) as Record<
+            string,
+            Array<{
+                ranges: Array<{
+                    startRow: number;
+                    endRow: number;
+                    startColumn: number;
+                    endColumn: number;
+                }>;
+                rule: { type: string; subType?: string };
+            }>
+        >;
         const sheetIds = Object.keys(cfData);
         expect(sheetIds).toHaveLength(1);
         const importedRules = cfData[sheetIds[0]];
@@ -234,9 +280,15 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
         const reWb = new ExcelJS.Workbook();
         await reWb.xlsx.load(buffer as ArrayBuffer);
         const reWs = reWb.worksheets[0];
-        const reCf = (reWs as unknown as {
-            conditionalFormattings?: Array<{ ref: string; rules: Array<Record<string, unknown>> }>;
-        }).conditionalFormattings ?? [];
+        const reCf =
+            (
+                reWs as unknown as {
+                    conditionalFormattings?: Array<{
+                        ref: string;
+                        rules: Array<Record<string, unknown>>;
+                    }>;
+                }
+            ).conditionalFormattings ?? [];
         expect(reCf).toHaveLength(5);
 
         // Per-rule structural pins. Exceljs preserves type / ref /
@@ -246,7 +298,11 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
 
         const aBlock = findBlock('A2:A11');
         expect(aBlock).toBeDefined();
-        const aRule = aBlock!.rules[0] as { type: string; cfvo: Array<{ type: string; value?: number }>; color: Array<{ argb?: string }> };
+        const aRule = aBlock!.rules[0] as {
+            type: string;
+            cfvo: Array<{ type: string; value?: number }>;
+            color: Array<{ argb?: string }>;
+        };
         expect(aRule.type).toBe('colorScale');
         expect(aRule.cfvo).toHaveLength(3);
         expect(aRule.cfvo[0].type).toBe('min');
@@ -254,12 +310,18 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
         expect(aRule.cfvo[1].value).toBe(50);
         expect(aRule.cfvo[2].type).toBe('max');
         expect(aRule.color.map((c) => (c.argb ?? '').toUpperCase())).toEqual([
-            'FFF8696B', 'FFFFEB84', 'FF63BE7B',
+            'FFF8696B',
+            'FFFFEB84',
+            'FF63BE7B',
         ]);
 
         const cBlock = findBlock('C2:C11');
         expect(cBlock).toBeDefined();
-        const cRule = cBlock!.rules[0] as { type: string; cfvo: Array<{ type: string }>; color: { argb?: string } };
+        const cRule = cBlock!.rules[0] as {
+            type: string;
+            cfvo: Array<{ type: string }>;
+            color: { argb?: string };
+        };
         expect(cRule.type).toBe('dataBar');
         expect(cRule.cfvo[0].type).toBe('min');
         expect(cRule.cfvo[1].type).toBe('max');
@@ -267,7 +329,12 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
 
         const eBlock = findBlock('E2:E11');
         expect(eBlock).toBeDefined();
-        const eRule = eBlock!.rules[0] as { type: string; operator: string; formulae: string[]; style: { fill?: { bgColor?: { argb?: string } } } };
+        const eRule = eBlock!.rules[0] as {
+            type: string;
+            operator: string;
+            formulae: string[];
+            style: { fill?: { bgColor?: { argb?: string } } };
+        };
         expect(eRule.type).toBe('cellIs');
         expect(eRule.operator).toBe('greaterThan');
         expect(eRule.formulae).toEqual(['50']);
@@ -275,7 +342,12 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
 
         const gBlock = findBlock('G2:G11');
         expect(gBlock).toBeDefined();
-        const gRule = gBlock!.rules[0] as { type: string; rank?: number; bottom?: boolean; style: { fill?: { bgColor?: { argb?: string } } } };
+        const gRule = gBlock!.rules[0] as {
+            type: string;
+            rank?: number;
+            bottom?: boolean;
+            style: { fill?: { bgColor?: { argb?: string } } };
+        };
         expect(gRule.type).toBe('top10');
         expect(gRule.rank).toBe(3);
         expect(gRule.bottom).toBeFalsy();
@@ -283,7 +355,11 @@ describe('M12 round-trip — ConditionalFormatting-Variants fixture', () => {
 
         const iBlock = findBlock('I2:I11');
         expect(iBlock).toBeDefined();
-        const iRule = iBlock!.rules[0] as { type: string; iconSet?: string; cfvo: Array<{ type: string; value?: number }> };
+        const iRule = iBlock!.rules[0] as {
+            type: string;
+            iconSet?: string;
+            cfvo: Array<{ type: string; value?: number }>;
+        };
         expect(iRule.type).toBe('iconSet');
         expect(iRule.iconSet).toBe('3Arrows');
         expect(iRule.cfvo).toHaveLength(3);
@@ -331,7 +407,9 @@ describe('M12 round-trip — EmptyAndDegenerate fixture', () => {
     test('round-trip: header-only table survives back into table1.xml', async () => {
         const snap = await importFixture('EmptyAndDegenerate.xlsx');
         const rt = await roundTrip(snap);
-        const tablePath = Object.keys(rt.zip.files).find((p) => /^xl\/tables\/table\d+\.xml$/.test(p));
+        const tablePath = Object.keys(rt.zip.files).find((p) =>
+            /^xl\/tables\/table\d+\.xml$/.test(p),
+        );
         expect(tablePath).toBeDefined();
         const xml = await rt.zip.files[tablePath!].async('string');
         expect(xml).toMatch(/name="EmptyTable"/);
@@ -365,7 +443,9 @@ describe('M12 round-trip — Hyperlinks-Variants fixture', () => {
         const snap = await importFixture('Hyperlinks-Variants.xlsx');
         const cell = snapshotCell(snap, 0, 5, 0);
         expect(cell.v).toMatch(/^Click here/);
-        expect(cell.customRangeUrl).toBe('https://example.com/longpath/to/some/resource/that/is/quite/lengthy');
+        expect(cell.customRangeUrl).toBe(
+            'https://example.com/longpath/to/some/resource/that/is/quite/lengthy',
+        );
     });
 
     test('import: same URL repeated in 3 cells all get their own cell.p', async () => {
@@ -416,7 +496,11 @@ describe('M12 round-trip — MaliciousValues fixture', () => {
     test('import: +/-/@ prefix strings are preserved as plain text', async () => {
         const snap = await importFixture('MaliciousValues.xlsx');
         const sheet = snap.sheets[snap.sheetOrder[0]];
-        for (const [row, prefix] of [[3, '+'], [4, '-'], [5, '@']] as const) {
+        for (const [row, prefix] of [
+            [3, '+'],
+            [4, '-'],
+            [5, '@'],
+        ] as const) {
             const cell = sheet.cellData[row][1];
             expect(typeof cell.v).toBe('string');
             expect((cell.v as string).startsWith(prefix)).toBe(true);
@@ -462,10 +546,12 @@ describe('M12 round-trip — MergedCellsAndAlignment fixture', () => {
     test('import: A1:B2 + C1:D1 merges land in mergeData', async () => {
         const snap = await importFixture('MergedCellsAndAlignment.xlsx');
         const md = snap.sheets[snap.sheetOrder[0]].mergeData ?? [];
-        expect(md).toEqual(expect.arrayContaining([
-            { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 },
-            { startRow: 0, endRow: 0, startColumn: 2, endColumn: 3 },
-        ]));
+        expect(md).toEqual(
+            expect.arrayContaining([
+                { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 },
+                { startRow: 0, endRow: 0, startColumn: 2, endColumn: 3 },
+            ]),
+        );
     });
 
     test('import: merged-cell anchor preserves bold/center/middle alignment', async () => {
@@ -556,14 +642,11 @@ describe('M12 round-trip — NumberFormats fixture', () => {
         [17, '[Red]#,##0.00;[Blue]#,##0.00'],
     ];
 
-    test.each(FORMATS)(
-        'import: row %s preserves numFmt pattern %s',
-        async (row, fmt) => {
-            const snap = await importFixture('NumberFormats.xlsx');
-            const cell = snapshotCell(snap, 0, row, 1);
-            expect((cell.style!.n as { pattern: string }).pattern).toBe(fmt);
-        },
-    );
+    test.each(FORMATS)('import: row %s preserves numFmt pattern %s', async (row, fmt) => {
+        const snap = await importFixture('NumberFormats.xlsx');
+        const cell = snapshotCell(snap, 0, row, 1);
+        expect((cell.style!.n as { pattern: string }).pattern).toBe(fmt);
+    });
 
     test('import: row 1 (General) emits no numFmt in the style', async () => {
         // We deliberately skip "General" because every cell would

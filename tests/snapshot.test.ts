@@ -27,10 +27,7 @@ describe('snapshot helpers', () => {
     });
 
     test('detects body even when surrounded by other markdown', () => {
-        const body =
-            '# Title\n\nSome prose.\n\n' +
-            wrapSnapshot({ id: 'x' }) +
-            '\n\nMore prose.\n';
+        const body = '# Title\n\nSome prose.\n\n' + wrapSnapshot({ id: 'x' }) + '\n\nMore prose.\n';
         expect(isNotesheetBody(body)).toBe(true);
         const result = extractSnapshot(body);
         expect(result.ok).toBe(true);

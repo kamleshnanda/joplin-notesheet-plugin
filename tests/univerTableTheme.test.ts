@@ -14,7 +14,9 @@
 // purely about identity-matching plugin references in the preset's plugin
 // array, which a sentinel exercises just as well.
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { UniverSheetsTablePlugin } from '@univerjs/sheets-table';
@@ -27,7 +29,9 @@ import {
 
 describe('withFlatTableTheme', () => {
     test('replaces UniverSheetsTablePlugin with [plugin, config] tuple', () => {
-        const fakeUiPlugin = function FakeUi() { /* no-op */ };
+        const fakeUiPlugin = function FakeUi() {
+            /* no-op */
+        };
         const preset = {
             plugins: [UniverSheetsTablePlugin, fakeUiPlugin],
             locales: { 'en-US': {} },
@@ -56,7 +60,9 @@ describe('withFlatTableTheme', () => {
     });
 
     test('does not mutate the input preset', () => {
-        const fakeUiPlugin = function FakeUi() { /* no-op */ };
+        const fakeUiPlugin = function FakeUi() {
+            /* no-op */
+        };
         const preset = { plugins: [UniverSheetsTablePlugin, fakeUiPlugin] };
         const original = preset.plugins.slice();
 

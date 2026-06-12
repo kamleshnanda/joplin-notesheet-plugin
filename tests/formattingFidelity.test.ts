@@ -15,23 +15,44 @@ import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 // fields we care about; the wider shape is opaque to the test.
 interface Snapshot {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, {
-            v?: unknown; t?: number; s?: string;
-            p?: {
-                body?: {
-                    dataStream?: string;
-                    paragraphs?: Array<{ startIndex: number; paragraphStyle?: Record<string, unknown> }>;
-                    sectionBreaks?: Array<{ startIndex: number }>;
-                    textRuns?: Array<{ st: number; ed: number; ts?: Record<string, unknown> }>;
-                    customRanges?: Array<{ rangeType?: number; properties?: { url?: string } }>;
-                };
-                documentStyle?: {
-                    pageSize?: { width?: number; height?: number };
-                };
-            };
-        }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<
+                number,
+                Record<
+                    number,
+                    {
+                        v?: unknown;
+                        t?: number;
+                        s?: string;
+                        p?: {
+                            body?: {
+                                dataStream?: string;
+                                paragraphs?: Array<{
+                                    startIndex: number;
+                                    paragraphStyle?: Record<string, unknown>;
+                                }>;
+                                sectionBreaks?: Array<{ startIndex: number }>;
+                                textRuns?: Array<{
+                                    st: number;
+                                    ed: number;
+                                    ts?: Record<string, unknown>;
+                                }>;
+                                customRanges?: Array<{
+                                    rangeType?: number;
+                                    properties?: { url?: string };
+                                }>;
+                            };
+                            documentStyle?: {
+                                pageSize?: { width?: number; height?: number };
+                            };
+                        };
+                    }
+                >
+            >;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
     defaultStyle?: { ff?: string };
     resources?: Array<{ name: string; data: string }>;
@@ -51,16 +72,20 @@ describe('M12 — theme fonts', () => {
 
         // Patch the embedded theme1.xml's minorFont to Aptos Narrow.
         const zip = await JSZip.loadAsync(buf as unknown as ArrayBuffer);
-        const themePath = Object.keys(zip.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p))!;
+        const themePath = Object.keys(zip.files).find((p) =>
+            /^xl\/theme\/theme\d+\.xml$/i.test(p),
+        )!;
         let themeXml = await zip.files[themePath].async('string');
         themeXml = themeXml.replace(
             /<a:minorFont>\s*<a:latin\b[^>]*\btypeface="[^"]*"/,
             '<a:minorFont><a:latin typeface="Aptos Narrow"',
         );
         zip.file(themePath, themeXml);
-        const patchedBuf = Buffer.from(await zip.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer);
+        const patchedBuf = Buffer.from(
+            (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer,
+        );
 
-        const snap = await xlsxBufferToSnapshot(patchedBuf) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(patchedBuf)) as unknown as Snapshot;
         expect(snap.defaultStyle?.ff).toBe('Aptos Narrow');
     });
 
@@ -72,7 +97,7 @@ describe('M12 — theme fonts', () => {
         const wb = new ExcelJS.Workbook();
         wb.addWorksheet('Sheet1');
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as Snapshot;
         // Either no defaultStyle (theme parsing failed) or ff is a plausible
         // font name string — both acceptable. The bug we're guarding against
         // is the import dropping the field even when the theme has data.
@@ -91,21 +116,31 @@ describe('M12 — theme fonts', () => {
         // header text rendering as black on the exported xlsx). So we
         // verify the theme is patched and rely on render-time inheritance.
         const snap = {
-            id: 'wb-1', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
+            id: 'wb-1',
+            name: 'Spreadsheet',
+            appVersion: '0.1.0',
+            locale: 'enUS',
             sheetOrder: ['s1'],
             styles: {},
             sheets: {
                 s1: {
-                    id: 's1', name: 'Sheet1',
+                    id: 's1',
+                    name: 'Sheet1',
                     cellData: { 0: { 0: { v: 'hello', t: 1 } } },
-                    rowCount: 100, columnCount: 26,
-                    defaultColumnWidth: 73, defaultRowHeight: 19,
-                    mergeData: [], rowData: {}, columnData: {},
+                    rowCount: 100,
+                    columnCount: 26,
+                    defaultColumnWidth: 73,
+                    defaultRowHeight: 19,
+                    mergeData: [],
+                    rowData: {},
+                    columnData: {},
                 },
             },
             defaultStyle: { ff: 'Aptos Narrow' },
         };
-        const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
 
         // Theme carries Aptos Narrow.
         const zip = await JSZip.loadAsync(buf as ArrayBuffer);
@@ -132,17 +167,23 @@ describe('M12 — theme fonts', () => {
         ws1.getCell('A1').value = 'x';
         const buf0 = Buffer.from((await wb1.xlsx.writeBuffer()) as ArrayBuffer);
         const zip0 = await JSZip.loadAsync(buf0 as unknown as ArrayBuffer);
-        const themePath = Object.keys(zip0.files).find((p) => /^xl\/theme\/theme\d+\.xml$/i.test(p))!;
+        const themePath = Object.keys(zip0.files).find((p) =>
+            /^xl\/theme\/theme\d+\.xml$/i.test(p),
+        )!;
         const themeXml0 = (await zip0.files[themePath].async('string')).replace(
             /<a:minorFont>\s*<a:latin\b[^>]*\btypeface="[^"]*"/,
             '<a:minorFont><a:latin typeface="Source Sans Pro"',
         );
         zip0.file(themePath, themeXml0);
-        const buf1 = Buffer.from(await zip0.generateAsync({ type: 'arraybuffer' }) as ArrayBuffer);
+        const buf1 = Buffer.from(
+            (await zip0.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer,
+        );
 
         const snap = await xlsxBufferToSnapshot(buf1);
         const buf2 = await snapshotToXlsxBuffer(snap);
-        const snap2 = await xlsxBufferToSnapshot(Buffer.from(buf2 as ArrayBuffer)) as unknown as Snapshot;
+        const snap2 = (await xlsxBufferToSnapshot(
+            Buffer.from(buf2 as ArrayBuffer),
+        )) as unknown as Snapshot;
         expect(snap2.defaultStyle?.ff).toBe('Source Sans Pro');
     });
 });
@@ -158,15 +199,21 @@ describe('M12 — banded-style synthesis', () => {
             name: 'T1',
             ref: 'A1',
             headerRow: true,
-            style: { theme: 'TableStyleMedium2', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            style: {
+                theme: 'TableStyleMedium2',
+                showRowStripes: true,
+            } as ExcelJS.TableProperties['style'],
             columns: [{ name: 'A' }, { name: 'B' }],
             rows: [
-                ['x', 1], ['y', 2], ['z', 3], ['w', 4],
+                ['x', 1],
+                ['y', 2],
+                ['z', 3],
+                ['w', 4],
             ],
         });
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
 
         // Header row (row 0) should carry TableStyleMedium2's headerBg
@@ -214,12 +261,21 @@ describe('M12 — banded-style synthesis', () => {
             name: 'TB',
             ref: 'A1',
             headerRow: true,
-            style: { theme: 'TableStyleMedium2', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            style: {
+                theme: 'TableStyleMedium2',
+                showRowStripes: true,
+            } as ExcelJS.TableProperties['style'],
             columns: [{ name: 'A' }, { name: 'B' }],
-            rows: [['x', 1], ['y', 2], ['z', 3]],
+            rows: [
+                ['x', 1],
+                ['y', 2],
+                ['z', 3],
+            ],
         });
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot & {
+        const snap = (await xlsxBufferToSnapshot(
+            buf as unknown as Buffer,
+        )) as unknown as Snapshot & {
             sheets: Record<string, { cellData: Record<number, Record<number, { s?: string }>> }>;
         };
         const sheet = snap.sheets[snap.sheetOrder[0]];
@@ -241,7 +297,10 @@ describe('M12 — banded-style synthesis', () => {
 
         // The right edge (column 1) gets a right border.
         const headerRightStyle = styleAt(0, 1)!;
-        const headerRightBd = headerRightStyle.bd as Record<string, { s: number; cl: { rgb: string } }>;
+        const headerRightBd = headerRightStyle.bd as Record<
+            string,
+            { s: number; cl: { rgb: string } }
+        >;
         expect(headerRightBd.r.cl.rgb).toBe(BORDER_RGB);
 
         // Data rows: outer left/right edges have outline borders. Each data
@@ -250,7 +309,9 @@ describe('M12 — banded-style synthesis', () => {
         // boundary for Medium TableStyles — see M13/E follow-up). Last data
         // row gets a bottom border.
         const dataLeftStyle = styleAt(2, 0)!; // middle data row, left edge
-        const dataLeftBd = dataLeftStyle.bd as Record<string, { s: number; cl: { rgb: string } }> | undefined;
+        const dataLeftBd = dataLeftStyle.bd as
+            | Record<string, { s: number; cl: { rgb: string } }>
+            | undefined;
         expect(dataLeftBd?.l?.cl.rgb).toBe(BORDER_RGB);
         // Inter-row strip: bd.t is present on every data row, MEDIUM (s=8),
         // colour from the recipe's totalsBottomBorder slot (accent1 +0.4
@@ -280,21 +341,32 @@ describe('M12 — banded-style synthesis', () => {
             name: 'TS',
             ref: 'A1',
             headerRow: true,
-            style: { theme: 'TableStyleMedium2', showRowStripes: true } as ExcelJS.TableProperties['style'],
+            style: {
+                theme: 'TableStyleMedium2',
+                showRowStripes: true,
+            } as ExcelJS.TableProperties['style'],
             columns: [{ name: 'A' }, { name: 'B' }],
-            rows: [['x', 1], ['y', 2], ['z', 3]],
+            rows: [
+                ['x', 1],
+                ['y', 2],
+                ['z', 3],
+            ],
         });
         const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
         const snap = await xlsxBufferToSnapshot(buf0 as unknown as Buffer);
 
         // Sidecar should be present.
-        const synth = (snap as unknown as Snapshot).resources?.find((r) => r.name === 'SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN');
+        const synth = (snap as unknown as Snapshot).resources?.find(
+            (r) => r.name === 'SHEET_NOTESHEET_SYNTH_STYLES_PLUGIN',
+        );
         expect(synth).toBeDefined();
         const sidecar = JSON.parse(synth!.data) as Record<string, Record<string, string[]>>;
         const sheetSidecar = sidecar[(snap as unknown as Snapshot).sheetOrder[0]];
         expect(sheetSidecar).toBeDefined();
         // Header cell at (0,0): bg, cl, bl, bd.t, bd.b, bd.l should be tagged.
-        expect(sheetSidecar['0:0']).toEqual(expect.arrayContaining(['bg', 'cl', 'bl', 'bd.t', 'bd.b', 'bd.l']));
+        expect(sheetSidecar['0:0']).toEqual(
+            expect.arrayContaining(['bg', 'cl', 'bl', 'bd.t', 'bd.b', 'bd.l']),
+        );
 
         const buf1 = await snapshotToXlsxBuffer(snap);
         const wb1 = new ExcelJS.Workbook();
@@ -309,7 +381,7 @@ describe('M12 — banded-style synthesis', () => {
         // mean "no color painted on this cell".
         const a1 = ws1.getCell('A1');
         const a1Fill = a1.fill as { pattern?: string; fgColor?: { argb?: string } } | undefined;
-        expect(a1Fill?.pattern === 'solid' || (a1Fill?.fgColor?.argb)).toBeFalsy();
+        expect(a1Fill?.pattern === 'solid' || a1Fill?.fgColor?.argb).toBeFalsy();
         // Border object should also be empty (or undefined).
         const a1Border = a1.border as Record<string, unknown> | undefined;
         expect(a1Border ? Object.keys(a1Border).length === 0 : true).toBe(true);
@@ -330,7 +402,7 @@ describe('M12 — banded-style synthesis', () => {
         const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
         // exceljs's default theme has accent1 = #4F81BD. tint -0.25 = darken
         // by multiplying L by 0.75.
-        const snap = await xlsxBufferToSnapshot(buf0 as unknown as Buffer) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(buf0 as unknown as Buffer)) as unknown as Snapshot;
         const cellData = snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0];
         const styleId = cellData?.s;
         expect(styleId).toBeDefined();
@@ -358,13 +430,19 @@ describe('M12 — banded-style synthesis', () => {
             name: 'T2',
             ref: 'A1',
             headerRow: true,
-            style: { theme: 'TableStyleMedium2', showRowStripes: false } as ExcelJS.TableProperties['style'],
+            style: {
+                theme: 'TableStyleMedium2',
+                showRowStripes: false,
+            } as ExcelJS.TableProperties['style'],
             columns: [{ name: 'A' }, { name: 'B' }],
-            rows: [['x', 1], ['y', 2]],
+            rows: [
+                ['x', 1],
+                ['y', 2],
+            ],
         });
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as Snapshot;
         const sheet = snap.sheets[snap.sheetOrder[0]];
 
         // Header should still be styled. ExcelJS.Workbook() ships the
@@ -396,12 +474,15 @@ describe('M12 — banded-style synthesis', () => {
             name: 'T3',
             ref: 'A1',
             headerRow: true,
-            style: { theme: 'NotARealStyle', showRowStripes: true } as unknown as ExcelJS.TableProperties['style'],
+            style: {
+                theme: 'NotARealStyle',
+                showRowStripes: true,
+            } as unknown as ExcelJS.TableProperties['style'],
             columns: [{ name: 'A' }, { name: 'B' }],
             rows: [['x', 1]],
         });
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as Snapshot;
         // Import should still succeed — no throw. Cells exist normally.
         expect(snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0]?.v).toBe('A');
     });
@@ -416,7 +497,7 @@ describe('M12 — hyperlinks', () => {
         ws.getCell('A1').value = { text: 'Click me', hyperlink: 'https://example.com/' };
         const buf = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
 
-        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as Snapshot;
+        const snap = (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as Snapshot;
         const cell = snap.sheets[snap.sheetOrder[0]].cellData[0]?.[0];
         expect(cell?.v).toBe('Click me');
         // p must mirror Univer's runtime hyperlink doc model so its layout
@@ -425,15 +506,9 @@ describe('M12 — hyperlinks', () => {
         // 'height')" — see buildHyperlinkCellP comment).
         const body = cell?.p?.body;
         expect(body?.dataStream).toBe('Click me\r\n');
-        expect(body?.paragraphs).toEqual([
-            { startIndex: 'Click me'.length, paragraphStyle: {} },
-        ]);
-        expect(body?.sectionBreaks).toEqual([
-            { startIndex: 'Click me'.length + 1 },
-        ]);
-        expect(body?.textRuns).toEqual([
-            { st: 0, ed: 'Click me'.length, ts: {} },
-        ]);
+        expect(body?.paragraphs).toEqual([{ startIndex: 'Click me'.length, paragraphStyle: {} }]);
+        expect(body?.sectionBreaks).toEqual([{ startIndex: 'Click me'.length + 1 }]);
+        expect(body?.textRuns).toEqual([{ st: 0, ed: 'Click me'.length, ts: {} }]);
         const ranges = body?.customRanges ?? [];
         expect(ranges.length).toBe(1);
         expect(ranges[0].rangeType).toBe(0);
@@ -441,7 +516,11 @@ describe('M12 — hyperlinks', () => {
 
         // documentStyle.pageSize must be finite & JSON-safe so the
         // documentSkeleton actually lays out a page on load.
-        const ds = (cell?.p as { documentStyle?: { pageSize?: { width?: unknown; height?: unknown } } } | undefined)?.documentStyle;
+        const ds = (
+            cell?.p as
+                | { documentStyle?: { pageSize?: { width?: unknown; height?: unknown } } }
+                | undefined
+        )?.documentStyle;
         expect(ds?.pageSize?.width).toBeDefined();
         expect(ds?.pageSize?.height).toBeDefined();
         expect(Number.isFinite(ds?.pageSize?.width as number)).toBe(true);
@@ -454,36 +533,52 @@ describe('M12 — hyperlinks', () => {
 
     test('export: snapshot with cell.p hyperlink → exported xlsx has hyperlink in the cell', async () => {
         const snap = {
-            id: 'wb-h', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
+            id: 'wb-h',
+            name: 'Spreadsheet',
+            appVersion: '0.1.0',
+            locale: 'enUS',
             sheetOrder: ['s1'],
             styles: {},
             sheets: {
                 s1: {
-                    id: 's1', name: 'Sheet1',
+                    id: 's1',
+                    name: 'Sheet1',
                     cellData: {
                         0: {
                             0: {
-                                v: 'Click here', t: 1,
+                                v: 'Click here',
+                                t: 1,
                                 p: {
                                     id: '__INTERNAL_EDITOR__DOCS_NORMAL',
                                     body: {
                                         dataStream: 'Click here',
-                                        customRanges: [{
-                                            startIndex: 0, endIndex: 9, rangeId: 'r1',
-                                            rangeType: 0, properties: { url: 'https://destination.example/' },
-                                        }],
+                                        customRanges: [
+                                            {
+                                                startIndex: 0,
+                                                endIndex: 9,
+                                                rangeId: 'r1',
+                                                rangeType: 0,
+                                                properties: { url: 'https://destination.example/' },
+                                            },
+                                        ],
                                     },
                                 },
                             },
                         },
                     },
-                    rowCount: 100, columnCount: 26,
-                    defaultColumnWidth: 73, defaultRowHeight: 19,
-                    mergeData: [], rowData: {}, columnData: {},
+                    rowCount: 100,
+                    columnCount: 26,
+                    defaultColumnWidth: 73,
+                    defaultRowHeight: 19,
+                    mergeData: [],
+                    rowData: {},
+                    columnData: {},
                 },
             },
         };
-        const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
         const ws = wb.getWorksheet('Sheet1')!;
@@ -516,22 +611,32 @@ describe('M12 — hyperlinks', () => {
 
     test('cell with empty URL → no hyperlink emitted', async () => {
         const snap = {
-            id: 'wb-h', name: 'Spreadsheet', appVersion: '0.1.0', locale: 'enUS',
+            id: 'wb-h',
+            name: 'Spreadsheet',
+            appVersion: '0.1.0',
+            locale: 'enUS',
             sheetOrder: ['s1'],
             styles: {},
             sheets: {
                 s1: {
-                    id: 's1', name: 'Sheet1',
+                    id: 's1',
+                    name: 'Sheet1',
                     cellData: {
                         0: { 0: { v: 'no url', t: 1 } },
                     },
-                    rowCount: 100, columnCount: 26,
-                    defaultColumnWidth: 73, defaultRowHeight: 19,
-                    mergeData: [], rowData: {}, columnData: {},
+                    rowCount: 100,
+                    columnCount: 26,
+                    defaultColumnWidth: 73,
+                    defaultRowHeight: 19,
+                    mergeData: [],
+                    rowData: {},
+                    columnData: {},
                 },
             },
         };
-        const buf = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
         const ws = wb.getWorksheet('Sheet1')!;

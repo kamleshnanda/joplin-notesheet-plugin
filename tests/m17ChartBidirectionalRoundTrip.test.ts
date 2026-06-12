@@ -11,7 +11,9 @@
 // details) that nonetheless re-imports to the same logical chart.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -36,7 +38,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing: ChartDrawing }> {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -46,7 +49,8 @@ function collectChartDrawings(snap: unknown): Array<{ subUnitId: string; drawing
         const order: string[] = sub.order ?? Object.keys(sub.data);
         for (const id of order) {
             const d = sub.data[id];
-            if (d?.componentKey === 'NotesheetChart') out.push({ subUnitId, drawing: d as ChartDrawing });
+            if (d?.componentKey === 'NotesheetChart')
+                out.push({ subUnitId, drawing: d as ChartDrawing });
         }
     }
     return out;
@@ -124,7 +128,9 @@ describe('M17 feature-5: chart bidirectional round-trip across types', () => {
         // cached labels/values pass equality but breaks Excel's
         // re-evaluation from cells.
         const exportedZip = await JSZip.loadAsync(exportedBuffer);
-        const chartFiles = Object.keys(exportedZip.files).filter((k) => /^xl\/charts\/chart\d+\.xml$/.test(k));
+        const chartFiles = Object.keys(exportedZip.files).filter((k) =>
+            /^xl\/charts\/chart\d+\.xml$/.test(k),
+        );
         expect(chartFiles.length).toBeGreaterThan(0);
         const chartXml = await exportedZip.file(chartFiles[0])!.async('string');
         const formulas = [...chartXml.matchAll(/<c:f>([^<]+)<\/c:f>/g)].map((m) => m[1]);

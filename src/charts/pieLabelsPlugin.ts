@@ -48,6 +48,9 @@ export interface NotesheetPieLabelsOptions {
 // Teach Chart.js's typed plugin-options map about our custom plugin so
 // `options.plugins.notesheetPieLabels` typechecks at the call site.
 declare module 'chart.js' {
+    // TType must match Chart.js's PluginOptionsByType signature arity even
+    // though our plugin options don't vary by chart type — hence unused.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     interface PluginOptionsByType<TType extends ChartType> {
         notesheetPieLabels?: NotesheetPieLabelsOptions;
     }
@@ -57,12 +60,7 @@ const PLUGIN_ID = 'notesheetPieLabels';
 
 // Build the label text for one slice from the dLbls flags. Mirrors the
 // part order Excel/our datalabels formatter used: category, value, percent.
-function labelLines(
-    flags: PieLabelFlags,
-    label: unknown,
-    value: number,
-    total: number,
-): string[] {
+function labelLines(flags: PieLabelFlags, label: unknown, value: number, total: number): string[] {
     const lines: string[] = [];
     if (flags.showCatName && label != null) lines.push(String(label));
     if (flags.showVal) lines.push(String(value));
@@ -215,7 +213,8 @@ export const notesheetPieLabelsPlugin: Plugin = {
                 const bg = arc.options?.backgroundColor;
                 // Wrap to the gutter width available between the plot edge
                 // and the canvas edge so long categories don't run off.
-                const gutterW = (side === 'left' ? chartArea.left : chart.width - chartArea.right) - 12;
+                const gutterW =
+                    (side === 'left' ? chartArea.left : chart.width - chartArea.right) - 12;
                 const wrapped = wrapLines(ctx, lines, Math.max(40, gutterW));
                 const wbox = measure(ctx, wrapped);
                 outside.push({
@@ -245,7 +244,9 @@ export const notesheetPieLabelsPlugin: Plugin = {
         const yMin = chartArea.top + titleRoom;
         const yMax = chartArea.bottom - 4;
         for (const side of ['left', 'right'] as const) {
-            const group = outside.filter((o) => o.side === side).sort((a, b) => a.labelY - b.labelY);
+            const group = outside
+                .filter((o) => o.side === side)
+                .sort((a, b) => a.labelY - b.labelY);
             if (group.length === 0) continue;
             const dir = side === 'right' ? 1 : -1;
             // Text anchors JUST OUTSIDE the plot edge and grows away from the
@@ -277,9 +278,10 @@ export const notesheetPieLabelsPlugin: Plugin = {
             for (const o of group) {
                 // Clamp the text anchor so the (right-aligned left / left-
                 // aligned right) text box stays fully on-canvas.
-                const anchor = side === 'right'
-                    ? Math.min(textAnchorX, chart.width - 4 - o.boxW)
-                    : Math.max(textAnchorX, 4 + o.boxW);
+                const anchor =
+                    side === 'right'
+                        ? Math.min(textAnchorX, chart.width - 4 - o.boxW)
+                        : Math.max(textAnchorX, 4 + o.boxW);
                 // Leader line: slice rim → radial kink → text anchor. The
                 // kink (just inside the plot edge) at the label's
                 // de-overlapped y gives the classic Excel elbow.
@@ -306,7 +308,12 @@ export const notesheetPieLabelsPlugin: Plugin = {
 };
 
 // Draw a vertically-centred stack of text lines at (x, yCenter).
-function drawLines(ctx: CanvasRenderingContext2D, lines: string[], x: number, yCenter: number): void {
+function drawLines(
+    ctx: CanvasRenderingContext2D,
+    lines: string[],
+    x: number,
+    yCenter: number,
+): void {
     const lineH = 14;
     const startY = yCenter - ((lines.length - 1) * lineH) / 2;
     for (let i = 0; i < lines.length; i++) {

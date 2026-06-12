@@ -12,7 +12,9 @@
 //   3. Cells with no rotation must NOT emit a tr field.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import ExcelJS from 'exceljs';
@@ -21,24 +23,32 @@ import { snapshotToXlsxBuffer, xlsxBufferToSnapshot } from '../src/xlsx';
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, { v?: unknown; s?: string }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<number, Record<number, { v?: unknown; s?: string }>>;
+        }
+    >;
     styles: Record<string, Record<string, unknown>>;
 }
 
-function styleAt(snap: SnapshotShape, sheetIdx: number, row: number, col: number): Record<string, unknown> | null {
+function styleAt(
+    snap: SnapshotShape,
+    sheetIdx: number,
+    row: number,
+    col: number,
+): Record<string, unknown> | null {
     const sheet = snap.sheets[snap.sheetOrder[sheetIdx]];
     const cell = sheet.cellData[row]?.[col];
     return cell?.s ? snap.styles[cell.s] : null;
 }
 
 async function importBuf(buf: Buffer): Promise<SnapshotShape> {
-    return await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+    return (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as SnapshotShape;
 }
 
 describe('M13 — rotated text edge cases', () => {
-    test('import: textRotation=\'vertical\' (Excel mode 255) maps to {a:0, v:1}', async () => {
+    test("import: textRotation='vertical' (Excel mode 255) maps to {a:0, v:1}", async () => {
         const wb = new ExcelJS.Workbook();
         const ws = wb.addWorksheet('Sheet1');
         ws.getCell('A1').value = 'stacked';
@@ -94,7 +104,9 @@ describe('M13 — rotated text edge cases', () => {
         });
         const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
         const snap = await importBuf(buf0);
-        const buf1 = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf1 = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb1 = new ExcelJS.Workbook();
         await wb1.xlsx.load(buf1 as unknown as Parameters<typeof wb1.xlsx.load>[0]);
         const ws1 = wb1.getWorksheet('Sheet1')!;
@@ -103,14 +115,16 @@ describe('M13 — rotated text edge cases', () => {
         });
     });
 
-    test('round-trip: vertical stacked mode survives export → re-import as \'vertical\'', async () => {
+    test("round-trip: vertical stacked mode survives export → re-import as 'vertical'", async () => {
         const wb = new ExcelJS.Workbook();
         const ws = wb.addWorksheet('Sheet1');
         ws.getCell('A1').value = 'stacked';
         ws.getCell('A1').alignment = { textRotation: 'vertical' };
         const buf0 = Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer);
         const snap = await importBuf(buf0);
-        const buf1 = await snapshotToXlsxBuffer(snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0]);
+        const buf1 = await snapshotToXlsxBuffer(
+            snap as unknown as Parameters<typeof snapshotToXlsxBuffer>[0],
+        );
         const wb1 = new ExcelJS.Workbook();
         await wb1.xlsx.load(buf1 as unknown as Parameters<typeof wb1.xlsx.load>[0]);
         const ws1 = wb1.getWorksheet('Sheet1')!;

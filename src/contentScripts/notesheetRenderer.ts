@@ -39,7 +39,7 @@
 //      `escapeHtml()`.
 
 // Markdown-It is supplied by Joplin at runtime; we type it loosely.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 type MarkdownIt = any;
 type FenceToken = {
     info?: string;
@@ -122,14 +122,14 @@ const VERTICAL_TO_CSS: Record<number, string> = { 1: 'top', 2: 'middle', 3: 'bot
 // Univer BorderStyleTypes → CSS border-style. Numeric enum matches
 // `BORDER_STYLE_TO_UNIVER` in src/xlsx.ts (mirrored).
 const BORDER_STYLE_NUM_TO_CSS: Record<number, string> = {
-    1: '1px solid',  // thin
+    1: '1px solid', // thin
     2: '1px dotted', // hair (approximation)
     3: '1px dotted',
     4: '1px dashed',
     5: '1px dashed',
     6: '1px dashed',
     7: '3px double',
-    8: '2px solid',  // medium
+    8: '2px solid', // medium
     9: '2px dashed',
     10: '2px dashed',
     11: '2px dashed',
@@ -168,10 +168,7 @@ function resolveCellStyle(
     return {};
 }
 
-function buildCellInlineStyle(
-    base: ResolvedStyle,
-    cfFill: string | null,
-): string {
+function buildCellInlineStyle(base: ResolvedStyle, cfFill: string | null): string {
     const parts: string[] = [];
     // Background: CF fill (if any) wins over the base style. CF rules
     // explicitly override per-cell formatting in Excel's render order;
@@ -196,13 +193,16 @@ function buildCellInlineStyle(
     }
     if (base.bd) {
         const sides: Array<['t', 'top'] | ['r', 'right'] | ['b', 'bottom'] | ['l', 'left']> = [
-            ['t', 'top'], ['r', 'right'], ['b', 'bottom'], ['l', 'left'],
+            ['t', 'top'],
+            ['r', 'right'],
+            ['b', 'bottom'],
+            ['l', 'left'],
         ];
         for (const [k, css] of sides) {
             const side = base.bd[k];
             if (!side || typeof side.s !== 'number') continue;
             const styleRule = BORDER_STYLE_NUM_TO_CSS[side.s] ?? '1px solid';
-            const colour = (side.cl && side.cl.rgb) ? side.cl.rgb : '#000000';
+            const colour = side.cl && side.cl.rgb ? side.cl.rgb : '#000000';
             parts.push(`border-${css}: ${styleRule} ${colour}`);
         }
     }
@@ -227,7 +227,7 @@ function buildCellInlineStyle(
 //   serial 61    → 1900-03-01
 //   serial 46037 → 2026-01-15 (matches Excel's render of
 //                  FormattingSmorgasboard.xlsx F2)
-const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 31);  // 1899-12-31 UTC
+const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 31); // 1899-12-31 UTC
 function excelSerialToDate(serial: number): Date | null {
     if (!Number.isFinite(serial) || serial < 1) return null;
     const adjusted = serial > 60 ? serial - 1 : serial;
@@ -237,7 +237,20 @@ function excelSerialToDate(serial: number): Date | null {
     return d;
 }
 
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_SHORT = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+];
 
 function pad2(n: number): string {
     return n < 10 ? '0' + n : String(n);
@@ -317,7 +330,10 @@ function pad2(n: number): string {
 // regex/string match; first match wins. Patterns are organised by
 // section count (single → multi) so the conditional / accounting
 // patterns are evaluated before the simpler ones they could subsume.
-function formatNumberWithPattern(value: number | string, pattern: string): { html: string; raw: string } {
+function formatNumberWithPattern(
+    value: number | string,
+    pattern: string,
+): { html: string; raw: string } {
     const p = pattern.trim();
 
     // Pre-check: text-only patterns (`@ "suffix"`) accept any value
@@ -356,9 +372,10 @@ function formatNumberWithPattern(value: number | string, pattern: string): { htm
             const sect = usePositive ? posColour : negColour;
             const cleaned = sect.body.trim();
             const inner = formatNumberSimple(Math.abs(num), cleaned);
-            const signedRaw = (!usePositive && !cleaned.includes('-') && !cleaned.includes('('))
-                ? '-' + inner
-                : inner;
+            const signedRaw =
+                !usePositive && !cleaned.includes('-') && !cleaned.includes('(')
+                    ? '-' + inner
+                    : inner;
             const colour = sect.colour;
             if (colour) {
                 return {
@@ -379,14 +396,16 @@ function formatNumberWithPattern(value: number | string, pattern: string): { htm
     // Section 3: text (cell value as-is, surrounded by underscores)
     // We detect by looking for the underscore-paren prefix `_(` AND
     // the asterisk-fill `* ` AND the explicit-dash zero section.
-    if (sections.length === 4 && sections.every((s) => /^_[(\-]/.test(s) || /^_\(/.test(s))) {
+    if (sections.length === 4 && sections.every((s) => /^_[(-]/.test(s) || /^_\(/.test(s))) {
         const accountingHtml = formatAccounting(num, sections);
-        if (accountingHtml !== null) return { html: escapeHtml(accountingHtml), raw: accountingHtml };
+        if (accountingHtml !== null)
+            return { html: escapeHtml(accountingHtml), raw: accountingHtml };
     }
     // Locale-variant single-section accounting (e.g. krona).
-    if (sections.length === 1 && /^_[\-(]/.test(p) && /\*/.test(p)) {
+    if (sections.length === 1 && /^_[-(]/.test(p) && /\*/.test(p)) {
         const accountingHtml = formatAccounting(num, [p, p, p, p]);
-        if (accountingHtml !== null) return { html: escapeHtml(accountingHtml), raw: accountingHtml };
+        if (accountingHtml !== null)
+            return { html: escapeHtml(accountingHtml), raw: accountingHtml };
     }
 
     // ── Datetime with locale code: `[$-409]m/d/yy h:mm AM/PM;@` ────
@@ -425,9 +444,21 @@ function splitNumFmtSections(p: string): string[] {
             if (c === '"') inQuote = false;
             continue;
         }
-        if (c === '"') { inQuote = true; buf += c; continue; }
-        if (c === '[') { depth++; buf += c; continue; }
-        if (c === ']') { depth--; buf += c; continue; }
+        if (c === '"') {
+            inQuote = true;
+            buf += c;
+            continue;
+        }
+        if (c === '[') {
+            depth++;
+            buf += c;
+            continue;
+        }
+        if (c === ']') {
+            depth--;
+            buf += c;
+            continue;
+        }
         if (c === ';' && depth === 0) {
             out.push(buf);
             buf = '';
@@ -469,7 +500,10 @@ function formatNumberSimple(value: number, p: string): string | null {
     if (currencyMatch) {
         const decimals = currencyMatch[1] ? currencyMatch[1].length : 0;
         const abs = Math.abs(value);
-        const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        const formatted = abs.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
         const sign = value < 0 ? '-' : '';
         return `${sign}$${formatted}`;
     }
@@ -482,7 +516,10 @@ function formatNumberSimple(value: number, p: string): string | null {
         const symbol = suffixCurrency[3];
         const abs = Math.abs(value);
         const formatted = grouping
-            ? abs.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+            ? abs.toLocaleString('en-US', {
+                  minimumFractionDigits: decimals,
+                  maximumFractionDigits: decimals,
+              })
             : abs.toFixed(decimals);
         const sign = value < 0 ? '-' : '';
         return `${sign}${formatted} ${symbol}`;
@@ -520,7 +557,8 @@ function formatDate(value: number, p: string): string | null {
     }
     if (p === 'dd-mmm-yy' || p === 'dd-MMM-yy') {
         const d = excelSerialToDate(value);
-        if (d) return `${pad2(d.getUTCDate())}-${MONTH_SHORT[d.getUTCMonth()]}-${pad2(d.getUTCFullYear() % 100)}`;
+        if (d)
+            return `${pad2(d.getUTCDate())}-${MONTH_SHORT[d.getUTCMonth()]}-${pad2(d.getUTCFullYear() % 100)}`;
     }
     return null;
 }
@@ -632,7 +670,10 @@ function renderCellValue(cell: SnapshotCell, style?: ResolvedStyle): string {
         // For HTML, replace with <br/>; the value is escaped first so a
         // cell value that legitimately contains "<br>" stays literal.
         const ds = cell.p.body.dataStream.replace(/\r?\n$/, '');
-        return escapeHtml(ds).replace(/\r\n/g, '<br/>').replace(/\r/g, '<br/>').replace(/\n/g, '<br/>');
+        return escapeHtml(ds)
+            .replace(/\r\n/g, '<br/>')
+            .replace(/\r/g, '<br/>')
+            .replace(/\n/g, '<br/>');
     }
     if (cell.v === undefined || cell.v === null) return '';
     const pattern = style?.n?.pattern;
@@ -698,8 +739,12 @@ function lerpRgb(a: string, b: string, t: number): string {
     const ah = a.replace('#', '');
     const bh = b.replace('#', '');
     if (ah.length !== 6 || bh.length !== 6) return a;
-    const ar = parseInt(ah.slice(0, 2), 16), ag = parseInt(ah.slice(2, 4), 16), ab = parseInt(ah.slice(4, 6), 16);
-    const br = parseInt(bh.slice(0, 2), 16), bg = parseInt(bh.slice(2, 4), 16), bb = parseInt(bh.slice(4, 6), 16);
+    const ar = parseInt(ah.slice(0, 2), 16),
+        ag = parseInt(ah.slice(2, 4), 16),
+        ab = parseInt(ah.slice(4, 6), 16);
+    const br = parseInt(bh.slice(0, 2), 16),
+        bg = parseInt(bh.slice(2, 4), 16),
+        bb = parseInt(bh.slice(4, 6), 16);
     const cr = Math.round(ar + (br - ar) * t);
     const cg = Math.round(ag + (bg - ag) * t);
     const cb = Math.round(ab + (bb - ab) * t);
@@ -728,7 +773,10 @@ function resolveCfvo(
             return lo + (hi - lo) * (v / 100);
         }
         // percentile
-        const idx = Math.min(sortedValues.length - 1, Math.max(0, Math.round(((v / 100) * (sortedValues.length - 1)))));
+        const idx = Math.min(
+            sortedValues.length - 1,
+            Math.max(0, Math.round((v / 100) * (sortedValues.length - 1))),
+        );
         return sortedValues[idx];
     }
     if (type === 'num' || type === 'number') {
@@ -742,15 +790,14 @@ function resolveCfvo(
 
 // Evaluate a colorScale rule for a single cell value. The rule's
 // `config` is `[{index, color, value: cfvo}, ...]` (M15 import shape).
-function evalColorScale(
-    rule: CfRule,
-    value: number,
-    sortedValues: number[],
-): string | null {
+function evalColorScale(rule: CfRule, value: number, sortedValues: number[]): string | null {
     const cfg = rule.rule?.config;
     if (!Array.isArray(cfg) || cfg.length < 2) return null;
     const anchors: Array<{ pos: number; colour: string }> = [];
-    for (const a of cfg as Array<{ color?: string; value?: { type?: string; value?: number | string } }>) {
+    for (const a of cfg as Array<{
+        color?: string;
+        value?: { type?: string; value?: number | string };
+    }>) {
         const pos = a.value ? resolveCfvo(a.value, sortedValues) : null;
         if (pos === null || !Number.isFinite(pos) || !a.color) continue;
         anchors.push({ pos, colour: a.color });
@@ -761,7 +808,8 @@ function evalColorScale(
     const last = anchors[anchors.length - 1];
     if (value >= last.pos) return last.colour;
     for (let i = 0; i < anchors.length - 1; i++) {
-        const lo = anchors[i], hi = anchors[i + 1];
+        const lo = anchors[i],
+            hi = anchors[i + 1];
         if (value >= lo.pos && value <= hi.pos) {
             const span = hi.pos - lo.pos;
             const t = span === 0 ? 0 : (value - lo.pos) / span;
@@ -773,12 +821,18 @@ function evalColorScale(
 
 function compareForCellIs(op: string | undefined, cellValue: number, target: number): boolean {
     switch (op) {
-        case 'greaterThan': return cellValue > target;
-        case 'greaterThanOrEqual': return cellValue >= target;
-        case 'lessThan': return cellValue < target;
-        case 'lessThanOrEqual': return cellValue <= target;
-        case 'equal': return cellValue === target;
-        case 'notEqual': return cellValue !== target;
+        case 'greaterThan':
+            return cellValue > target;
+        case 'greaterThanOrEqual':
+            return cellValue >= target;
+        case 'lessThan':
+            return cellValue < target;
+        case 'lessThanOrEqual':
+            return cellValue <= target;
+        case 'equal':
+            return cellValue === target;
+        case 'notEqual':
+            return cellValue !== target;
         case 'between':
             // 'between' uses two formulae; M16 evaluator only sees the
             // first since the import-side translator stores `formulae[0]`
@@ -892,19 +946,21 @@ interface RenderContext {
     styles: Record<string, Record<string, unknown>>;
 }
 
-function buildMergeIndex(
-    sheet: SnapshotSheet,
-): { skipKeys: Set<string>; anchors: Map<string, { rowSpan: number; colSpan: number }> } {
+function buildMergeIndex(sheet: SnapshotSheet): {
+    skipKeys: Set<string>;
+    anchors: Map<string, { rowSpan: number; colSpan: number }>;
+} {
     const skipKeys = new Set<string>();
     const anchors = new Map<string, { rowSpan: number; colSpan: number }>();
     if (!Array.isArray(sheet.mergeData)) return { skipKeys, anchors };
     for (const m of sheet.mergeData) {
         if (
-            typeof m.startRow !== 'number'
-            || typeof m.endRow !== 'number'
-            || typeof m.startColumn !== 'number'
-            || typeof m.endColumn !== 'number'
-        ) continue;
+            typeof m.startRow !== 'number' ||
+            typeof m.endRow !== 'number' ||
+            typeof m.startColumn !== 'number' ||
+            typeof m.endColumn !== 'number'
+        )
+            continue;
         const rowSpan = m.endRow - m.startRow + 1;
         const colSpan = m.endColumn - m.startColumn + 1;
         anchors.set(`${m.startRow}:${m.startColumn}`, { rowSpan, colSpan });
@@ -972,12 +1028,14 @@ function renderSheet(
     out.push('<tbody>');
     for (let r = 0; r < rows; r++) {
         out.push('<tr>');
-        const rowMap: Record<string, SnapshotCell> | undefined = (cellData[String(r)] ?? cellData[r as unknown as string]);
+        const rowMap: Record<string, SnapshotCell> | undefined =
+            cellData[String(r)] ?? cellData[r as unknown as string];
         for (let c = 0; c < cols; c++) {
             const key = `${r}:${c}`;
             if (skipKeys.has(key)) continue;
             const anchor = anchors.get(key);
-            const cell: SnapshotCell = rowMap?.[String(c)] ?? rowMap?.[c as unknown as string] ?? {};
+            const cell: SnapshotCell =
+                rowMap?.[String(c)] ?? rowMap?.[c as unknown as string] ?? {};
             const baseStyle = resolveCellStyle(cell, ctx.styles);
             const cfFill = cfFills.get(key) ?? null;
             const inline = buildCellInlineStyle(baseStyle, cfFill);
@@ -1052,17 +1110,34 @@ export function renderFenceToken(token: FenceToken): string | null {
 // HTML; otherwise we delegate to the previous renderer (which handles
 // every other code-fence type — generic code blocks, javascript, etc.).
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export default function (_context: any) {
     return {
         plugin: function (markdownIt: MarkdownIt, _opts: unknown) {
             if (!markdownIt || !markdownIt.renderer || !markdownIt.renderer.rules) return;
-            const defaultFence = markdownIt.renderer.rules.fence
-                || function (tokens: FenceToken[], idx: number, options: unknown, _env: unknown, self: { renderToken: (...args: unknown[]) => string }) {
-                    return self.renderToken(tokens as unknown as never[], idx as unknown as never, options as never);
+            const defaultFence =
+                markdownIt.renderer.rules.fence ||
+                function (
+                    tokens: FenceToken[],
+                    idx: number,
+                    options: unknown,
+                    _env: unknown,
+                    self: { renderToken: (...args: unknown[]) => string },
+                ) {
+                    return self.renderToken(
+                        tokens as unknown as never[],
+                        idx as unknown as never,
+                        options as never,
+                    );
                 };
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            markdownIt.renderer.rules.fence = function (tokens: FenceToken[], idx: number, options: unknown, env: unknown, self: any) {
+
+            markdownIt.renderer.rules.fence = function (
+                tokens: FenceToken[],
+                idx: number,
+                options: unknown,
+                env: unknown,
+                self: any,
+            ) {
                 const token = tokens[idx];
                 const html = renderFenceToken(token);
                 if (html !== null) return html;

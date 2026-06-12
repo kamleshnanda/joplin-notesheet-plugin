@@ -13,7 +13,9 @@
 //      identifiers, not data-affecting; documented in xlsxChart.ts.)
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -39,7 +41,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): ChartDrawing[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -68,8 +71,9 @@ describe('M17 hardcoded-audit follow-through: holeSize round-trip', () => {
         const fp = path.join(FIXTURES_DIR, '04-doughnut.xlsx');
         // Sanity: source has <c:holeSize val="75"/>, not the prior
         // hardcoded 50.
-        const sourceXml = await JSZip.loadAsync(readFileSync(fp) as unknown as ArrayBuffer)
-            .then((z) => z.file('xl/charts/chart1.xml')!.async('string'));
+        const sourceXml = await JSZip.loadAsync(readFileSync(fp) as unknown as ArrayBuffer).then(
+            (z) => z.file('xl/charts/chart1.xml')!.async('string'),
+        );
         expect(sourceXml).toMatch(/<c:holeSize\s+val="75"/);
 
         const snap = await xlsxBufferToSnapshot(readFileSync(fp) as unknown as Buffer);
@@ -122,8 +126,11 @@ describe('M17 hardcoded-audit follow-through: line smooth + markers', () => {
 describe('M17 hardcoded-audit follow-through: dispBlanksAs + crossBetween', () => {
     test('all fixtures import dispBlanksAs="gap" (source default)', async () => {
         const fixtures = [
-            '01-bar-simple', '02-line-multi-series', '03-pie-single',
-            '04-doughnut', '11-stacked-bar-chart',
+            '01-bar-simple',
+            '02-line-multi-series',
+            '03-pie-single',
+            '04-doughnut',
+            '11-stacked-bar-chart',
         ];
         for (const fixture of fixtures) {
             const fp = path.join(FIXTURES_DIR, `${fixture}.xlsx`);

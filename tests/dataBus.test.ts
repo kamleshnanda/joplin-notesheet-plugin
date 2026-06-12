@@ -50,8 +50,12 @@ describe('chart data bus', () => {
 
     test('throwing listener does not block others', () => {
         let secondCalled = false;
-        subscribeChartUpdate('y', () => { throw new Error('boom'); });
-        subscribeChartUpdate('y', () => { secondCalled = true; });
+        subscribeChartUpdate('y', () => {
+            throw new Error('boom');
+        });
+        subscribeChartUpdate('y', () => {
+            secondCalled = true;
+        });
         // Mute console.error during this test only.
         const orig = console.error;
         console.error = () => undefined;

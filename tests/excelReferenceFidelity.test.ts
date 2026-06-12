@@ -94,25 +94,34 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 const APTOS_PNG = path.join(REFERENCES_DIR, 'FormattingSmorgasboard-Aptos.png');
 const CLASSIC_PNG = path.join(REFERENCES_DIR, 'FormattingSmorgasboard-Classic.png');
 const APTOS_XLSX = path.join(FIXTURES_DIR, 'FormattingSmorgasboard.xlsx');
-const CLASSIC_XLSX = path.join(FIXTURES_DIR, 'FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx');
+const CLASSIC_XLSX = path.join(
+    FIXTURES_DIR,
+    'FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx',
+);
 const CF_VARIANTS_XLSX = path.join(FIXTURES_DIR, 'ConditionalFormatting-Variants.xlsx');
 
 interface SnapshotShape {
     sheetOrder: string[];
-    sheets: Record<string, {
-        cellData: Record<number, Record<number, { v?: unknown; s?: string }>>;
-    }>;
-    styles: Record<string, {
-        bg?: { rgb: string };
-        bd?: Partial<Record<'t' | 'r' | 'b' | 'l', { s: number; cl: { rgb: string } }>>;
-    }>;
+    sheets: Record<
+        string,
+        {
+            cellData: Record<number, Record<number, { v?: unknown; s?: string }>>;
+        }
+    >;
+    styles: Record<
+        string,
+        {
+            bg?: { rgb: string };
+            bd?: Partial<Record<'t' | 'r' | 'b' | 'l', { s: number; cl: { rgb: string } }>>;
+        }
+    >;
 }
 
 const TOLERANCE = 8;
 
 async function loadSnapshot(file: string): Promise<SnapshotShape> {
     const buf = readFileSync(file);
-    return await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as SnapshotShape;
+    return (await xlsxBufferToSnapshot(buf as unknown as Buffer)) as unknown as SnapshotShape;
 }
 
 function snapBg(snap: SnapshotShape, row: number, col: number): string | undefined {
@@ -123,7 +132,11 @@ function snapBg(snap: SnapshotShape, row: number, col: number): string | undefin
     return style?.bg?.rgb;
 }
 
-function snapBorderTop(snap: SnapshotShape, row: number, col: number): { rgb: string; style: number } | undefined {
+function snapBorderTop(
+    snap: SnapshotShape,
+    row: number,
+    col: number,
+): { rgb: string; style: number } | undefined {
     const sheet = snap.sheets[snap.sheetOrder[0]];
     const cell = sheet.cellData[row]?.[col];
     if (!cell?.s) return undefined;
@@ -133,7 +146,11 @@ function snapBorderTop(snap: SnapshotShape, row: number, col: number): { rgb: st
     return { rgb: t.cl.rgb, style: t.s };
 }
 
-function snapBorderBottom(snap: SnapshotShape, row: number, col: number): { rgb: string; style: number } | undefined {
+function snapBorderBottom(
+    snap: SnapshotShape,
+    row: number,
+    col: number,
+): { rgb: string; style: number } | undefined {
     const sheet = snap.sheets[snap.sheetOrder[0]];
     const cell = sheet.cellData[row]?.[col];
     if (!cell?.s) return undefined;
@@ -143,7 +160,12 @@ function snapBorderBottom(snap: SnapshotShape, row: number, col: number): { rgb:
     return { rgb: b.cl.rgb, style: b.s };
 }
 
-function expectRgbWithin(actualHex: string | undefined, expectedHex: string, tol: number, label: string): void {
+function expectRgbWithin(
+    actualHex: string | undefined,
+    expectedHex: string,
+    tol: number,
+    label: string,
+): void {
     expect(actualHex).toBeDefined();
     const a = hexToRgb(actualHex!);
     const e = hexToRgb(expectedHex);
@@ -151,7 +173,7 @@ function expectRgbWithin(actualHex: string | undefined, expectedHex: string, tol
     if (d.max > tol) {
         throw new Error(
             `${label}: expected ${expectedHex} ±${tol}, got ${actualHex.toUpperCase()} ` +
-            `(ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB})`,
+                `(ΔR=${d.dR}, ΔG=${d.dG}, ΔB=${d.dB})`,
         );
     }
 }
@@ -159,7 +181,9 @@ function expectRgbWithin(actualHex: string | undefined, expectedHex: string, tol
 describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
     describe('Aptos fixture (accent3 #196B24)', () => {
         let snap: SnapshotShape;
-        beforeAll(async () => { snap = await loadSnapshot(APTOS_XLSX); });
+        beforeAll(async () => {
+            snap = await loadSnapshot(APTOS_XLSX);
+        });
 
         test('header bg matches Excel render at #34692E (Δ ≤ 8)', () => {
             const ref = decodePng(APTOS_PNG);
@@ -212,7 +236,12 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
 
             const bottom = snapBorderBottom(snap, 9, 0);
             expect(bottom).toBeDefined();
-            expectRgbWithin(bottom!.rgb, borderSample.hex, TOLERANCE, 'Aptos totals bottom border colour');
+            expectRgbWithin(
+                bottom!.rgb,
+                borderSample.hex,
+                TOLERANCE,
+                'Aptos totals bottom border colour',
+            );
             // Style: BorderStyleTypes.MEDIUM (s=8).
             expect(bottom!.style).toBe(8);
         });
@@ -232,7 +261,12 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
             for (let r = 1; r <= 8; r++) {
                 const t = snapBorderTop(snap, r, 1);
                 expect(t).toBeDefined();
-                expectRgbWithin(t!.rgb, '#72D068', TOLERANCE, `Aptos row ${r} inter-row strip colour`);
+                expectRgbWithin(
+                    t!.rgb,
+                    '#72D068',
+                    TOLERANCE,
+                    `Aptos row ${r} inter-row strip colour`,
+                );
                 expect(t!.style).toBe(8); // MEDIUM
             }
         });
@@ -240,7 +274,9 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
 
     describe('Classic fixture (accent3 #A5A5A5)', () => {
         let snap: SnapshotShape;
-        beforeAll(async () => { snap = await loadSnapshot(CLASSIC_XLSX); });
+        beforeAll(async () => {
+            snap = await loadSnapshot(CLASSIC_XLSX);
+        });
 
         test('header bg matches Excel render at #A5A5A5 (Δ ≤ 8)', () => {
             const ref = decodePng(CLASSIC_PNG);
@@ -286,7 +322,12 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
 
             const bottom = snapBorderBottom(snap, 9, 0);
             expect(bottom).toBeDefined();
-            expectRgbWithin(bottom!.rgb, borderSample.hex, TOLERANCE, 'Classic totals bottom border colour');
+            expectRgbWithin(
+                bottom!.rgb,
+                borderSample.hex,
+                TOLERANCE,
+                'Classic totals bottom border colour',
+            );
             expect(bottom!.style).toBe(8); // MEDIUM
         });
 
@@ -303,7 +344,12 @@ describe('Excel reference fidelity — TableStyleMedium4 (M13/E)', () => {
             for (let r = 1; r <= 8; r++) {
                 const t = snapBorderTop(snap, r, 1);
                 expect(t).toBeDefined();
-                expectRgbWithin(t!.rgb, '#C9C9C9', TOLERANCE, `Classic row ${r} inter-row strip colour`);
+                expectRgbWithin(
+                    t!.rgb,
+                    '#C9C9C9',
+                    TOLERANCE,
+                    `Classic row ${r} inter-row strip colour`,
+                );
                 expect(t!.style).toBe(8);
             }
         });
@@ -330,9 +376,9 @@ interface ParsedCfRule {
     bottom?: boolean;
     formulae: string[];
     cfvo: Array<{ type: string; val?: string }>;
-    colors: string[];           // each entry like "#RRGGBB"
+    colors: string[]; // each entry like "#RRGGBB"
     iconSet?: string;
-    dxfBgArgb?: string;         // raw "FFRRGGBB" if dxfId resolves to a dxf with fill bgColor
+    dxfBgArgb?: string; // raw "FFRRGGBB" if dxfId resolves to a dxf with fill bgColor
     dxfId?: number;
 }
 
@@ -342,7 +388,9 @@ async function loadCfFixtureXml(filePath: string): Promise<{
 }> {
     const buf = readFileSync(filePath);
     const zip = await JSZip.loadAsync(buf);
-    const sheetXmlPath = Object.keys(zip.files).find((p) => /^xl\/worksheets\/sheet1\.xml$/.test(p));
+    const sheetXmlPath = Object.keys(zip.files).find((p) =>
+        /^xl\/worksheets\/sheet1\.xml$/.test(p),
+    );
     const stylesXmlPath = Object.keys(zip.files).find((p) => /^xl\/styles\.xml$/.test(p));
     if (!sheetXmlPath) throw new Error('missing xl/worksheets/sheet1.xml in fixture');
     if (!stylesXmlPath) throw new Error('missing xl/styles.xml in fixture');
@@ -444,41 +492,65 @@ interface CfSnapshotShape {
 
 async function loadCfSnapshot(file: string): Promise<{
     snapshot: CfSnapshotShape;
-    rulesBySubUnit: Record<string, Array<{
-        cfId?: string;
-        ranges: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
-        rule: Record<string, unknown>;
-    }>>;
+    rulesBySubUnit: Record<
+        string,
+        Array<{
+            cfId?: string;
+            ranges: Array<{
+                startRow: number;
+                endRow: number;
+                startColumn: number;
+                endColumn: number;
+            }>;
+            rule: Record<string, unknown>;
+        }>
+    >;
 }> {
     const buf = readFileSync(file);
-    const snapshot = await xlsxBufferToSnapshot(buf as unknown as Buffer) as unknown as CfSnapshotShape;
-    const entry = (snapshot.resources ?? []).find((r) => r?.name === SHEET_CONDITIONAL_FORMATTING_PLUGIN);
+    const snapshot = (await xlsxBufferToSnapshot(
+        buf as unknown as Buffer,
+    )) as unknown as CfSnapshotShape;
+    const entry = (snapshot.resources ?? []).find(
+        (r) => r?.name === SHEET_CONDITIONAL_FORMATTING_PLUGIN,
+    );
     if (!entry || typeof entry.data !== 'string') {
         return { snapshot, rulesBySubUnit: {} };
     }
-    const parsed = JSON.parse(entry.data) as Record<string, Array<{
-        cfId?: string;
-        ranges: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
-        rule: Record<string, unknown>;
-    }>>;
+    const parsed = JSON.parse(entry.data) as Record<
+        string,
+        Array<{
+            cfId?: string;
+            ranges: Array<{
+                startRow: number;
+                endRow: number;
+                startColumn: number;
+                endColumn: number;
+            }>;
+            rule: Record<string, unknown>;
+        }>
+    >;
     return { snapshot, rulesBySubUnit: parsed };
 }
 
-function rangesToSqref(ranges: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>): string {
-    return ranges.map((r) => {
-        const cl = (idx: number): string => {
-            let n = idx;
-            let s = '';
-            while (n >= 0) {
-                s = String.fromCharCode(65 + (n % 26)) + s;
-                n = Math.floor(n / 26) - 1;
-            }
-            return s;
-        };
-        const tl = cl(r.startColumn) + (r.startRow + 1);
-        const br = cl(r.endColumn) + (r.endRow + 1);
-        return tl === br ? tl : `${tl}:${br}`;
-    }).join(' ');
+function rangesToSqref(
+    ranges: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>,
+): string {
+    return ranges
+        .map((r) => {
+            const cl = (idx: number): string => {
+                let n = idx;
+                let s = '';
+                while (n >= 0) {
+                    s = String.fromCharCode(65 + (n % 26)) + s;
+                    n = Math.floor(n / 26) - 1;
+                }
+                return s;
+            };
+            const tl = cl(r.startColumn) + (r.startRow + 1);
+            const br = cl(r.endColumn) + (r.endRow + 1);
+            return tl === br ? tl : `${tl}:${br}`;
+        })
+        .join(' ');
 }
 
 describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', () => {
@@ -523,7 +595,11 @@ describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', ()
         expect(snap).toBeDefined();
         const sr = snap!.rule;
         expect(sr.type).toBe('colorScale');
-        const config = sr.config as Array<{ index?: number; color: string; value: { type: string; value?: number } }>;
+        const config = sr.config as Array<{
+            index?: number;
+            color: string;
+            value: { type: string; value?: number };
+        }>;
         expect(config).toHaveLength(3);
         expect(config[0].value.type).toBe('min');
         expect(config[0].color.toUpperCase()).toBe('#F8696B');
@@ -545,7 +621,15 @@ describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', ()
 
         const snap = snapRulesByPriority.find((r) => rangesToSqref(r.ranges) === 'C2:C11');
         expect(snap).toBeDefined();
-        const sr = snap!.rule as { type: string; config: { min: { type: string }; max: { type: string }; positiveColor: string; isGradient?: boolean } };
+        const sr = snap!.rule as {
+            type: string;
+            config: {
+                min: { type: string };
+                max: { type: string };
+                positiveColor: string;
+                isGradient?: boolean;
+            };
+        };
         expect(sr.type).toBe('dataBar');
         expect(sr.config.min.type).toBe('min');
         expect(sr.config.max.type).toBe('max');
@@ -563,7 +647,13 @@ describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', ()
 
         const snap = snapRulesByPriority.find((r) => rangesToSqref(r.ranges) === 'E2:E11');
         expect(snap).toBeDefined();
-        const sr = snap!.rule as { type: string; subType: string; operator: string; value?: number; style?: { bg?: { rgb: string } } };
+        const sr = snap!.rule as {
+            type: string;
+            subType: string;
+            operator: string;
+            value?: number;
+            style?: { bg?: { rgb: string } };
+        };
         expect(sr.type).toBe('highlightCell');
         expect(sr.subType).toBe('number');
         expect(sr.operator).toBe('greaterThan');
@@ -582,7 +672,14 @@ describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', ()
 
         const snap = snapRulesByPriority.find((r) => rangesToSqref(r.ranges) === 'G2:G11');
         expect(snap).toBeDefined();
-        const sr = snap!.rule as { type: string; subType: string; isBottom: boolean; isPercent?: boolean; value: number; style?: { bg?: { rgb: string } } };
+        const sr = snap!.rule as {
+            type: string;
+            subType: string;
+            isBottom: boolean;
+            isPercent?: boolean;
+            value: number;
+            style?: { bg?: { rgb: string } };
+        };
         expect(sr.type).toBe('highlightCell');
         expect(sr.subType).toBe('rank');
         expect(sr.isBottom).toBe(false);
@@ -604,7 +701,14 @@ describe('M15 CF reference fidelity — ConditionalFormatting-Variants.xlsx', ()
 
         const snap = snapRulesByPriority.find((r) => rangesToSqref(r.ranges) === 'I2:I11');
         expect(snap).toBeDefined();
-        const sr = snap!.rule as { type: string; config: Array<{ iconType: string; iconId: string; value: { type: string; value: number } }> };
+        const sr = snap!.rule as {
+            type: string;
+            config: Array<{
+                iconType: string;
+                iconId: string;
+                value: { type: string; value: number };
+            }>;
+        };
         expect(sr.type).toBe('iconSet');
         expect(sr.config).toHaveLength(3);
         // Every entry should reference the 3Arrows iconType.

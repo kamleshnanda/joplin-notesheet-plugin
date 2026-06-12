@@ -39,7 +39,9 @@ export function wrapSnapshot(snapshot: UniverSnapshot): string {
 // Extracts the snapshot from a note body. Returns null if the body is not
 // a Notesheet note (no fence) or if the JSON inside the fence is malformed.
 // The version is returned alongside so future migrations can branch on it.
-export function extractSnapshot(body: string | null | undefined):
+export function extractSnapshot(
+    body: string | null | undefined,
+):
     | { ok: true; snapshot: UniverSnapshot; version: number }
     | { ok: false; reason: 'no-fence' | 'bad-json' | 'unsupported-version' } {
     if (!body) return { ok: false, reason: 'no-fence' };

@@ -125,7 +125,8 @@ runs. Logging here so the operator (or a future debugger) doesn't
 mistake "no Univer canvas" for a driver bug.
 
 Next: invoke `scripts/pge/run-cycle.sh` to drive the smoke generator
-+ evaluator end-to-end.
+
+- evaluator end-to-end.
 
 ---
 
@@ -142,6 +143,7 @@ subprocess (next step). The 5-mechanism evidence gate
 write tools on evaluator, judge-by-bytes) is preserved.
 
 Steps executed:
+
 1. Read `src/snapshot.ts:emptySnapshot()`. Edited it to seed A1 =
    "harness-smoke-OK" with `s: 'pge-smoke-red'` referencing
    `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`. Exported
@@ -236,12 +238,14 @@ the editor page, not a separate CDP page. The earlier confusion
 ("plugin sandbox should host the editor") was wrong.
 
 Real selectors found (Univer 0.23):
+
 - `canvas[id^="univer-sheet-main-canvas"]` — main sheet canvas,
   id is `univer-sheet-main-canvas_<workbookId>`.
 - `[class*="univer-flex"]`, `[class*="Univer"]` — many.
 - `#joplin-plugin-content` — Joplin's webview wrapper.
 
 Rewrote `eval-screenshot.js`:
+
 - New `pickNotesheetWebview(page)` finds the
   `UserWebviewIndex.html` frame (with 30 × 200ms retry to absorb
   the Joplin → plugin webview load delay).

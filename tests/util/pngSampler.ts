@@ -36,12 +36,19 @@ export function decodePng(filePath: string): DecodedPng {
         throw new Error(`Not a PNG: ${filePath}`);
     }
     let i = 8;
-    let width = 0; let height = 0; let bitDepth = 0; let colorType = 0; let interlace = 0;
+    let width = 0;
+    let height = 0;
+    let bitDepth = 0;
+    let colorType = 0;
+    let interlace = 0;
     const idat: Buffer[] = [];
     while (i < buf.length) {
-        const len = buf.readUInt32BE(i); i += 4;
-        const type = buf.subarray(i, i + 4).toString('ascii'); i += 4;
-        const data = buf.subarray(i, i + len); i += len;
+        const len = buf.readUInt32BE(i);
+        i += 4;
+        const type = buf.subarray(i, i + 4).toString('ascii');
+        i += 4;
+        const data = buf.subarray(i, i + len);
+        i += len;
         i += 4; // CRC, ignored
         if (type === 'IHDR') {
             width = data.readUInt32BE(0);
@@ -57,9 +64,14 @@ export function decodePng(filePath: string): DecodedPng {
     }
     if (bitDepth !== 8) throw new Error(`Unsupported bit depth ${bitDepth} (expected 8)`);
     if (interlace !== 0) throw new Error('Interlaced PNGs are not supported');
-    const channels: 3 | 4 = colorType === 2 ? 3 : colorType === 6 ? 4 : (() => {
-        throw new Error(`Unsupported colour type ${colorType} (expected 2 or 6)`);
-    })();
+    const channels: 3 | 4 =
+        colorType === 2
+            ? 3
+            : colorType === 6
+              ? 4
+              : (() => {
+                    throw new Error(`Unsupported colour type ${colorType} (expected 2 or 6)`);
+                })();
 
     const raw = inflateSync(Buffer.concat(idat));
     const stride = width * channels + 1;
@@ -75,10 +87,18 @@ export function decodePng(filePath: string): DecodedPng {
             const c = x >= channels ? prev[x - channels] : 0;
             let v = 0;
             switch (filterByte) {
-                case 0: v = scanline[x]; break;
-                case 1: v = (scanline[x] + a) & 0xff; break;
-                case 2: v = (scanline[x] + b) & 0xff; break;
-                case 3: v = (scanline[x] + Math.floor((a + b) / 2)) & 0xff; break;
+                case 0:
+                    v = scanline[x];
+                    break;
+                case 1:
+                    v = (scanline[x] + a) & 0xff;
+                    break;
+                case 2:
+                    v = (scanline[x] + b) & 0xff;
+                    break;
+                case 3:
+                    v = (scanline[x] + Math.floor((a + b) / 2)) & 0xff;
+                    break;
                 case 4: {
                     const p = a + b - c;
                     const pa = Math.abs(p - a);
@@ -91,7 +111,8 @@ export function decodePng(filePath: string): DecodedPng {
                     v = (scanline[x] + nearest) & 0xff;
                     break;
                 }
-                default: throw new Error(`Unknown PNG filter type ${filterByte}`);
+                default:
+                    throw new Error(`Unknown PNG filter type ${filterByte}`);
             }
             cur[x] = v;
         }
@@ -117,8 +138,10 @@ export function pixelAt(img: DecodedPng, x: number, y: number): [number, number,
  */
 export function dominantColor(
     img: DecodedPng,
-    xMin: number, xMax: number,
-    yMin: number, yMax: number,
+    xMin: number,
+    xMax: number,
+    yMin: number,
+    yMax: number,
 ): { rgb: [number, number, number]; hex: string; hits: number; total: number } {
     const counts = new Map<number, number>();
     let total = 0;
@@ -130,14 +153,23 @@ export function dominantColor(
             total += 1;
         }
     }
-    let bestKey = 0; let bestHits = 0;
+    let bestKey = 0;
+    let bestHits = 0;
     for (const [key, hits] of counts) {
-        if (hits > bestHits) { bestKey = key; bestHits = hits; }
+        if (hits > bestHits) {
+            bestKey = key;
+            bestHits = hits;
+        }
     }
     const r = (bestKey >> 16) & 0xff;
     const g = (bestKey >> 8) & 0xff;
     const b = bestKey & 0xff;
-    const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    const hex =
+        '#' +
+        [r, g, b]
+            .map((v) => v.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase();
     return { rgb: [r, g, b], hex, hits: bestHits, total };
 }
 
@@ -154,8 +186,10 @@ export function dominantColor(
  */
 export function dominantColorSkipWhite(
     img: DecodedPng,
-    xMin: number, xMax: number,
-    yMin: number, yMax: number,
+    xMin: number,
+    xMax: number,
+    yMin: number,
+    yMax: number,
     whiteThreshold = 240,
 ): { rgb: [number, number, number]; hex: string; hits: number; total: number } | null {
     const counts = new Map<number, number>();
@@ -163,7 +197,9 @@ export function dominantColorSkipWhite(
     for (let y = yMin; y <= yMax; y++) {
         for (let x = xMin; x <= xMax; x++) {
             const idx = (y * img.width + x) * img.channels;
-            const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
+            const r = img.data[idx],
+                g = img.data[idx + 1],
+                b = img.data[idx + 2];
             if (r > whiteThreshold && g > whiteThreshold && b > whiteThreshold) continue;
             const key = (r << 16) | (g << 8) | b;
             counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -171,19 +207,31 @@ export function dominantColorSkipWhite(
         }
     }
     if (total === 0) return null;
-    let bestKey = 0; let bestHits = 0;
+    let bestKey = 0;
+    let bestHits = 0;
     for (const [key, hits] of counts) {
-        if (hits > bestHits) { bestKey = key; bestHits = hits; }
+        if (hits > bestHits) {
+            bestKey = key;
+            bestHits = hits;
+        }
     }
     const r = (bestKey >> 16) & 0xff;
     const g = (bestKey >> 8) & 0xff;
     const b = bestKey & 0xff;
-    const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    const hex =
+        '#' +
+        [r, g, b]
+            .map((v) => v.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase();
     return { rgb: [r, g, b], hex, hits: bestHits, total };
 }
 
 /** Manhattan-style per-channel deviation between two RGB tuples. */
-export function rgbDelta(a: readonly [number, number, number], b: readonly [number, number, number]): { dR: number; dG: number; dB: number; max: number } {
+export function rgbDelta(
+    a: readonly [number, number, number],
+    b: readonly [number, number, number],
+): { dR: number; dG: number; dB: number; max: number } {
     const dR = Math.abs(a[0] - b[0]);
     const dG = Math.abs(a[1] - b[1]);
     const dB = Math.abs(a[2] - b[2]);

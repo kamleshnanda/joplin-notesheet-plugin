@@ -13,7 +13,9 @@
 // After: meta.categoryAxisType === 'index' flows through both paths.
 
 jest.mock('@univerjs/sheets-table', () => ({
-    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() { /* sentinel */ },
+    UniverSheetsTablePlugin: function MockUniverSheetsTablePlugin() {
+        /* sentinel */
+    },
 }));
 
 import { readFileSync } from 'fs';
@@ -36,7 +38,8 @@ interface ChartDrawing {
 }
 
 function collectChartDrawings(snap: unknown): ChartDrawing[] {
-    const resources = (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+    const resources =
+        (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
     const entry = resources.find((r) => r.name === 'SHEET_DRAWING_PLUGIN');
     if (!entry) return [];
     const parsed = JSON.parse(entry.data);
@@ -110,7 +113,9 @@ describe('M17 index-axis charts (no <c:cat>)', () => {
         // Investment column → $A$1:$A$15 (data starts at row 1 in
         // 0-indexed snapshot, which Excel writes as $A$2:$A$16). Match
         // a relaxed pattern.
-        const valFormulas = [...chartXml.matchAll(/<c:val>[\s\S]*?<c:f>([^<]+)<\/c:f>/g)].map((m) => m[1]);
+        const valFormulas = [...chartXml.matchAll(/<c:val>[\s\S]*?<c:f>([^<]+)<\/c:f>/g)].map(
+            (m) => m[1],
+        );
         expect(valFormulas).toHaveLength(2);
         // Series 0 should hit column A, series 1 column B.
         expect(valFormulas[0]).toMatch(/\$A\$\d+:\$A\$\d+/);
@@ -132,7 +137,9 @@ describe('M17 index-axis charts (no <c:cat>)', () => {
     });
 
     test('category-axis charts (e.g. 01) still emit <c:cat> on export (no regression)', async () => {
-        const snap = await xlsxBufferToSnapshot(readFileSync(path.join(FIXTURES_DIR, '01-bar-simple.xlsx')) as unknown as Buffer);
+        const snap = await xlsxBufferToSnapshot(
+            readFileSync(path.join(FIXTURES_DIR, '01-bar-simple.xlsx')) as unknown as Buffer,
+        );
         const out = await snapshotToXlsxBuffer(snap);
         const zip = await JSZip.loadAsync(out as ArrayBuffer);
         const chartFile = Object.keys(zip.files).find((k) => /^xl\/charts\/chart\d+\.xml$/.test(k));
