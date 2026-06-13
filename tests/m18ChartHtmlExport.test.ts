@@ -191,4 +191,93 @@ describe('M18 B1 — charts render as static SVG in HTML export', () => {
         )!;
         expect(html).toContain('#3b82f6'); // CHART_PALETTE[0]
     });
+
+    // ── B1 fix: horizontal bars (meta.barDir === 'bar') ────────────────
+    // Imported charts carry meta.barDir from <c:barDir>; the SVG exporter
+    // must honour it (the live Chart.js renderer already does). Before the
+    // fix, renderBarSvg ignored barDir and always drew vertical columns —
+    // bar='bar' and bar='col' produced byte-identical output.
+    const rectsOf = (html: string): string[] => html.match(/<rect\b[^>]*>/g) ?? [];
+    const attrNum = (rect: string, name: string): number =>
+        parseFloat((rect.match(new RegExp(`${name}="([\\d.]+)"`)) ?? [])[1] ?? 'NaN');
+
+    test('horizontal bar (barDir="bar") encodes value in WIDTH, not height', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'bar',
+                    labels: ['A', 'B'],
+                    meta: { barDir: 'bar' },
+                    datasets: [{ label: 'S', data: [10, 20] }],
+                },
+            ]),
+        )!;
+        // Single series → no legend swatch, so both <rect>s are data bars.
+        const rects = rectsOf(html);
+        expect(rects.length).toBe(2);
+        const widths = rects.map((r) => attrNum(r, 'width'));
+        const heights = rects.map((r) => attrNum(r, 'height'));
+        // Value (10 vs 20) drives WIDTH in a horizontal bar; bar thickness
+        // (height) is constant. This is the inverse of a column chart.
+        expect(widths[0]).not.toBeCloseTo(widths[1], 1);
+        expect(heights[0]).toBeCloseTo(heights[1], 1);
+        // ~2:1 value ratio → ~2:1 width ratio (baseline at 0).
+        expect(Math.max(...widths) / Math.min(...widths)).toBeCloseTo(2, 0);
+    });
+
+    test('horizontal vs vertical bars produce different geometry', () => {
+        const mk = (barDir: string) =>
+            renderNotesheetSnapshot(
+                snapshotWithCharts([
+                    {
+                        chartId: 'c1',
+                        type: 'bar',
+                        labels: ['A', 'B'],
+                        meta: { barDir },
+                        datasets: [{ label: 'S', data: [10, 20] }],
+                    },
+                ]),
+            )!;
+        expect(mk('bar')).not.toBe(mk('col'));
+    });
+
+    // ── B1 fix: single 100%-slice pie / doughnut ───────────────────────
+    // A self-closing 2π arc (start point == end point) is dropped by the
+    // SVG spec, so a one-category pie/doughnut rendered nothing. Emit a
+    // full circle (pie) / full ring (doughnut) for the degenerate case.
+    test('single 100% pie slice renders a full <circle>, not a vanishing arc', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'pie',
+                    title: 'All',
+                    labels: ['Only'],
+                    datasets: [{ data: [42] }],
+                },
+            ]),
+        )!;
+        expect(html).toContain('<svg');
+        expect(count(html, /<circle\b/g)).toBe(1);
+        expect(html).toContain('Only'); // legend still present
+    });
+
+    test('single 100% doughnut slice renders a full ring (evenodd hole)', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'doughnut',
+                    labels: ['Only'],
+                    datasets: [{ data: [42] }],
+                    meta: { holeSize: 50 },
+                },
+            ]),
+        )!;
+        expect(html).toContain('<svg');
+        // One ring element with a hole cut via fill-rule evenodd.
+        expect(count(html, /<path\b/g)).toBe(1);
+        expect(html).toContain('fill-rule="evenodd"');
+    });
 });

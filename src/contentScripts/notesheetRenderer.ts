@@ -1118,8 +1118,11 @@ function svgTitle(title: string | undefined): string {
 }
 
 // Bar / column chart. Vertical columns by default; horizontal bars when
-// meta.barDir === 'bar'. Grouped by category, one colour per series.
+// meta.barDir === 'bar' (the same flag the live Chart.js renderer and the
+// xlsx export-fidelity layer honour — imported from <c:barDir>). Grouped by
+// category, one colour per series.
 function renderBarSvg(chart: ChartDrawingData): string {
+    if (chart.meta?.barDir === 'bar') return renderHorizontalBarSvg(chart);
     const labels = chart.labels ?? [];
     const datasets = (chart.datasets ?? []).filter((d) => d.data.length > 0);
     const n = labels.length || Math.max(0, ...datasets.map((d) => d.data.length));
@@ -1164,6 +1167,63 @@ function renderBarSvg(chart: ChartDrawingData): string {
     }
     // Y-axis min/max ticks.
     parts.push(axisTicks(minV, maxV, plotH));
+    return svgWrap(parts.join(''), chart.title, datasets);
+}
+
+// Horizontal bar chart (Excel barDir="bar"): categories run DOWN the left
+// axis, value runs ACROSS. Mirror of renderBarSvg with x/y roles swapped —
+// value drives bar WIDTH (not height), bar thickness is constant.
+function renderHorizontalBarSvg(chart: ChartDrawingData): string {
+    const labels = chart.labels ?? [];
+    const datasets = (chart.datasets ?? []).filter((d) => d.data.length > 0);
+    const n = labels.length || Math.max(0, ...datasets.map((d) => d.data.length));
+    if (n === 0 || datasets.length === 0) return '';
+    const allVals = datasets.flatMap((d) => d.data).filter((v) => Number.isFinite(v));
+    const maxV = Math.max(0, ...allVals);
+    const minV = Math.min(0, ...allVals);
+    const range = maxV - minV || 1;
+    const plotW = SVG_W - PLOT_L - PLOT_R;
+    const plotH = SVG_H - PLOT_T - PLOT_B;
+    const groupH = plotH / n;
+    const barH = (groupH * 0.8) / datasets.length;
+    const parts: string[] = [];
+    // Value axis is horizontal; zero baseline is a vertical line.
+    const xOf = (v: number) => PLOT_L + ((v - minV) / range) * plotW;
+    const zeroX = xOf(0);
+    parts.push(
+        `<line x1="${zeroX.toFixed(1)}" y1="${PLOT_T}" x2="${zeroX.toFixed(1)}" y2="${PLOT_T + plotH}" stroke="#ccc" stroke-width="1"/>`,
+    );
+    for (let gi = 0; gi < n; gi++) {
+        const gy = PLOT_T + gi * groupH + groupH * 0.1;
+        for (let si = 0; si < datasets.length; si++) {
+            const v = datasets[si].data[gi];
+            if (!Number.isFinite(v)) continue;
+            const y = gy + si * barH;
+            const x = Math.min(xOf(v), zeroX);
+            const w = Math.abs(xOf(v) - zeroX);
+            parts.push(
+                `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" ` +
+                    `height="${barH.toFixed(1)}" fill="${svgColour(si)}"/>`,
+            );
+        }
+        // Category label in the left gutter.
+        const lbl = labels[gi];
+        if (lbl != null) {
+            parts.push(
+                `<text x="${PLOT_L - 4}" y="${(gy + (groupH * 0.8) / 2 + 3).toFixed(1)}" ` +
+                    `text-anchor="end" font-family="sans-serif" font-size="10" fill="#666">` +
+                    `${escapeHtml(String(lbl))}</text>`,
+            );
+        }
+    }
+    // Value-axis min/max ticks along the bottom edge.
+    const botY = SVG_H - PLOT_B + 16;
+    parts.push(
+        `<text x="${xOf(minV).toFixed(1)}" y="${botY}" text-anchor="middle" font-family="sans-serif" ` +
+            `font-size="9" fill="#999">${escapeHtml(fmtNum(minV))}</text>` +
+            `<text x="${xOf(maxV).toFixed(1)}" y="${botY}" text-anchor="middle" font-family="sans-serif" ` +
+            `font-size="9" fill="#999">${escapeHtml(fmtNum(maxV))}</text>`,
+    );
     return svgWrap(parts.join(''), chart.title, datasets);
 }
 
@@ -1218,13 +1278,20 @@ function renderPieSvg(chart: ChartDrawingData, doughnut: boolean): string {
     const radius = Math.min((SVG_H - PLOT_T) / 2, SVG_W / 2) - 20;
     const innerR = doughnut ? radius * ((chart.meta?.holeSize ?? 50) / 100) : 0;
     const parts: string[] = [];
-    let angle = -Math.PI / 2; // start at 12 o'clock
-    for (let i = 0; i < values.length; i++) {
-        const frac = values[i] / total;
-        const a0 = angle;
-        const a1 = angle + frac * 2 * Math.PI;
-        angle = a1;
-        parts.push(arcPath(cx, cy, radius, innerR, a0, a1, svgColour(i)));
+    // A single slice covering the whole circle is a degenerate arc: its
+    // start and end points coincide, and the SVG spec drops such an arc
+    // entirely (the wedge vanishes). Emit a full circle / ring instead.
+    if (values.length === 1) {
+        parts.push(fullCircle(cx, cy, radius, innerR, svgColour(0)));
+    } else {
+        let angle = -Math.PI / 2; // start at 12 o'clock
+        for (let i = 0; i < values.length; i++) {
+            const frac = values[i] / total;
+            const a0 = angle;
+            const a1 = angle + frac * 2 * Math.PI;
+            angle = a1;
+            parts.push(arcPath(cx, cy, radius, innerR, a0, a1, svgColour(i)));
+        }
     }
     // Build a tiny legend below since slices have no inline labels.
     const legendItems = values.map((_v, i) => ({
@@ -1265,6 +1332,28 @@ function arcPath(
         `A ${rOuter.toFixed(1)} ${rOuter.toFixed(1)} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} ` +
         `L ${ix1.toFixed(1)} ${iy1.toFixed(1)} ` +
         `A ${rInner.toFixed(1)} ${rInner.toFixed(1)} 0 ${large} 0 ${ix0.toFixed(1)} ${iy0.toFixed(1)} Z" ` +
+        `fill="${fill}" stroke="#fff" stroke-width="1"/>`
+    );
+}
+
+// Full circle (pie) or full ring (doughnut) — the degenerate single-slice
+// case, where a 2π arc would self-close and vanish. A pie is a plain
+// <circle>; a doughnut is a <path> of two concentric subpaths with
+// fill-rule="evenodd" so the inner disc is cut out as a hole.
+function fullCircle(cx: number, cy: number, rOuter: number, rInner: number, fill: string): string {
+    if (rInner <= 0) {
+        return (
+            `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rOuter.toFixed(1)}" ` +
+            `fill="${fill}" stroke="#fff" stroke-width="1"/>`
+        );
+    }
+    // Two full circles as arc subpaths; evenodd punches the inner one out.
+    const ring = (r: number) =>
+        `M ${(cx - r).toFixed(1)} ${cy.toFixed(1)} ` +
+        `A ${r.toFixed(1)} ${r.toFixed(1)} 0 1 0 ${(cx + r).toFixed(1)} ${cy.toFixed(1)} ` +
+        `A ${r.toFixed(1)} ${r.toFixed(1)} 0 1 0 ${(cx - r).toFixed(1)} ${cy.toFixed(1)} Z`;
+    return (
+        `<path d="${ring(rOuter)} ${ring(rInner)}" fill-rule="evenodd" ` +
         `fill="${fill}" stroke="#fff" stroke-width="1"/>`
     );
 }
