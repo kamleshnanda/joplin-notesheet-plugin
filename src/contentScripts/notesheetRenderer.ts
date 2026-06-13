@@ -1495,12 +1495,59 @@ function renderSheet(
 
 // ───────── Entry: render a fenced notesheet body ────────────────────
 
+// Source-fence delimiters Joplin stores around a notesheet body — must
+// mirror `wrapSnapshot()` in src/snapshot.ts exactly (```notesheet v=1\n
+// <json>\n```). Used to reconstruct the fence verbatim for the Rich Text
+// editor round-trip (see wrapEditable below).
+const SOURCE_FENCE_OPEN = '```notesheet v=1\n';
+const SOURCE_FENCE_CLOSE = '\n```\n';
+
+// Wrap rendered output so Joplin's Rich Text (TinyMCE) editor cannot
+// destroy the source fence.
+//
+// THE BUG THIS FIXES: without this wrapper, when a note is edited in the
+// Rich Text editor and saved, TinyMCE serializes our rendered <table>
+// back to a plain GFM markdown table — obliterating the `notesheet v=1`
+// fence and the entire Univer snapshot (styles, charts, formulas). Total
+// data loss.
+//
+// THE FIX (Joplin's documented `joplin-editable` / `joplin-source`
+// convention, used by every built-in renderer — mermaid, katex,
+// fountain): mark the block `joplin-editable` (TinyMCE's
+// `noneditable_class`, so it's atomic in the editor) and embed a hidden
+// `joplin-source` element carrying the ORIGINAL fence. On save, Joplin's
+// HTML→Markdown converter (turndown's joplinSourceBlock rule) ignores the
+// rendered table and reconstructs markdown as
+// `data-joplin-source-open + <hidden source> + data-joplin-source-close`
+// — i.e. the exact fence, losslessly.
+function wrapEditable(renderedInner: string, sourceBody: string): string {
+    // Newlines must be HTML-entity-encoded inside the attribute values;
+    // the body is HTML-escaped inside the <pre>. Matches fountain.ts.
+    const open = escapeHtml(SOURCE_FENCE_OPEN).replace(/\n/g, '&#10;');
+    const close = escapeHtml(SOURCE_FENCE_CLOSE).replace(/\n/g, '&#10;');
+    return (
+        '<div class="notesheet-export joplin-editable">' +
+        `<pre class="joplin-source" hidden data-joplin-language="notesheet" ` +
+        `data-joplin-source-open="${open}" data-joplin-source-close="${close}">` +
+        escapeHtml(sourceBody) +
+        '</pre>' +
+        renderedInner +
+        '</div>'
+    );
+}
+
 // Exposed so Jest tests can call it directly without going through
 // markdown-it. Returns the fully-rendered HTML for a fenced notesheet
 // body's CONTENT (not the surrounding fence). Returns null if the
 // JSON is malformed — the markdown-it integration translates that to
 // "fall through to default fence rendering."
-export function renderNotesheetSnapshot(content: string): string | null {
+//
+// When `sourceBody` is provided (the original JSON inside the fence),
+// the output is wrapped in the `joplin-editable` container so it
+// survives the Rich Text editor round-trip. The HTML/PDF export path
+// calls this without `sourceBody` — those surfaces are read-only and
+// never re-serialize to markdown, so the bare render is correct there.
+export function renderNotesheetSnapshot(content: string, sourceBody?: string): string | null {
     const snapshot = parseSnapshotJson(content);
     if (!snapshot) return null;
     const sheets = snapshot.sheets ?? {};
@@ -1508,8 +1555,7 @@ export function renderNotesheetSnapshot(content: string): string | null {
     const styles = snapshot.styles ?? {};
     const cfBySubUnit = loadCfRulesFromSnapshot(snapshot);
     const ctx: RenderContext = { snapshot, styles };
-    const parts: string[] = [];
-    parts.push('<div class="notesheet-export">');
+    const inner: string[] = [];
     for (const sheetId of order) {
         const sheet = sheets[sheetId];
         if (!sheet) continue;
@@ -1517,17 +1563,21 @@ export function renderNotesheetSnapshot(content: string): string | null {
         // Univer's CF model).
         const rules = cfBySubUnit[sheet.id] ?? cfBySubUnit[sheetId] ?? [];
         const cfFills = evaluateCfFor(sheet, rules);
-        parts.push(renderSheet(sheet, ctx, cfFills));
+        inner.push(renderSheet(sheet, ctx, cfFills));
         // Charts anchored on this sheet, as static SVG (B1). Keyed by
         // subUnitId, which matches the sheetId in the drawing resource.
         const charts = readChartsForSheet(snapshot, sheet.id ?? sheetId);
         for (const chart of charts) {
             const svg = renderChartSvg(chart);
-            if (svg) parts.push(`<div class="notesheet-chart-wrap">${svg}</div>`);
+            if (svg) inner.push(`<div class="notesheet-chart-wrap">${svg}</div>`);
         }
     }
-    parts.push('</div>');
-    return parts.join('');
+    const renderedInner = inner.join('');
+    // With a known source fence → wrap so the Rich Text editor preserves
+    // it. Without → bare export wrapper (read-only HTML/PDF path).
+    return sourceBody !== undefined
+        ? wrapEditable(renderedInner, sourceBody)
+        : `<div class="notesheet-export">${renderedInner}</div>`;
 }
 
 // Entry point used by the markdown-it fence override. Consults the
@@ -1541,8 +1591,10 @@ export function renderFenceToken(token: FenceToken): string | null {
         // raw JSON instead of pretending to render an unknown shape.
         return null;
     }
-    const html = renderNotesheetSnapshot(token.content ?? '');
-    return html;
+    const content = token.content ?? '';
+    // Pass the original body so the render carries a joplin-source block
+    // for lossless Rich Text editor round-trip.
+    return renderNotesheetSnapshot(content, content);
 }
 
 // ───────── Markdown-It plugin shape Joplin expects ──────────────────
