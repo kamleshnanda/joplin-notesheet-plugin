@@ -47,6 +47,27 @@ both were builds that predated the fix). Before debugging:
 uninstalls-then-reinstalls; running it against a _live_ Joplin removes the
 plugin from that session (symptom: "UserWebviewIndex frame did not appear").
 
+## Verify external-platform behavior with research, not memory
+
+When a bug or feature hinges on how an **external platform** behaves —
+Joplin's editor/renderer/export pipeline, Univer internals, exceljs quirks,
+any third-party API contract — confirm the behavior against **official docs
+and upstream source before designing the fix.** Do not reason from memory or
+infer how a host app serializes, round-trips, or renders.
+
+This paid off concretely on the M18 Rich Text fence-loss bug: external
+research into `laurent22/joplin` source proved a planned "detect the editor
+context" fix was **impossible** (no such API signal exists) and surfaced the
+canonical `joplin-editable` / `joplin-source` solution every built-in
+renderer uses. Research overturned a wrong plan and handed over the exact,
+citation-backed fix.
+
+- For broad unknowns, fan out a research subagent over web search + the
+  upstream repo, and **cite findings** (file paths / doc URLs) in the PR.
+- **If research contradicts an approach the maintainer already picked, flag
+  the contradiction before implementing** — don't silently switch, and don't
+  build the wrong thing either.
+
 ## Screenshot / image handling — shell first, read sparingly
 
 Reading images through the tool API is rate-limited and brittle when
