@@ -330,4 +330,67 @@ describe('M18 B1 — charts render as static SVG in HTML export', () => {
         expect(Math.min(...radii)).toBeGreaterThan(0);
         expect(Math.min(...radii)).toBeLessThan(OUTER);
     });
+
+    test('doughnut holeSize 1-9 is NOT inflated (matches editor / export)', () => {
+        // holeSize=5 → innerR = 116 * 0.05 = 5.8, NOT floored up to 10%.
+        // The live Chart.js renderer and .xlsx export pass holeSize
+        // through unclamped, so the SVG export must agree.
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'doughnut',
+                    labels: ['A', 'B'],
+                    datasets: [{ data: [1, 1] }],
+                    meta: { holeSize: 5 },
+                },
+            ]),
+        )!;
+        const radii = [...html.matchAll(/A (\d+(?:\.\d+)?) \1 /g)].map((m) => parseFloat(m[1]));
+        const inner = Math.min(...radii);
+        expect(inner).toBeCloseTo(116 * 0.05, 0); // ≈5.8, not 11.6
+    });
+
+    test('horizontal bar with all non-negative data emits ONE value tick (no overlap)', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'bar',
+                    labels: ['A', 'B'],
+                    meta: { barDir: 'bar' },
+                    datasets: [{ label: 'S', data: [10, 20] }],
+                },
+            ]),
+        )!;
+        // minV===0 → its tick sits at the same x as... no: max is at the
+        // far right, min "0" at the left baseline, so BOTH render (distinct
+        // x). The collapse case is all-zero — test that separately below.
+        // Here we assert no two value-axis ticks share an x within 8px.
+        const tickXs = [...html.matchAll(/<text x="([\d.]+)" y="276"/g)].map((m) =>
+            parseFloat(m[1]),
+        );
+        for (let i = 0; i < tickXs.length; i++) {
+            for (let j = i + 1; j < tickXs.length; j++) {
+                expect(Math.abs(tickXs[i] - tickXs[j])).toBeGreaterThanOrEqual(8);
+            }
+        }
+    });
+
+    test('horizontal bar with all-zero data emits a single collapsed tick (no duplicate)', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'bar',
+                    labels: ['A', 'B'],
+                    meta: { barDir: 'bar' },
+                    datasets: [{ label: 'S', data: [0, 0] }],
+                },
+            ]),
+        )!;
+        // minV===maxV===0 → both ticks would collide; only one is emitted.
+        const ticks = [...html.matchAll(/<text x="[\d.]+" y="276"/g)];
+        expect(ticks.length).toBe(1);
+    });
 });

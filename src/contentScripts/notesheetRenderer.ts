@@ -1216,14 +1216,15 @@ function renderHorizontalBarSvg(chart: ChartDrawingData): string {
             );
         }
     }
-    // Value-axis min/max ticks along the bottom edge.
+    // Value-axis min/max ticks along the bottom edge. Skip the min tick
+    // when it would land at (or within a glyph of) the max tick — the
+    // common all-non-negative case has minV===0 at x=PLOT_L, and an
+    // all-zero chart collapses both ticks onto the same point.
     const botY = SVG_H - PLOT_B + 16;
-    parts.push(
-        `<text x="${xOf(minV).toFixed(1)}" y="${botY}" text-anchor="middle" font-family="sans-serif" ` +
-            `font-size="9" fill="#999">${escapeHtml(fmtNum(minV))}</text>` +
-            `<text x="${xOf(maxV).toFixed(1)}" y="${botY}" text-anchor="middle" font-family="sans-serif" ` +
-            `font-size="9" fill="#999">${escapeHtml(fmtNum(maxV))}</text>`,
-    );
+    const tick = (v: number) =>
+        `<text x="${xOf(v).toFixed(1)}" y="${botY}" text-anchor="middle" font-family="sans-serif" ` +
+        `font-size="9" fill="#999">${escapeHtml(fmtNum(v))}</text>`;
+    parts.push(Math.abs(xOf(maxV) - xOf(minV)) < 8 ? tick(maxV) : tick(minV) + tick(maxV));
     return svgWrap(parts.join(''), chart.title, datasets);
 }
 
@@ -1282,11 +1283,14 @@ function renderPieSvg(chart: ChartDrawingData, doughnut: boolean): string {
     const cx = SVG_W / 2;
     const cy = PLOT_T + (SVG_H - PLOT_T) / 2;
     const radius = Math.min((SVG_H - PLOT_T) / 2, SVG_W / 2) - 20;
-    // Excel constrains the doughnut hole to 1-90% of the radius, but the
-    // importer accepts any non-negative integer, so a malformed workbook
-    // could push holeSize >= 100 (innerR >= radius → an inverted/blank
-    // ring). Clamp to [10, 90]% so the ring always renders with a hole.
-    const holePct = Math.min(90, Math.max(10, chart.meta?.holeSize ?? 50));
+    // Excel constrains the doughnut hole to 1-90% of the radius (OOXML
+    // ST_HoleSize), but the importer accepts any non-negative integer, so
+    // a malformed workbook could push holeSize >= 100 (innerR >= radius →
+    // an inverted/blank ring). Clamp to Excel's own [1, 90]% range. We do
+    // NOT impose a higher floor: the live Chart.js renderer and the .xlsx
+    // re-export both pass holeSize through unclamped, so a tighter floor
+    // here would make HTML/PDF disagree with the editor for small holes.
+    const holePct = Math.min(90, Math.max(1, chart.meta?.holeSize ?? 50));
     const innerR = doughnut ? radius * (holePct / 100) : 0;
     const parts: string[] = [];
     // A single slice covering the whole circle is a degenerate arc: its
