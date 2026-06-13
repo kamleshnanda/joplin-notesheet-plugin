@@ -280,4 +280,54 @@ describe('M18 B1 — charts render as static SVG in HTML export', () => {
         expect(count(html, /<path\b/g)).toBe(1);
         expect(html).toContain('fill-rule="evenodd"');
     });
+
+    // ── B1 fix: an all-NaN line dataset emits NO svg (matches bar path) ──
+    // A non-empty-but-all-non-finite dataset slipped past the n===0 guard
+    // and pushed an empty <polyline>, so a degenerate chart still emitted a
+    // full <svg>. Contract (per the empty-chart test above): degenerate →
+    // no svg.
+    test('line chart with an all-NaN dataset emits no SVG', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'line',
+                    title: 'Bad',
+                    labels: ['A', 'B'],
+                    // Non-numeric source values → Number(...) === NaN.
+                    datasets: [{ label: 'S', data: ['x', 'y'] as unknown as number[] }],
+                },
+            ]),
+        )!;
+        expect(html).toContain('notesheet-table');
+        expect(count(html, /<svg\b/g)).toBe(0);
+    });
+
+    // ── B1 fix: doughnut holeSize is clamped so the ring never inverts ──
+    // Excel constrains holeSize to 1-90, but the importer accepts any
+    // non-negative integer, so a malformed workbook could pass holeSize
+    // >= 100, making innerR >= radius (an inverted/blank ring). Clamp it.
+    test('doughnut holeSize >= 100 is clamped (inner radius stays below outer)', () => {
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'doughnut',
+                    labels: ['A', 'B', 'C'],
+                    datasets: [{ data: [1, 1, 1] }],
+                    meta: { holeSize: 150 },
+                },
+            ]),
+        )!;
+        // The outer radius is fixed at 116.0 (geometry constants). Parse
+        // every arc radius and assert NONE exceeds the outer — an unclamped
+        // holeSize=150 would emit inner-arc radius 174.0 (an inverted ring).
+        const radii = [...html.matchAll(/A (\d+(?:\.\d+)?) \1 /g)].map((m) => parseFloat(m[1]));
+        expect(radii.length).toBeGreaterThan(0);
+        const OUTER = 116;
+        expect(Math.max(...radii)).toBeLessThanOrEqual(OUTER);
+        // A hole is still cut (inner radius present and positive).
+        expect(Math.min(...radii)).toBeGreaterThan(0);
+        expect(Math.min(...radii)).toBeLessThan(OUTER);
+    });
 });

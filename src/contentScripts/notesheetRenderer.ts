@@ -1242,6 +1242,7 @@ function renderLineSvg(chart: ChartDrawingData): string {
     const xOf = (i: number) => PLOT_L + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
     const yOf = (v: number) => PLOT_T + plotH - ((v - minV) / range) * plotH;
     const parts: string[] = [];
+    let anyPoint = false;
     for (let si = 0; si < datasets.length; si++) {
         const pts = datasets[si].data
             .map((v, i) =>
@@ -1249,10 +1250,15 @@ function renderLineSvg(chart: ChartDrawingData): string {
             )
             .filter(Boolean)
             .join(' ');
+        if (!pts) continue; // all-NaN series → no polyline
+        anyPoint = true;
         parts.push(
             `<polyline points="${pts}" fill="none" stroke="${svgColour(si)}" stroke-width="2"/>`,
         );
     }
+    // Every series was all-NaN → degenerate chart, emit nothing (matches
+    // the bar/pie paths and the empty-chart contract).
+    if (!anyPoint) return '';
     for (let gi = 0; gi < n; gi++) {
         const lbl = labels[gi];
         if (lbl != null) {
@@ -1276,7 +1282,12 @@ function renderPieSvg(chart: ChartDrawingData, doughnut: boolean): string {
     const cx = SVG_W / 2;
     const cy = PLOT_T + (SVG_H - PLOT_T) / 2;
     const radius = Math.min((SVG_H - PLOT_T) / 2, SVG_W / 2) - 20;
-    const innerR = doughnut ? radius * ((chart.meta?.holeSize ?? 50) / 100) : 0;
+    // Excel constrains the doughnut hole to 1-90% of the radius, but the
+    // importer accepts any non-negative integer, so a malformed workbook
+    // could push holeSize >= 100 (innerR >= radius → an inverted/blank
+    // ring). Clamp to [10, 90]% so the ring always renders with a hole.
+    const holePct = Math.min(90, Math.max(10, chart.meta?.holeSize ?? 50));
+    const innerR = doughnut ? radius * (holePct / 100) : 0;
     const parts: string[] = [];
     // A single slice covering the whole circle is a degenerate arc: its
     // start and end points coincide, and the SVG spec drops such an arc
