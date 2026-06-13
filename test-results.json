@@ -42,10 +42,10 @@
         "last_attempted_at": null
     },
     "feature-8-m17-chart-preview-pane-pge-smoke": {
-        "passes": false,
-        "evidence": null,
-        "evaluator_verdict": null,
-        "last_attempted_at": null
+        "passes": true,
+        "evidence": "screenshots/feature-8-m17-chart-preview-pane-pge-smoke/eval-2026-06-13T03-35-58-158Z.png",
+        "evaluator_verdict": "PASS",
+        "last_attempted_at": "2026-06-13T03:35:58Z"
     },
     "feature-9-m17-flip-pin-downs-and-test-count": {
         "passes": false,
