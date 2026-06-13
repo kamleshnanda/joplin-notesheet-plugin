@@ -5,7 +5,23 @@ every feature.
 
 ## Done
 
-- **feature-1-smoke-red-cell** (2026-06-02) — Generator inline-implemented
+- **feature-8-m17-chart-preview-pane-pge-smoke** (2026-06-12) — Closes the
+  long-open "does the chart SVG actually reach Joplin's export?" question
+  for the M18 B1 work. Wired feature-8 into the eval harness
+  (`scripts/pge/eval-screenshot.js`): added it to `TITLE_PREFIX_BY_FEATURE`
+  (`PGE M17 chart f8 eval `) + `REGION_BY_FEATURE` (`previewPane`, reusing
+  M16's path), and extended `samplePreviewPaneInk()` with the
+  `inlineSvgCount` + `chartSvgPrimitives` signals (counts
+  `svg.notesheet-chart` and its rect/path/polyline/circle children in the
+  preview iframe DOM). Imported `MultiSheet.xlsx` as the f8 note; the
+  harness drove Joplin into preview-visible state and captured the
+  markdown-rendered preview pane. Sidecar: `inlineSvgCount=1`,
+  `rect=5` (the 5 bars), `tableCount=3`, `sheetHeadings=[Data,Chart,Summary]`,
+  `rawJsonLeak=false`. Fresh-process evaluator graded **PASS** off its own
+  screenshot (`eval-2026-06-13T03-35-58-158Z.png`) — chart renders as
+  inline SVG with title "Data Chart", 5 labelled bars, axis ticks 0/60,
+  palette blue. This is the runtime proof the source-level fan-out and the
+  standalone-HTML render could only approximate.
   the smoke seed in `src/snapshot.ts:emptySnapshot()`. A1 = "harness-smoke-OK"
   styled via `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`,
   cell carries `s: 'pge-smoke-red'` reference. Built .jpl, installed in

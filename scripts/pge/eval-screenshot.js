@@ -110,6 +110,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-m16-snapshot-to-html': 'PGE M16 HTML eval ',
     'feature-1-m17-chart-import-no-crash': 'PGE M17 chart eval ',
     'feature-3-m17-multisheet-import-editor-canvas': 'PGE M17 chart f3 eval ',
+    'feature-8-m17-chart-preview-pane-pge-smoke': 'PGE M17 chart f8 eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -149,6 +150,12 @@ const REGION_BY_FEATURE = {
     // palette colours that the Chart.js renderer paints into the
     // float-DOM's <canvas> child.
     'feature-3-m17-multisheet-import-editor-canvas': 'floatDomChart',
+    // M17 feature-8 / M18 B1: the same chart, viewed in Joplin's
+    // markdown preview pane instead of the editor canvas. Re-uses M16's
+    // previewPane region (samplePreviewPaneInk), which now also reports
+    // inlineSvgCount — the count of <svg class="notesheet-chart"> the
+    // static-SVG renderer emitted into the rendered HTML.
+    'feature-8-m17-chart-preview-pane-pge-smoke': 'previewPane',
 };
 
 function discoverApiPort() {
@@ -1153,6 +1160,23 @@ async function samplePreviewPaneInk(frame, maxColors = 8) {
             const rawJsonLeak =
                 document.body.innerHTML.includes('"sheetOrder"') ||
                 document.body.innerHTML.includes('"workbook-');
+            // M18 B1 / feature-8: inline chart SVGs in the preview pane.
+            // The static-SVG chart renderer emits <svg class="notesheet-chart">
+            // after each sheet's table. Count them (≥1 means charts survived
+            // into the markdown-rendered HTML), plus the SVG primitives so a
+            // grader can tell a real chart from an empty <svg>.
+            const chartSvgs = Array.from(document.querySelectorAll('svg.notesheet-chart'));
+            const inlineSvgCount = chartSvgs.length;
+            const chartSvgPrimitives = chartSvgs.reduce(
+                (acc, s) => {
+                    acc.rect += s.querySelectorAll('rect').length;
+                    acc.path += s.querySelectorAll('path').length;
+                    acc.polyline += s.querySelectorAll('polyline').length;
+                    acc.circle += s.querySelectorAll('circle').length;
+                    return acc;
+                },
+                { rect: 0, path: 0, polyline: 0, circle: 0 },
+            );
             return {
                 dominant,
                 count,
@@ -1169,6 +1193,8 @@ async function samplePreviewPaneInk(frame, maxColors = 8) {
                 tableCount,
                 sheetHeadings,
                 rawJsonLeak,
+                inlineSvgCount,
+                chartSvgPrimitives,
                 // For schema parity with the canvas sampler.
                 inkRows: 0,
                 inkRowSpread: 0,
