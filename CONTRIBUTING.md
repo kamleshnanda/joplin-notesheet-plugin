@@ -68,6 +68,39 @@ CI runs the full set on every PR (see [Enforcement](#enforcement)).
   for chart workbooks, `tests/fixtures/formatting-testdata/` for formatting
   workbooks. Keep new reference `.xlsx` files there.
 
+## Rendered notesheet HTML must survive the Rich Text editor
+
+The Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`)
+renders the `notesheet v=1` fence into an HTML `<table>`. That output is
+**load-bearing for data integrity** and must stay wrapped in Joplin's
+`joplin-editable` / `joplin-source` convention:
+
+- The outer element carries class `joplin-editable` (TinyMCE's
+  `noneditable_class`), so the block is atomic in the Rich Text editor.
+- A hidden `<pre class="joplin-source" hidden data-joplin-language="notesheet"
+data-joplin-source-open="…" data-joplin-source-close="…">` carries the
+  **verbatim original fence body** and precedes the visible render.
+
+**Why this is non-negotiable:** without the wrapper, opening a Notesheet
+note in Joplin's **Rich Text (TinyMCE) editor** and saving makes TinyMCE
+serialize the rendered `<table>` back to a plain Markdown table —
+**destroying the fence and the entire Univer snapshot** (styles, charts,
+formulas). That is silent, total data loss. It was a real regression
+(introduced by the M16 HTML render, fixed in M18); `tests/rteFenceRoundTrip.test.ts`
+guards it.
+
+- The source-open/close delimiters **must mirror `wrapSnapshot()` in
+  `src/snapshot.ts` exactly** (` ```notesheet v=1\n<json>\n``` `), with
+  newlines encoded as `&#10;` in the attributes — any drift corrupts the
+  round-trip.
+- There is **no Joplin API signal** to tell the Rich Text editor apart from
+  the preview/PDF/HTML render at render time, so you cannot "only wrap in the
+  editor" — the wrapper is the canonical approach and is harmless on the
+  read-only surfaces. (Every built-in Joplin renderer — mermaid, katex,
+  fountain — does the same.)
+- If you change the rendered HTML structure, **keep the `joplin-editable`
+  wrapper and the verbatim `joplin-source` body.** Never strip them.
+
 ## Dependency hygiene
 
 Dependency drift has bitten this project (exceljs silently moved 4.4.0 →
