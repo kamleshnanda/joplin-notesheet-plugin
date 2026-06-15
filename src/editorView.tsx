@@ -54,6 +54,7 @@ import {
     snapshotToXlsxBuffer,
     NOTESHEET_SYNTH_STYLES_RESOURCE,
     NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
+    NOTESHEET_SHAPES_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
 import { extractRangeAsChartData, type RangeAddress } from './charts/extractData';
@@ -668,6 +669,12 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             for (const name of [
                 NOTESHEET_SYNTH_STYLES_RESOURCE,
                 NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
+                // M18 A2: preserve-only shape anchors. Univer never renders or
+                // touches these; the passthrough hook just carries the string
+                // through editor save/reload so shapes survive a round-trip
+                // (without it, Univer drops the unregistered resource on save
+                // and shapes vanish the moment the user edits the note).
+                NOTESHEET_SHAPES_RESOURCE,
             ]) {
                 const stash = new Map<string, string>();
                 resourceManager.registerPluginResource({

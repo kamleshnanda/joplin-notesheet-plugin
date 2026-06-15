@@ -30,6 +30,11 @@ import {
     stripChartPartsFromZip,
     type ImportedChartDrawing,
 } from './charts/xlsxChartImport';
+import { readImagesFromXlsxZip, type ImportedImageDrawing } from './drawings/xlsxImageImport';
+import { injectImagesIntoZip } from './drawings/xlsxImage';
+import { readShapesFromXlsxZip, type ImportedShapeDrawing } from './drawings/xlsxShapeImport';
+import { injectShapesIntoZip } from './drawings/xlsxShape';
+import { NOTESHEET_SHAPES_RESOURCE } from './drawings/sheetIdResolver';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
@@ -105,6 +110,18 @@ export const NOTESHEET_SYNTH_STYLES_RESOURCE = 'SHEET_NOTESHEET_SYNTH_STYLES_PLU
 // which is why a round-tripped file looks "darker green" than the source
 // even though both declare the same style.
 export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN';
+
+// M18 A2: preserve-only shape drawings. Univer can't render <xdr:sp> shapes,
+// so we stash each shape anchor VERBATIM (per subUnitId) in this Notesheet-
+// private resource. The editor resource hook round-trips the string untouched
+// (it never reaches Univer's drawing model); export re-injects the anchors
+// into the worksheet drawing part so Excel renders them. Shape data is
+// `{ [subUnitId]: string[] }` — an array of full <xdr:*Anchor> XML strings.
+// The constant lives in the leaf module drawings/sheetIdResolver.ts (both
+// this file and drawings/xlsxShape.ts import it) to avoid a circular import;
+// it's imported above and re-exported here for callers that reach it via the
+// xlsx module.
+export { NOTESHEET_SHAPES_RESOURCE };
 
 // Univer's Conditional Formatting plugin reads / writes its rules
 // through this resource entry name (M15). Confirmed in
@@ -2003,6 +2020,26 @@ export async function xlsxBufferToSnapshot(
         );
         importedCharts = [];
     }
+    // M18 A1: image drawings. Read zip-direct from the ORIGINAL buffer BEFORE
+    // the chart strip + load — the strip removes a whole drawing part when its
+    // rels point at a chart, which would also drop any image anchors sharing
+    // that drawing. Fail-soft: a read failure drops images, keeps the import.
+    let importedImages: ImportedImageDrawing[] = [];
+    try {
+        importedImages = await readImagesFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] M18: readImagesFromXlsxZip threw; continuing without images', e);
+        importedImages = [];
+    }
+    // M18 A2: preserve-only shapes. Read zip-direct from the ORIGINAL buffer
+    // (same reasoning as images). Fail-soft.
+    let importedShapes: ImportedShapeDrawing[] = [];
+    try {
+        importedShapes = await readShapesFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] M18: readShapesFromXlsxZip threw; continuing without shapes', e);
+        importedShapes = [];
+    }
     // Build a chart-stripped buffer iff there's at least one chart drawing
     // present. For chart-less workbooks we pass the original buffer through
     // unchanged so the existing error-classification path stays intact for
@@ -2363,6 +2400,12 @@ export async function xlsxBufferToSnapshot(
         });
     }
 
+    // M17 charts + M18 images both populate the SAME SHEET_DRAWING_PLUGIN
+    // resource, keyed by subUnitId (`sheet-<1-based-index>`). A single sheet
+    // can carry BOTH a chart and an image, so the map is hoisted here and
+    // filled by both loops before being pushed once as a single resource.
+    const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> = {};
+
     // M17: chart drawings (read pre-load via readChartsFromXlsxZip). Emit
     // the SHEET_DRAWING_PLUGIN resource in the same shape M10's
     // readChartsFromSnapshot consumes — `componentKey: 'NotesheetChart'`
@@ -2447,8 +2490,6 @@ export async function xlsxBufferToSnapshot(
             return { labels, datasets };
         };
 
-        const drawingResource: Record<string, { data: Record<string, unknown>; order: string[] }> =
-            {};
         for (const chart of importedCharts) {
             const subUnitId = `sheet-${chart.sheetIndex}`;
             // Skip charts whose host sheet didn't survive the import — e.g.
@@ -2565,10 +2606,118 @@ export async function xlsxBufferToSnapshot(
             };
             drawingResource[subUnitId].order.push(drawingId);
         }
-        if (Object.keys(drawingResource).length > 0) {
+    }
+
+    // M18 A1: image drawings. Build a NATIVE Univer image drawing
+    // (drawingType 0 / imageSourceType BASE64) per imported image and merge
+    // it into the SAME drawingResource map the chart loop filled. A sheet can
+    // host both a chart and an image; both end up in one SHEET_DRAWING_PLUGIN
+    // resource under the same subUnitId. The EMU→px conversion for the
+    // sheetTransform offsets mirrors the chart path (raw OOXML offsets are
+    // EMUs; Univer's drawing service wants pixels).
+    if (importedImages.length > 0) {
+        const IMG_DEFAULT_COL_W = 73;
+        const IMG_DEFAULT_ROW_H = 19;
+        const IMG_ROW_HEADER_W = 46;
+        const IMG_COL_HEADER_H = 20;
+        for (const image of importedImages) {
+            const subUnitId = `sheet-${image.sheetIndex}`;
+            // Skip images whose host sheet didn't survive the import.
+            if (!sheets[subUnitId]) continue;
+            if (!drawingResource[subUnitId]) {
+                drawingResource[subUnitId] = { data: {}, order: [] };
+            }
+            const drawingId = `image-imported-${image.sheetIndex}-${image.imageId}`;
+            const source = `data:${image.mime};base64,${Buffer.from(image.buffer).toString('base64')}`;
+
+            const fromColOffPx = Math.round(image.anchor.fromColOff / 9525);
+            const fromRowOffPx = Math.round(image.anchor.fromRowOff / 9525);
+            const toColOffPx = Math.round(image.anchor.toColOff / 9525);
+            const toRowOffPx = Math.round(image.anchor.toRowOff / 9525);
+
+            const left = IMG_ROW_HEADER_W + image.anchor.fromCol * IMG_DEFAULT_COL_W + fromColOffPx;
+            const top = IMG_COL_HEADER_H + image.anchor.fromRow * IMG_DEFAULT_ROW_H + fromRowOffPx;
+            const right = IMG_ROW_HEADER_W + image.anchor.toCol * IMG_DEFAULT_COL_W + toColOffPx;
+            const bottom = IMG_COL_HEADER_H + image.anchor.toRow * IMG_DEFAULT_ROW_H + toRowOffPx;
+            // Prefer the source pixel extent for the rendered size when present;
+            // otherwise derive from the anchor span.
+            const width = image.ext ? image.ext.width : Math.max(20, right - left);
+            const height = image.ext ? image.ext.height : Math.max(20, bottom - top);
+
+            drawingResource[subUnitId].data[drawingId] = {
+                unitId: 'workbook',
+                subUnitId,
+                drawingId,
+                // DRAWING_IMAGE (0). Native Univer image drawing — no
+                // componentKey, no data wrapper (charts use 8 + componentKey).
+                drawingType: 0,
+                imageSourceType: 'BASE64',
+                source,
+                allowTransform: true,
+                transform: {
+                    flipY: false,
+                    flipX: false,
+                    angle: 0,
+                    skewX: 0,
+                    skewY: 0,
+                    left,
+                    top,
+                    width,
+                    height,
+                },
+                sheetTransform: {
+                    from: {
+                        column: image.anchor.fromCol,
+                        columnOffset: fromColOffPx,
+                        row: image.anchor.fromRow,
+                        rowOffset: fromRowOffPx,
+                    },
+                    to: {
+                        column: image.anchor.toCol,
+                        columnOffset: toColOffPx,
+                        row: image.anchor.toRow,
+                        rowOffset: toRowOffPx,
+                    },
+                },
+                axisAlignSheetTransform: {
+                    from: {
+                        column: image.anchor.fromCol,
+                        columnOffset: fromColOffPx,
+                        row: image.anchor.fromRow,
+                        rowOffset: fromRowOffPx,
+                    },
+                    to: {
+                        column: image.anchor.toCol,
+                        columnOffset: toColOffPx,
+                        row: image.anchor.toRow,
+                        rowOffset: toRowOffPx,
+                    },
+                },
+            };
+            drawingResource[subUnitId].order.push(drawingId);
+        }
+    }
+
+    if (Object.keys(drawingResource).length > 0) {
+        resources.push({
+            name: 'SHEET_DRAWING_PLUGIN',
+            data: JSON.stringify(drawingResource),
+        });
+    }
+
+    // M18 A2: preserve-only shapes. Stash each shape anchor's verbatim XML
+    // under its subUnitId. Skip shapes whose host sheet didn't survive import.
+    if (importedShapes.length > 0) {
+        const shapeResource: Record<string, string[]> = {};
+        for (const shape of importedShapes) {
+            const subUnitId = `sheet-${shape.sheetIndex}`;
+            if (!sheets[subUnitId]) continue;
+            (shapeResource[subUnitId] ??= []).push(shape.anchorXml);
+        }
+        if (Object.keys(shapeResource).length > 0) {
             resources.push({
-                name: 'SHEET_DRAWING_PLUGIN',
-                data: JSON.stringify(drawingResource),
+                name: NOTESHEET_SHAPES_RESOURCE,
+                data: JSON.stringify(shapeResource),
             });
         }
     }
@@ -3089,6 +3238,14 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
         out = await patchThemeClrScheme(out, sourceClrScheme);
     }
     out = await injectChartsIntoZip(out, snapshot);
+    // M18 A1: inject native image drawings (xl/media + <xdr:pic> anchors).
+    // MUST run AFTER injectChartsIntoZip so images can merge into a sheet's
+    // chart drawing rather than create a colliding second drawing part.
+    out = await injectImagesIntoZip(out, snapshot);
+    // M18 A2: inject preserve-only shape anchors (verbatim <xdr:sp>). MUST run
+    // AFTER charts + images so shapes merge into a sheet's existing drawing
+    // part rather than create a colliding second one.
+    out = await injectShapesIntoZip(out, snapshot);
     return out;
 }
 

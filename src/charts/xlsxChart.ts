@@ -784,7 +784,7 @@ function lookupSheet(
 // Highest existing rId in a Relationships XML, or 0 if none. Used for
 // allocating a new rId without colliding with existing ones (e.g. if M9
 // added a rels entry for a table).
-function maxExistingRId(relsXml: string | null): number {
+export function maxExistingRId(relsXml: string | null): number {
     if (!relsXml) return 0;
     const re = /Id="rId(\d+)"/g;
     let max = 0;
@@ -798,7 +798,7 @@ function maxExistingRId(relsXml: string | null): number {
 
 // Add or update a Relationship in a sheet's rels XML.
 // Returns the new rels XML (creates the file from scratch if missing).
-function upsertRelationship(existing: string | null, newRel: string): string {
+export function upsertRelationship(existing: string | null, newRel: string): string {
     if (!existing) {
         return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${newRel}</Relationships>`;
@@ -813,7 +813,7 @@ function upsertRelationship(existing: string | null, newRel: string): string {
 // last (just before </worksheet>) corrupts the file when <tableParts> is
 // already present (M9 adds it for named-table exports). Excel's load
 // validator rejects with "We found a problem" in that case.
-function insertDrawingRefIntoSheet(sheetXml: string, rId: number): string {
+export function insertDrawingRefIntoSheet(sheetXml: string, rId: number): string {
     // Idempotency: if a drawing ref with the same rId already exists, skip.
     if (sheetXml.includes(`<drawing r:id="rId${rId}"/>`)) return sheetXml;
     const drawingTag = `<drawing r:id="rId${rId}"/>`;
