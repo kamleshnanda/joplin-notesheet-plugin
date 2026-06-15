@@ -45,6 +45,7 @@ async function main(): Promise<void> {
         path.join(repoRoot, 'tests', 'fixtures', 'formatting-testdata'),
         path.join(repoRoot, 'tests', 'fixtures', 'charts'),
         path.join(repoRoot, 'tests', 'fixtures', 'images'),
+        path.join(repoRoot, 'tests', 'fixtures', 'shapes'),
     ];
     let fixturePath: string | null = null;
     for (const root of fixtureRoots) {

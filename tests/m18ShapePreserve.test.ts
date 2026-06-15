@@ -254,4 +254,22 @@ describe('M18 A2 — shape preserve-only round-trip', () => {
         const snap2 = await xlsxBufferToSnapshot(Buffer.from(exported) as unknown as Buffer);
         expect(shapeResource(snap2)?.['sheet-1']?.length).toBe(1);
     });
+
+    test('real fixture ShapeTextBox-SingleSheet.xlsx round-trips', async () => {
+        // Regression guard against a real .xlsx file (not synthetic inline
+        // XML) — the same fixture used for the live passthrough-survival
+        // verification (screenshots/m18-a2/).
+        const { readFileSync } = await import('fs');
+        const pathMod = await import('path');
+        const buf = readFileSync(
+            pathMod.join(__dirname, 'fixtures', 'shapes', 'ShapeTextBox-SingleSheet.xlsx'),
+        );
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
+        const anchor = shapeResource(snap)?.['sheet-1']?.[0] ?? '';
+        expect(anchor).toContain('Preserved Shape');
+        expect(anchor).toContain('roundRect');
+        const exported = await snapshotToXlsxBuffer(snap);
+        const snap2 = await xlsxBufferToSnapshot(Buffer.from(exported) as unknown as Buffer);
+        expect(shapeResource(snap2)?.['sheet-1']?.[0]).toContain('Preserved Shape');
+    });
 });
