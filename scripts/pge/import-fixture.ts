@@ -38,12 +38,13 @@ async function main(): Promise<void> {
     // resolve fixtures against the source tree, not the compile dir.
     const repoRoot = process.env.PGE_REPO_ROOT || path.resolve(__dirname, '..', '..');
     // Search the canonical fixture roots in order. The first one matching
-    // the requested fixture name wins. Both live under tests/fixtures/:
-    // chart fixtures in tests/fixtures/charts/, the M12-era formatting
-    // fixtures in tests/fixtures/formatting-testdata/.
+    // the requested fixture name wins. All live under tests/fixtures/:
+    // formatting fixtures in formatting-testdata/, chart fixtures in
+    // charts/, image fixtures in images/ (M18 A1).
     const fixtureRoots = [
         path.join(repoRoot, 'tests', 'fixtures', 'formatting-testdata'),
         path.join(repoRoot, 'tests', 'fixtures', 'charts'),
+        path.join(repoRoot, 'tests', 'fixtures', 'images'),
     ];
     let fixturePath: string | null = null;
     for (const root of fixtureRoots) {
