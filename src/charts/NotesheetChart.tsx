@@ -207,7 +207,10 @@ function linearFit(values: number[]): { slope: number; intercept: number; r2: nu
     return { slope, intercept, r2 };
 }
 
-function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
+// Exported for unit tests (C3 percent-stack normalisation, grouping, etc.).
+// The live component calls it internally; tests assert the Chart.js config
+// shape without booting a canvas.
+export function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     const type = (data?.type ?? 'bar') as ChartType;
     let labels = data?.labels ?? [];
     let datasets = data?.datasets ?? [];
@@ -332,6 +335,34 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         );
     }
 
+    // C3: percentStacked normalisation. Excel's "100% Stacked" makes each
+    // CATEGORY column sum to 100% — Chart.js has no native percentStacked,
+    // so we convert each point to its share of that category's total. A
+    // zero-total category is left untouched (no division by zero). The value
+    // axis is capped at 100 below (see `percentStackedMax`).
+    const isPercentStacked = grouping === 'percentStacked' && (type === 'bar' || type === 'line');
+    if (isPercentStacked) {
+        const n = Math.max(0, ...datasets.map((ds) => ds.data?.length ?? 0));
+        const colTotals = Array.from({ length: n }, (_, i) =>
+            datasets.reduce((sum, ds) => {
+                const v = ds.data?.[i];
+                return sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+            }, 0),
+        );
+        datasets = datasets.map(
+            (ds) =>
+                ({
+                    ...ds,
+                    data: (ds.data ?? []).map((v, i) => {
+                        const total = colTotals[i];
+                        return total === 0 || typeof v !== 'number' || !Number.isFinite(v)
+                            ? v
+                            : (v / total) * 100;
+                    }),
+                }) as ChartData['datasets'][number],
+        );
+    }
+
     // Bar width. Excel's <c:gapWidth val="N"/> is "gap between bar
     // groups as a percentage of bar width". Chart.js's
     // categoryPercentage is "what fraction of the category band the
@@ -439,6 +470,12 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         if (isStacked && (type === 'bar' || type === 'line')) {
             out.x = { ...(out.x ?? {}), stacked: true };
             out.y = { ...(out.y ?? {}), stacked: true };
+        }
+        // C3: cap the value axis at 100 for percentStacked (data is already
+        // normalised to per-category percentages above). valAxisKey is 'x'
+        // for horizontal bars, else 'y'.
+        if (isPercentStacked) {
+            out[valAxisKey] = { ...(out[valAxisKey] ?? {}), max: 100 };
         }
         if (tickFormatter && (type === 'bar' || type === 'line')) {
             out[valAxisKey] = {
