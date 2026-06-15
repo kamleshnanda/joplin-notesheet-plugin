@@ -26,11 +26,23 @@ export type ChartType = 'bar' | 'line' | 'pie' | 'doughnut';
 
 // One chart, normalized for emission. Read out of the snapshot's
 // SHEET_DRAWING_PLUGIN resource, stripped of Univer-internal noise.
+// C2: a formatted run of a chart title (mirrors ImportedChartDrawing's).
+export interface ChartTitleRun {
+    text: string;
+    bold?: boolean;
+    italic?: boolean;
+    size?: number; // OOXML sz (hundredths of a point)
+    color?: string; // #RRGGBB
+}
+
 export interface ChartDrawing {
     chartId: string;
     sheetId: string;
     type: ChartType;
     title: string;
+    // C2: per-run title formatting; when present, export emits one <a:r> per
+    // run with its <a:rPr> instead of a single default run.
+    titleRuns?: ChartTitleRun[];
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     // Display name of the sheet whose data the chart references. For a chart
     // anchored on the SAME sheet as its data, equals the host sheet's name.
@@ -182,6 +194,21 @@ function seriesHex(ds: { color?: string }, seriesIndex: number): string {
     return paletteHex(seriesIndex);
 }
 
+// C2: one title <a:r> with its formatting. rPr attribute order is lang, then
+// sz, b, i (Excel's order); the optional colour is a <a:solidFill> child.
+function buildTitleRunXml(run: ChartTitleRun): string {
+    const attrs = ['lang="en-US"'];
+    if (typeof run.size === 'number') attrs.push(`sz="${run.size}"`);
+    if (run.bold) attrs.push('b="1"');
+    if (run.italic) attrs.push('i="1"');
+    const fill =
+        typeof run.color === 'string' && /^#?[0-9A-Fa-f]{6}$/.test(run.color)
+            ? `<a:solidFill><a:srgbClr val="${run.color.replace(/^#/, '').toUpperCase()}"/></a:solidFill>`
+            : '';
+    const rPr = fill ? `<a:rPr ${attrs.join(' ')}>${fill}</a:rPr>` : `<a:rPr ${attrs.join(' ')}/>`;
+    return `<a:r>${rPr}<a:t>${escapeXml(run.text)}</a:t></a:r>`;
+}
+
 // Build the chart-level <c:dLbls> XML from meta.dLbls. Element order
 // inside <c:dLbls> is strict (showLegendKey, showVal, showCatName,
 // showSerName, showPercent, showBubbleSize) — Excel rejects out-of-order.
@@ -293,8 +320,14 @@ function chartSpaceWrap(
     _hasAxes: boolean,
     plotAreaInner: () => string,
 ): string {
+    // C2: emit one <a:r> per formatted run when titleRuns is present (each
+    // with its <a:rPr> bold/italic/size/colour), else a single default run.
+    const titleRunsXml =
+        c.titleRuns && c.titleRuns.length > 0
+            ? c.titleRuns.map(buildTitleRunXml).join('')
+            : `<a:r><a:rPr lang="en-US"/><a:t>${escapeXml(c.title)}</a:t></a:r>`;
     const titleXml = c.title
-        ? `<c:title><c:tx><c:rich><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400" b="0" kern="1200"/></a:pPr><a:r><a:rPr lang="en-US"/><a:t>${escapeXml(c.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`
+        ? `<c:title><c:tx><c:rich><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400" b="0" kern="1200"/></a:pPr>${titleRunsXml}</a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`
         : `<c:autoTitleDeleted val="1"/>`;
 
     const showLegend = c.type === 'pie' || c.type === 'doughnut' || c.datasets.length > 1;
@@ -643,6 +676,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     };
                     sourceSheetName?: string;
                     title?: string;
+                    titleRuns?: ChartTitleRun[];
                     labels?: unknown[];
                     datasets?: Array<{ label?: string; data?: unknown[]; color?: string }>;
                     meta?: {
@@ -752,6 +786,9 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                 sheetId: subUnitId,
                 type,
                 title: typeof data.title === 'string' ? data.title : '',
+                ...(Array.isArray(data.titleRuns) && data.titleRuns.length > 0
+                    ? { titleRuns: data.titleRuns }
+                    : {}),
                 sourceRange: {
                     startRow: sr.startRow,
                     endRow: sr.endRow,

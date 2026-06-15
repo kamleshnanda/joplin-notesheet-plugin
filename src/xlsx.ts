@@ -2545,6 +2545,7 @@ export async function xlsxBufferToSnapshot(
                     chartId: chart.chartId,
                     type: chart.type,
                     title: chart.title,
+                    ...(chart.titleRuns ? { titleRuns: chart.titleRuns } : {}),
                     sourceRange: chart.sourceRange,
                     ...(chart.sourceSheetName ? { sourceSheetName: chart.sourceSheetName } : {}),
                     labels: chartLabels,

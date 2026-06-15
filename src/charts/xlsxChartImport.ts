@@ -25,6 +25,16 @@ import JSZip from 'jszip';
 import type { ChartType } from './xlsxChart';
 import { buildFilenameToSheetId } from '../drawings/sheetIdResolver';
 
+// C2: one formatted run of a chart title. `size` is OOXML hundredths of a
+// point (sz attr); `color` is #RRGGBB. Absent fields = inherit the default.
+export interface ChartTitleRun {
+    text: string;
+    bold?: boolean;
+    italic?: boolean;
+    size?: number;
+    color?: string;
+}
+
 // One chart, after import. Keyed by sheetIndex (the 1-based exceljs
 // worksheet index — matches xl/worksheets/sheet{N}.xml).
 export interface ImportedChartDrawing {
@@ -32,6 +42,10 @@ export interface ImportedChartDrawing {
     chartId: string;
     type: ChartType;
     title: string;
+    // C2: per-run title formatting (bold/italic/size/colour). Omitted when
+    // the title is empty or a single default run. The flat `title` is kept
+    // for the live render + as a fallback.
+    titleRuns?: ChartTitleRun[];
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     sourceSheetName?: string;
     labels: string[];
@@ -346,6 +360,7 @@ function colIndex(letters: string): number {
 interface ParsedChart {
     type: ChartType;
     title: string;
+    titleRuns?: ChartTitleRun[];
     sourceSheetName?: string;
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     labels: string[];
@@ -659,12 +674,39 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     // truncated multi-run titles. Walk every <a:t> inside the title
     // block and join them.
     let title = '';
+    // C2: per-run title formatting. Each <a:r> is <a:rPr .../><a:t>text</a:t>;
+    // rPr carries b/i/sz attrs + an optional <a:solidFill><a:srgbClr>. We
+    // capture the runs so export can re-emit the bold/colour/size; the flat
+    // `title` (all run text joined) drives the single-font live render.
+    const titleRuns: ChartTitleRun[] = [];
     const titleBlock = chartXml.match(/<(?:c:)?title\b[\s\S]*?<\/(?:c:)?title>/);
     if (titleBlock) {
-        const runs = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) =>
-            decodeXmlEntities(m[1]),
-        );
-        title = runs.join('');
+        const runMatches = [...titleBlock[0].matchAll(/<a:r>([\s\S]*?)<\/a:r>/g)];
+        for (const rm of runMatches) {
+            const runBody = rm[1];
+            const tMatch = runBody.match(/<a:t>([\s\S]*?)<\/a:t>/);
+            if (!tMatch) continue;
+            const text = decodeXmlEntities(tMatch[1]);
+            const rPr =
+                runBody.match(/<a:rPr\b([^>]*?)\/>/)?.[1] ??
+                runBody.match(/<a:rPr\b([^>]*?)>/)?.[1] ??
+                '';
+            const run: ChartTitleRun = { text };
+            if (/\bb="1"/.test(rPr)) run.bold = true;
+            if (/\bi="1"/.test(rPr)) run.italic = true;
+            const sz = rPr.match(/\bsz="(\d+)"/);
+            if (sz) run.size = parseInt(sz[1], 10);
+            const clr = runBody.match(/<a:solidFill>[\s\S]*?<a:srgbClr\s+val="([0-9A-Fa-f]{6})"/);
+            if (clr) run.color = '#' + clr[1].toUpperCase();
+            titleRuns.push(run);
+        }
+        title = titleRuns.map((r) => r.text).join('');
+        // Fallback: no <a:r> runs (rare) — still grab any bare <a:t>s.
+        if (title === '') {
+            title = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
+                .map((m) => decodeXmlEntities(m[1]))
+                .join('');
+        }
     }
 
     // Legend position. <c:legend><c:legendPos val="b|l|r|t|tr"/></c:legend>.
@@ -810,6 +852,16 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     return {
         type,
         title,
+        // Only carry titleRuns when at least one run has REAL formatting
+        // (bold/italic/size/colour). Multiple unformatted runs (Excel often
+        // splits a plain title into runs) flatten to the single `title`
+        // string — no formatting to preserve, and re-emitting them as split
+        // <a:t>s would be needless churn.
+        ...(titleRuns.some(
+            (r) => r.bold || r.italic || r.size !== undefined || r.color !== undefined,
+        )
+            ? { titleRuns }
+            : {}),
         sourceSheetName,
         sourceRange: { startRow, endRow, startColumn, endColumn },
         labels,
@@ -975,6 +1027,7 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
+            if (parsed.titleRuns) drawing.titleRuns = parsed.titleRuns;
             const hasMeta =
                 parsed.unsupportedSourceType ||
                 parsed.barDir ||
