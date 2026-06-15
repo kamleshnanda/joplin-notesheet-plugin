@@ -57,9 +57,21 @@ function toLabel(v: unknown): string {
 
 // `workbook` is the FWorkbook facade. We accept `unknown` so callers don't
 // have to import Univer types just to unit-test this.
-export function extractRangeAsChartData(workbook: unknown, range: RangeAddress): ChartData {
+// `opts.hasHeaderRow`: when true, the FIRST row of the range is a header
+// (category-axis title + per-series names), NOT data — drop it from labels
+// and from each series' data. Imported Excel charts whose source has a
+// header row set this (meta.categoryAxisType === 'category'); the live-edit
+// re-extract must match the importer, which builds cached labels from the
+// data rows only (e.g. A2:A5, not A1:A5). Defaults to false to preserve the
+// header-less authoring path.
+export function extractRangeAsChartData(
+    workbook: unknown,
+    range: RangeAddress,
+    opts?: { hasHeaderRow?: boolean },
+): ChartData {
     const empty: ChartData = { labels: [], datasets: [] };
     if (!workbook || !range) return empty;
+    const hasHeaderRow = opts?.hasHeaderRow === true;
 
     try {
         const wb = workbook as {
@@ -77,17 +89,24 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
         if (!sheet) return empty;
 
         const rangeObj = sheet.getRange?.(range);
-        const values = rangeObj?.getValues?.();
-        if (!Array.isArray(values) || values.length === 0) return empty;
+        const allValues = rangeObj?.getValues?.();
+        if (!Array.isArray(allValues) || allValues.length === 0) return empty;
+
+        // Split off the header row when present: it names the series (per
+        // value column) and the category axis, and must NOT appear as data.
+        const headerRow = hasHeaderRow ? allValues[0] : undefined;
+        const values = hasHeaderRow ? allValues.slice(1) : allValues;
+        if (values.length === 0) return empty;
 
         const cols = values[0].length;
         if (cols === 1) {
             const data = values.map((row) => toNumber(row[0]));
+            const seriesLabel = headerRow ? toLabel(headerRow[0]) : 'Series 1';
             return {
                 labels: data.map((_, i) => String(i + 1)),
                 datasets: [
                     {
-                        label: 'Series 1',
+                        label: seriesLabel,
                         data,
                         backgroundColor: CHART_PALETTE[0],
                         borderColor: CHART_PALETTE[0],
@@ -101,8 +120,10 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
         for (let c = 1; c < cols; c++) {
             const seriesData = values.map((row) => toNumber(row[c]));
             const color = CHART_PALETTE[(c - 1) % CHART_PALETTE.length];
+            // Series name from the header cell of this column when available.
+            const seriesLabel = headerRow ? toLabel(headerRow[c]) : 'Series ' + c;
             datasets.push({
-                label: 'Series ' + c,
+                label: seriesLabel,
                 data: seriesData,
                 backgroundColor: color,
                 borderColor: color,

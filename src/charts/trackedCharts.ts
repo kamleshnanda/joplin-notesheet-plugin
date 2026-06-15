@@ -20,6 +20,12 @@ export interface TrackedChart {
     id: string;
     sourceRange: RangeAddress;
     sourceSheetName?: string;
+    // True when the sourceRange's first row is a header (category-axis title
+    // + series names), so the live-edit re-extract must skip it. Derived from
+    // the chart's meta.categoryAxisType === 'category'. Without this, editing
+    // a cell re-reads the whole range and the header leaks in as a phantom
+    // category (the "Quarter" 5th-bar bug).
+    hasHeaderRow?: boolean;
 }
 
 export const trackedCharts = new Map<string, TrackedChart>();
@@ -55,6 +61,7 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                         endColumn?: number;
                     };
                     sourceSheetName?: string;
+                    meta?: { categoryAxisType?: 'index' | 'category' };
                 };
             };
             if (d?.componentKey !== 'NotesheetChart') continue;
@@ -82,6 +89,11 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                 ...(typeof data?.sourceSheetName === 'string' && data.sourceSheetName
                     ? { sourceSheetName: data.sourceSheetName }
                     : {}),
+                // A 'category' axis means row 0 of the source range is a
+                // header; 'index' (or absent) means the source had no <c:cat>
+                // header to skip. Default to true ONLY when explicitly
+                // 'category' so the index-axis case keeps reading every row.
+                hasHeaderRow: data?.meta?.categoryAxisType === 'category',
             });
         }
     }

@@ -200,7 +200,13 @@ function refreshChartsForEdit(): void {
 
         for (const chart of trackedCharts.values()) {
             if (!rangeContainsCell(chart.sourceRange, editedRow, editedCol)) continue;
-            const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange);
+            // Pass hasHeaderRow so an imported chart (whose sourceRange spans
+            // the header row) re-extracts the same way the importer did —
+            // skipping row 0 — instead of leaking the header in as a phantom
+            // category on edit.
+            const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange, {
+                hasHeaderRow: chart.hasHeaderRow === true,
+            });
             pushChartUpdate(chart.id, fresh);
         }
     } catch (e) {
