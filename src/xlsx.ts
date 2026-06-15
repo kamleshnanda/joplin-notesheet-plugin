@@ -32,6 +32,9 @@ import {
 } from './charts/xlsxChartImport';
 import { readImagesFromXlsxZip, type ImportedImageDrawing } from './drawings/xlsxImageImport';
 import { injectImagesIntoZip } from './drawings/xlsxImage';
+import { readShapesFromXlsxZip, type ImportedShapeDrawing } from './drawings/xlsxShapeImport';
+import { injectShapesIntoZip } from './drawings/xlsxShape';
+import { NOTESHEET_SHAPES_RESOURCE } from './drawings/sheetIdResolver';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
@@ -107,6 +110,18 @@ export const NOTESHEET_SYNTH_STYLES_RESOURCE = 'SHEET_NOTESHEET_SYNTH_STYLES_PLU
 // which is why a round-tripped file looks "darker green" than the source
 // even though both declare the same style.
 export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SCHEME_PLUGIN';
+
+// M18 A2: preserve-only shape drawings. Univer can't render <xdr:sp> shapes,
+// so we stash each shape anchor VERBATIM (per subUnitId) in this Notesheet-
+// private resource. The editor resource hook round-trips the string untouched
+// (it never reaches Univer's drawing model); export re-injects the anchors
+// into the worksheet drawing part so Excel renders them. Shape data is
+// `{ [subUnitId]: string[] }` — an array of full <xdr:*Anchor> XML strings.
+// The constant lives in the leaf module drawings/sheetIdResolver.ts (both
+// this file and drawings/xlsxShape.ts import it) to avoid a circular import;
+// it's imported above and re-exported here for callers that reach it via the
+// xlsx module.
+export { NOTESHEET_SHAPES_RESOURCE };
 
 // Univer's Conditional Formatting plugin reads / writes its rules
 // through this resource entry name (M15). Confirmed in
@@ -2016,6 +2031,15 @@ export async function xlsxBufferToSnapshot(
         console.warn('[Notesheet] M18: readImagesFromXlsxZip threw; continuing without images', e);
         importedImages = [];
     }
+    // M18 A2: preserve-only shapes. Read zip-direct from the ORIGINAL buffer
+    // (same reasoning as images). Fail-soft.
+    let importedShapes: ImportedShapeDrawing[] = [];
+    try {
+        importedShapes = await readShapesFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] M18: readShapesFromXlsxZip threw; continuing without shapes', e);
+        importedShapes = [];
+    }
     // Build a chart-stripped buffer iff there's at least one chart drawing
     // present. For chart-less workbooks we pass the original buffer through
     // unchanged so the existing error-classification path stays intact for
@@ -2681,6 +2705,23 @@ export async function xlsxBufferToSnapshot(
         });
     }
 
+    // M18 A2: preserve-only shapes. Stash each shape anchor's verbatim XML
+    // under its subUnitId. Skip shapes whose host sheet didn't survive import.
+    if (importedShapes.length > 0) {
+        const shapeResource: Record<string, string[]> = {};
+        for (const shape of importedShapes) {
+            const subUnitId = `sheet-${shape.sheetIndex}`;
+            if (!sheets[subUnitId]) continue;
+            (shapeResource[subUnitId] ??= []).push(shape.anchorXml);
+        }
+        if (Object.keys(shapeResource).length > 0) {
+            resources.push({
+                name: NOTESHEET_SHAPES_RESOURCE,
+                data: JSON.stringify(shapeResource),
+            });
+        }
+    }
+
     // Workbook-level default style. Univer cells without an explicit `s`
     // inherit from this. We use it to carry the source theme's body font
     // (minorFont) so imported sheets render in Aptos Narrow / Calibri / etc.
@@ -3201,6 +3242,10 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     // MUST run AFTER injectChartsIntoZip so images can merge into a sheet's
     // chart drawing rather than create a colliding second drawing part.
     out = await injectImagesIntoZip(out, snapshot);
+    // M18 A2: inject preserve-only shape anchors (verbatim <xdr:sp>). MUST run
+    // AFTER charts + images so shapes merge into a sheet's existing drawing
+    // part rather than create a colliding second one.
+    out = await injectShapesIntoZip(out, snapshot);
     return out;
 }
 

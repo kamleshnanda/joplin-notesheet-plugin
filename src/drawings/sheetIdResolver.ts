@@ -18,6 +18,12 @@
 
 import JSZip from 'jszip';
 
+// M18 A2: Notesheet-private resource holding preserve-only shape anchors,
+// keyed by subUnitId -> string[] of verbatim <xdr:*Anchor> XML. Lives here
+// (a leaf module both xlsx.ts and the shape modules already depend on) to
+// avoid a circular import between xlsx.ts and drawings/xlsxShape.ts.
+export const NOTESHEET_SHAPES_RESOURCE = 'SHEET_NOTESHEET_SHAPES_PLUGIN';
+
 export async function buildFilenameToSheetId(zip: JSZip): Promise<Map<number, number>> {
     const out = new Map<number, number>();
     const wbRelsFile = zip.file('xl/_rels/workbook.xml.rels');
