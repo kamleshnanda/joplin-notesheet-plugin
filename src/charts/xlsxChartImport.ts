@@ -35,7 +35,7 @@ export interface ImportedChartDrawing {
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     sourceSheetName?: string;
     labels: string[];
-    datasets: Array<{ label?: string; data: number[] }>;
+    datasets: Array<{ label?: string; data: number[]; color?: string }>;
     anchor: {
         fromCol: number;
         fromColOff: number;
@@ -349,7 +349,7 @@ interface ParsedChart {
     sourceSheetName?: string;
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     labels: string[];
-    datasets: Array<{ label?: string; data: number[] }>;
+    datasets: Array<{ label?: string; data: number[]; color?: string }>;
     unsupportedSourceType?: string;
     barDir?: 'bar' | 'col';
     barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
@@ -690,7 +690,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let sourceSheetName: string | undefined;
     let labelsRange: DecodedRef | null = null;
     const valRanges: DecodedRef[] = [];
-    const datasets: Array<{ label?: string; data: number[] }> = [];
+    const datasets: Array<{ label?: string; data: number[]; color?: string }> = [];
     // Track whether any series provided a <c:cat>. When NONE do, Excel
     // shows row index 1..N as the X-axis and treats every column in
     // the value-refs as a separate values series. We surface this
@@ -709,6 +709,14 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     const reVal = new RegExp(`<${C}val>([\\s\\S]*?)</${C}val>`);
     const reNumCache = new RegExp(`<${C}numCache>([\\s\\S]*?)</${C}numCache>`);
 
+    // C1: a series' own fill colour is the FIRST <c:spPr> directly under the
+    // <c:ser> (NOT one nested in a data point <c:dPt> or marker). We read the
+    // series spPr's <a:solidFill><a:srgbClr val>. Scheme/theme colours and
+    // gradient/pattern fills aren't resolved here (fall back to palette).
+    const reSerSpPrFill = new RegExp(
+        `<${C}spPr>[\\s\\S]*?<a:solidFill>[\\s\\S]*?<a:srgbClr\\s+val="([0-9A-Fa-f]{6})"`,
+    );
+
     for (const ser of serBodies) {
         // Series label.
         const txMatch = ser.match(reTx);
@@ -719,6 +727,14 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
             if (strCacheVal) label = decodeXmlEntities(strCacheVal[1]);
             else if (inlineV) label = decodeXmlEntities(inlineV[1]);
         }
+
+        // Series fill colour (C1). Only consider the spPr BEFORE the first
+        // <c:cat>/<c:val> so a data-point or cache spPr can't be mistaken for
+        // the series fill.
+        let color: string | undefined;
+        const serHead = ser.split(new RegExp(`<${C}(?:cat|val)>`))[0];
+        const fillMatch = serHead.match(reSerSpPrFill);
+        if (fillMatch) color = '#' + fillMatch[1].toUpperCase();
 
         // Categories — only consume if the series has a <c:cat>.
         const catMatch = ser.match(reCat);
@@ -759,7 +775,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
                 }
             }
         }
-        datasets.push({ label, data });
+        datasets.push({ label, data, ...(color ? { color } : {}) });
     }
 
     if (datasets.length === 0) return null;

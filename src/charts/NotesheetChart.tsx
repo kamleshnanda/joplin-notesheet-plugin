@@ -239,7 +239,11 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         // shifts and the bars turn grey. Assigning deterministically keeps
         // the first series blue regardless of how many datasets follow.
         datasets = datasets.map((ds, i) => {
-            const colour = CHART_PALETTE[i % CHART_PALETTE.length];
+            // C1: prefer the source per-series colour (imported into
+            // `ds.color` from <c:ser><c:spPr>), then any explicit
+            // backgroundColor, then the palette for this series index.
+            const srcColor = (ds as { color?: string }).color;
+            const colour = srcColor ?? CHART_PALETTE[i % CHART_PALETTE.length];
             return {
                 ...ds,
                 backgroundColor: ds.backgroundColor ?? colour,

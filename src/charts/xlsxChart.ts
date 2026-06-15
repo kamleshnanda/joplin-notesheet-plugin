@@ -41,7 +41,7 @@ export interface ChartDrawing {
     // Excel's re-evaluation from cells on cross-sheet charts).
     sourceSheetName?: string;
     labels: string[];
-    datasets: Array<{ label?: string; data: number[] }>;
+    datasets: Array<{ label?: string; data: number[]; color?: string }>;
     anchor: {
         fromCol: number;
         fromColOff: number;
@@ -171,6 +171,17 @@ function paletteHex(seriesIndex: number): string {
     return c.replace(/^#/, '').toUpperCase();
 }
 
+// C1: a series' own colour (#RRGGBB → RRGGBB, no hash) when the imported
+// dataset carried one from the source <c:spPr>; otherwise the palette colour
+// for its index. Only #RRGGBB hex is honoured (scheme/theme colours fall back
+// to palette, matching the import side).
+function seriesHex(ds: { color?: string }, seriesIndex: number): string {
+    if (typeof ds.color === 'string' && /^#?[0-9A-Fa-f]{6}$/.test(ds.color)) {
+        return ds.color.replace(/^#/, '').toUpperCase();
+    }
+    return paletteHex(seriesIndex);
+}
+
 // Build the chart-level <c:dLbls> XML from meta.dLbls. Element order
 // inside <c:dLbls> is strict (showLegendKey, showVal, showCatName,
 // showSerName, showPercent, showBubbleSize) — Excel rejects out-of-order.
@@ -217,7 +228,7 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
         // override.
         const gapWidth = c.meta?.barGapWidth ?? 150;
         const seriesXml = c.datasets
-            .map((ds, i) => buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i)))
+            .map((ds, i) => buildSeriesXml(c, opts, ds, i, /* solidFill */ seriesHex(ds, i)))
             .join('');
         const dLblsXml = buildDataLabelsXml(c);
         return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes(c)}`;
@@ -238,7 +249,7 @@ export function buildLineChartXml(c: ChartDrawing, opts: BuildChartOpts): string
         // meta.lineMarkerOn so a fixture with markers round-trips.
         const markerOn = c.meta?.lineMarkerOn ? '1' : '0';
         const seriesXml = c.datasets
-            .map((ds, i) => buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true))
+            .map((ds, i) => buildSeriesXml(c, opts, ds, i, seriesHex(ds, i), /* lineSeries */ true))
             .join('');
         const dLblsXml = buildDataLabelsXml(c);
         return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:marker val="${markerOn}"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes(c)}`;
@@ -633,7 +644,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     sourceSheetName?: string;
                     title?: string;
                     labels?: unknown[];
-                    datasets?: Array<{ label?: string; data?: unknown[] }>;
+                    datasets?: Array<{ label?: string; data?: unknown[]; color?: string }>;
                     meta?: {
                         legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
                         categoryAxisType?: 'index' | 'category';
@@ -732,6 +743,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                 ? data.datasets.map((ds) => ({
                       label: ds?.label,
                       data: Array.isArray(ds?.data) ? ds.data.map((v) => Number(v)) : [],
+                      ...(typeof ds?.color === 'string' ? { color: ds.color } : {}),
                   }))
                 : [];
 
