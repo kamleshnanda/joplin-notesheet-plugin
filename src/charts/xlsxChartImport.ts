@@ -23,6 +23,7 @@
 import JSZip from 'jszip';
 
 import type { ChartType } from './xlsxChart';
+import { buildFilenameToSheetId } from '../drawings/sheetIdResolver';
 
 // One chart, after import. Keyed by sheetIndex (the 1-based exceljs
 // worksheet index — matches xl/worksheets/sheet{N}.xml).
@@ -846,11 +847,18 @@ interface SheetDrawingLink {
 
 async function findSheetDrawingLinks(zip: JSZip): Promise<SheetDrawingLink[]> {
     const out: SheetDrawingLink[] = [];
+    // Resolve worksheet FILENAME number -> logical sheetId. On an edited
+    // workbook these differ (e.g. sheet1.xml may be sheetId=2), and xlsx.ts
+    // keys snapshot subUnitIds off the sheetId. Using the raw filename number
+    // here mis-assigns the chart's `sheet-N` and the snapshot guard then drops
+    // it. See tests/m18ChartSheetIdDrift.test.ts.
+    const filenameToSheetId = await buildFilenameToSheetId(zip);
     const sheetRelsRe = /^xl\/worksheets\/_rels\/sheet(\d+)\.xml\.rels$/;
     for (const path of Object.keys(zip.files)) {
         const m = path.match(sheetRelsRe);
         if (!m) continue;
-        const sheetIndex = parseInt(m[1], 10);
+        const filenameNum = parseInt(m[1], 10);
+        const sheetIndex = filenameToSheetId.get(filenameNum) ?? filenameNum;
         const xml = await zip.files[path].async('string');
         // Walk every <Relationship .../> in this rels file, parse attrs
         // independently, and pick the one whose Type ends with "/drawing".

@@ -18,6 +18,8 @@
 
 import JSZip from 'jszip';
 
+import { buildFilenameToSheetId } from './sheetIdResolver';
+
 // One image, after import. Keyed by sheetIndex (1-based — matches
 // xl/worksheets/sheet{N}.xml and the chart import shape).
 export interface ImportedImageDrawing {
@@ -103,51 +105,6 @@ function resolveRelTarget(baseFolder: string, target: string): string {
         else if (seg !== '.' && seg !== '') segs.push(seg);
     }
     return segs.join('/');
-}
-
-// Map worksheet-xml filename number -> the workbook sheetId. The
-// xl/worksheets/sheet{N}.xml filename number is NOT the workbook sheet id:
-// the workbook may renumber (e.g. a deleted first sheet leaves sheet1.xml
-// pointing at sheetId=2). xlsx.ts keys snapshot subUnitIds off exceljs's
-// `ws.id`, which equals the workbook.xml <sheet sheetId="..."> attribute. To
-// emit a subUnitId that matches, the importer must resolve filename -> sheetId
-// via workbook.xml.rels (rId -> worksheet target) + workbook.xml (sheetId ->
-// rId). Returns an empty map when the workbook parts are absent (callers then
-// fall back to the filename number, which is correct for single-sheet files).
-async function buildFilenameToSheetId(zip: JSZip): Promise<Map<number, number>> {
-    const out = new Map<number, number>();
-    const wbRelsFile = zip.file('xl/_rels/workbook.xml.rels');
-    const wbFile = zip.file('xl/workbook.xml');
-    if (!wbRelsFile || !wbFile) return out;
-    // rId -> worksheet filename number.
-    const rIdToFilenameNum = new Map<string, number>();
-    const relsXml = await wbRelsFile.async('string');
-    const relRe = /<Relationship\s+([^>]*?)\/>/g;
-    let m: RegExpExecArray | null;
-    while ((m = relRe.exec(relsXml)) !== null) {
-        const attrs = m[1];
-        const idM = attrs.match(/\bId="([^"]+)"/);
-        const typeM = attrs.match(/\bType="([^"]+)"/);
-        const targetM = attrs.match(/\bTarget="([^"]+)"/);
-        if (!idM || !typeM || !targetM) continue;
-        if (!/\/worksheet$/.test(typeM[1])) continue;
-        const fnM = targetM[1].match(/sheet(\d+)\.xml$/);
-        if (fnM) rIdToFilenameNum.set(idM[1], parseInt(fnM[1], 10));
-    }
-    // sheetId + r:id from workbook.xml <sheet .../>.
-    const wbXml = await wbFile.async('string');
-    const sheetRe = /<sheet\b([^>]*)\/>/g;
-    while ((m = sheetRe.exec(wbXml)) !== null) {
-        const attrs = m[1];
-        const sheetIdM = attrs.match(/\bsheetId="(\d+)"/);
-        const ridM = attrs.match(/\br:id="([^"]+)"/);
-        if (!sheetIdM || !ridM) continue;
-        const filenameNum = rIdToFilenameNum.get(ridM[1]);
-        if (filenameNum !== undefined) {
-            out.set(filenameNum, parseInt(sheetIdM[1], 10));
-        }
-    }
-    return out;
 }
 
 interface SheetDrawingLink {
