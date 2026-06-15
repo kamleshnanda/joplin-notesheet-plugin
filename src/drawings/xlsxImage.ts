@@ -28,9 +28,7 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from '../snapshot';
 import { escapeXml, maxExistingRId, upsertRelationship } from '../charts/xlsxChart';
-
-// EMU per pixel at 96 DPI (mirrors the import path).
-const EMU_PER_PX = 9525;
+import { resolveAnchorEmu, type SrcAnchorEmu } from './sheetIdResolver';
 
 export type ImageExtension = 'png' | 'jpeg' | 'gif' | 'bmp' | 'webp';
 
@@ -136,6 +134,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                 drawingType?: number;
                 imageSourceType?: string;
                 source?: string;
+                _srcAnchorEmu?: SrcAnchorEmu;
                 sheetTransform?: {
                     from?: {
                         column?: number;
@@ -179,23 +178,14 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
             const tx = d.axisAlignSheetTransform ?? d.sheetTransform;
             if (!tx?.from || !tx?.to) continue;
 
-            // sheetTransform offsets are PIXELS in Univer; OOXML anchor offsets
-            // are EMUs. Convert px -> EMU here (inverse of the import path).
+            // A3: reproduce the EXACT source EMU anchor when present + unmoved;
+            // otherwise px × 9525 (editor-authored or user-moved drawing).
             out.push({
                 drawingId,
                 sheetId: subUnitId,
                 extension: ext,
                 bytes: decoded.bytes,
-                anchor: {
-                    fromCol: tx.from.column ?? 0,
-                    fromColOff: Math.round((tx.from.columnOffset ?? 0) * EMU_PER_PX),
-                    fromRow: tx.from.row ?? 0,
-                    fromRowOff: Math.round((tx.from.rowOffset ?? 0) * EMU_PER_PX),
-                    toCol: tx.to.column ?? 0,
-                    toColOff: Math.round((tx.to.columnOffset ?? 0) * EMU_PER_PX),
-                    toRow: tx.to.row ?? 0,
-                    toRowOff: Math.round((tx.to.rowOffset ?? 0) * EMU_PER_PX),
-                },
+                anchor: resolveAnchorEmu(d._srcAnchorEmu, tx.from, tx.to),
             });
         }
     }

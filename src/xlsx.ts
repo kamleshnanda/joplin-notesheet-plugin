@@ -2603,6 +2603,20 @@ export async function xlsxBufferToSnapshot(
                         rowOffset: Math.round(chart.anchor.toRowOff / 9525),
                     },
                 },
+                // A3: exact source EMU offsets (see the image path for the
+                // rationale + the editor-move fallback). Also fixes a latent
+                // unit bug: chart export previously read columnOffset (PIXELS)
+                // as if it were EMU, mis-scaling any sub-cell offset to ~0.
+                _srcAnchorEmu: {
+                    fromCol: chart.anchor.fromCol,
+                    fromColOff: chart.anchor.fromColOff,
+                    fromRow: chart.anchor.fromRow,
+                    fromRowOff: chart.anchor.fromRowOff,
+                    toCol: chart.anchor.toCol,
+                    toColOff: chart.anchor.toColOff,
+                    toRow: chart.anchor.toRow,
+                    toRowOff: chart.anchor.toRowOff,
+                },
             };
             drawingResource[subUnitId].order.push(drawingId);
         }
@@ -2692,6 +2706,23 @@ export async function xlsxBufferToSnapshot(
                         row: image.anchor.toRow,
                         rowOffset: toRowOffPx,
                     },
+                },
+                // A3: the EXACT source EMU offsets, stashed so export can
+                // reproduce them losslessly instead of reconstructing from the
+                // rounded pixel sheetTransform (which drifts ~⅓px per round).
+                // Univer ignores unknown keys on a drawing entry; if the user
+                // moves the drawing in the editor, export falls back to
+                // px×9525 (the editor only updates the px sheetTransform, so a
+                // stale _srcAnchorEmu would be wrong — see readImagesFromSnapshot).
+                _srcAnchorEmu: {
+                    fromCol: image.anchor.fromCol,
+                    fromColOff: image.anchor.fromColOff,
+                    fromRow: image.anchor.fromRow,
+                    fromRowOff: image.anchor.fromRowOff,
+                    toCol: image.anchor.toCol,
+                    toColOff: image.anchor.toColOff,
+                    toRow: image.anchor.toRow,
+                    toRowOff: image.anchor.toRowOff,
                 },
             };
             drawingResource[subUnitId].order.push(drawingId);

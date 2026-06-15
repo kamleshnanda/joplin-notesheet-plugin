@@ -18,6 +18,7 @@ import JSZip from 'jszip';
 import type { UniverSnapshot } from '../snapshot';
 import { CHART_PALETTE } from './extractData';
 import { CHART_STYLE_XML, CHART_COLORS_XML } from './xlsxChartConstants';
+import { resolveAnchorEmu, type SrcAnchorEmu } from '../drawings/sheetIdResolver';
 
 // ─── Public types ──────────────────────────────────────────────────────────
 
@@ -619,6 +620,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
         for (const drawingId of Object.keys(drawings)) {
             const d = drawings[drawingId] as {
                 componentKey?: string;
+                _srcAnchorEmu?: SrcAnchorEmu;
                 data?: {
                     chartId?: string;
                     type?: string;
@@ -749,16 +751,13 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     : {}),
                 labels,
                 datasets,
-                anchor: {
-                    fromCol: tx.from.column ?? 0,
-                    fromColOff: tx.from.columnOffset ?? 0,
-                    fromRow: tx.from.row ?? 0,
-                    fromRowOff: tx.from.rowOffset ?? 0,
-                    toCol: tx.to.column ?? 0,
-                    toColOff: tx.to.columnOffset ?? 0,
-                    toRow: tx.to.row ?? 0,
-                    toRowOff: tx.to.rowOffset ?? 0,
-                },
+                // A3: reproduce the EXACT source EMU anchor when present +
+                // unmoved, else px × 9525. This also FIXES a latent unit bug:
+                // the offsets here were previously read as EMU but the
+                // snapshot stores PIXELS, so any sub-cell offset exported at
+                // ~1/9525 of its value (≈0). resolveAnchorEmu does the px→EMU
+                // conversion the old code omitted.
+                anchor: resolveAnchorEmu(d._srcAnchorEmu, tx.from, tx.to),
                 ...(data.meta && Object.keys(data.meta).length > 0 ? { meta: data.meta } : {}),
             });
         }
