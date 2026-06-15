@@ -176,8 +176,9 @@ async function findSheetDrawingLinks(zip: JSZip): Promise<SheetDrawingLink[]> {
             if (!typeMatch || !targetMatch) continue;
             if (!/\/drawing$/.test(typeMatch[1])) continue;
             const drawingPath = resolveRelTarget('xl/worksheets', targetMatch[1]);
+            // A sheet may reference more than one drawing part — emit every
+            // one (no early break), so images in a second drawing aren't lost.
             out.push({ sheetIndex, drawingPath });
-            break;
         }
     }
     return out;
@@ -192,11 +193,15 @@ interface ParsedPoint {
     rowOff: number;
 }
 
+// Any namespace prefix (or none): `xdr:`, the default ns, or a third-party
+// alias like `a1:`. We match an optional `<prefix>:` before the local name.
+const NS = '(?:[A-Za-z_][\\w.-]*:)?';
+
 function parseAnchorPoint(body: string): ParsedPoint | null {
-    const col = body.match(/<(?:xdr:)?col>(\d+)<\/(?:xdr:)?col>/);
-    const colOff = body.match(/<(?:xdr:)?colOff>(-?\d+)<\/(?:xdr:)?colOff>/);
-    const row = body.match(/<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/);
-    const rowOff = body.match(/<(?:xdr:)?rowOff>(-?\d+)<\/(?:xdr:)?rowOff>/);
+    const col = body.match(new RegExp(`<${NS}col>(\\d+)</${NS}col>`));
+    const colOff = body.match(new RegExp(`<${NS}colOff>(-?\\d+)</${NS}colOff>`));
+    const row = body.match(new RegExp(`<${NS}row>(\\d+)</${NS}row>`));
+    const rowOff = body.match(new RegExp(`<${NS}rowOff>(-?\\d+)</${NS}rowOff>`));
     if (!col || !row) return null;
     return {
         col: parseInt(col[1], 10),
@@ -213,40 +218,70 @@ interface RawImageAnchor {
     ext: { cx: number; cy: number } | null; // EMU extent (oneCellAnchor)
 }
 
-// Walk every anchor block that contains an <xdr:pic> in DOCUMENT order.
-// Namespace-tolerant (xdr: prefix or default namespace), mirroring the chart
-// anchor walker.
+// Walk every anchor block in DOCUMENT order and emit one RawImageAnchor per
+// <pic> it contains. Namespace-tolerant (any prefix or none). Handles all
+// three anchor kinds:
+//   - twoCellAnchor   <from>+<to>
+//   - oneCellAnchor   <from>+<ext>  (to-cell synthesized downstream)
+//   - absoluteAnchor  <pos>+<ext>   (no cells → from-cell synthesized at 0,0)
+// A single anchor may hold multiple <pic> (e.g. a grouped <grpSp>); each is
+// emitted as its own image so none are silently dropped.
 function walkImageAnchors(drawingXml: string): RawImageAnchor[] {
     const out: RawImageAnchor[] = [];
-    const re =
-        /<(?:xdr:)?(twoCellAnchor|oneCellAnchor|absoluteAnchor)\b[^>]*>([\s\S]*?)<\/(?:xdr:)?\1>/g;
+    const re = new RegExp(
+        `<${NS}(twoCellAnchor|oneCellAnchor|absoluteAnchor)\\b[^>]*>([\\s\\S]*?)</${NS}\\1>`,
+        'g',
+    );
     let match: RegExpExecArray | null;
     while ((match = re.exec(drawingXml)) !== null) {
+        const kind = match[1];
         const body = match[2];
         // Only image anchors: must contain a <pic>.
-        if (!/<(?:xdr:)?pic\b/.test(body)) continue;
-        // The blip embed ref. r: prefix is conventional but may be absent.
-        const embedM =
-            body.match(/<(?:a:)?blip\b[^>]*\sr:embed="([^"]+)"/) ??
-            body.match(/<(?:a:)?blip\b[^>]*\sembed="([^"]+)"/);
-        if (!embedM) continue;
-        const rEmbed = embedM[1];
+        if (!new RegExp(`<${NS}pic\\b`).test(body)) continue;
 
-        const fromBody = body.match(/<(?:xdr:)?from>([\s\S]*?)<\/(?:xdr:)?from>/);
-        if (!fromBody) continue;
-        const from = parseAnchorPoint(fromBody[1]);
-        if (!from) continue;
+        // Anchor-level geometry shared by every <pic> in this block.
+        let from: ParsedPoint | null = null;
+        const fromBody = body.match(new RegExp(`<${NS}from>([\\s\\S]*?)</${NS}from>`));
+        if (fromBody) from = parseAnchorPoint(fromBody[1]);
 
         let to: ParsedPoint | null = null;
-        const toBody = body.match(/<(?:xdr:)?to>([\s\S]*?)<\/(?:xdr:)?to>/);
+        const toBody = body.match(new RegExp(`<${NS}to>([\\s\\S]*?)</${NS}to>`));
         if (toBody) to = parseAnchorPoint(toBody[1]);
 
-        // oneCellAnchor extent (EMU). <xdr:ext cx="..." cy="..."/>.
+        // Extent (EMU). <ext cx="..." cy="..."/> — present on oneCellAnchor
+        // and absoluteAnchor (and ignored on twoCellAnchor).
         let ext: { cx: number; cy: number } | null = null;
-        const extM = body.match(/<(?:xdr:)?ext\b[^>]*\bcx="(\d+)"[^>]*\bcy="(\d+)"/);
+        const extM = body.match(new RegExp(`<${NS}ext\\b[^>]*\\bcx="(\\d+)"[^>]*\\bcy="(\\d+)"`));
         if (extM) ext = { cx: parseInt(extM[1], 10), cy: parseInt(extM[2], 10) };
 
-        out.push({ rEmbed, from, to, ext });
+        // absoluteAnchor has no <from> cell — anchor at A1 (0,0). The <pos> is
+        // an absolute EMU offset from the sheet origin; approximate it as the
+        // from-cell offset so the image lands near its real position. (Exact
+        // EMU-position fidelity is the separate A3 item.)
+        if (!from && kind === 'absoluteAnchor') {
+            const pos = body.match(
+                new RegExp(`<${NS}pos\\b[^>]*\\bx="(-?\\d+)"[^>]*\\by="(-?\\d+)"`),
+            );
+            from = {
+                col: 0,
+                colOff: pos ? Math.max(0, parseInt(pos[1], 10)) : 0,
+                row: 0,
+                rowOff: pos ? Math.max(0, parseInt(pos[2], 10)) : 0,
+            };
+        }
+        if (!from) continue;
+
+        // Emit one image per <pic> in the anchor (grouped images / multi-pic).
+        const picRe = new RegExp(`<${NS}pic\\b[^>]*>([\\s\\S]*?)</${NS}pic>`, 'g');
+        let picM: RegExpExecArray | null;
+        while ((picM = picRe.exec(body)) !== null) {
+            const picBody = picM[1];
+            const embedM =
+                picBody.match(/<(?:[A-Za-z_][\w.-]*:)?blip\b[^>]*\sr:embed="([^"]+)"/) ??
+                picBody.match(/<(?:[A-Za-z_][\w.-]*:)?blip\b[^>]*\sembed="([^"]+)"/);
+            if (!embedM) continue;
+            out.push({ rEmbed: embedM[1], from, to, ext });
+        }
     }
     return out;
 }
@@ -270,6 +305,9 @@ export async function readImagesFromXlsxZip(
     if (sheetLinks.length === 0) return [];
 
     const out: ImportedImageDrawing[] = [];
+    // Running image index PER sheetIndex (not per drawing link) so the imageId
+    // stays unique even when a sheet references multiple drawing parts.
+    const seqBySheet = new Map<number, number>();
     for (const link of sheetLinks) {
         const drawingFile = zip.file(link.drawingPath);
         if (!drawingFile) continue;
@@ -283,7 +321,6 @@ export async function readImagesFromXlsxZip(
         const relMap = parseRels(await drawingRelsFile.async('string'));
 
         const anchors = walkImageAnchors(drawingXml);
-        let perSheetSeq = 0;
         for (const anchor of anchors) {
             const rel = relMap.get(anchor.rEmbed);
             if (!rel) continue;
@@ -339,11 +376,15 @@ export async function readImagesFromXlsxZip(
                 toRowOff = 0;
             }
 
-            // Derive a stable imageId from the media part number when present
-            // (xl/media/imageN.ext), else a per-sheet running index.
-            const mediaNumM = mediaPath.match(/image(\d+)\./);
-            const imageId = mediaNumM ? parseInt(mediaNumM[1], 10) : perSheetSeq;
-            perSheetSeq += 1;
+            // imageId must be UNIQUE per (sheet, anchor occurrence) — it feeds
+            // the snapshot drawingId `image-imported-${sheet}-${imageId}`, and
+            // two anchors on one sheet can reference the SAME media part (e.g.
+            // the same logo placed twice). Keying off the media number alone
+            // would collide and the second image would overwrite the first in
+            // the drawing map. Use a per-sheet anchor sequence (stable within
+            // a single import; the media bytes still round-trip identically).
+            const imageId = seqBySheet.get(link.sheetIndex) ?? 0;
+            seqBySheet.set(link.sheetIndex, imageId + 1);
 
             out.push({
                 sheetIndex: link.sheetIndex,

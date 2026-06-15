@@ -138,6 +138,21 @@ describe('M18 A1: image bidirectional round-trip', () => {
         const secondSources = second.map((f) => f.drawing.source).sort();
         expect(secondSources).toEqual(firstSources);
 
+        // Each image must stay bound to the SAME NAMED sheet across the
+        // round-trip. The subUnitId NUMBER legitimately changes (export
+        // renumbers sheetIds to contiguous 1..N), so asserting subUnitId
+        // equality would be a false alarm — assert by sheet *name*, which is
+        // the real fidelity contract. (See M18 A1 stabilization review.)
+        const nameOf = (snap: unknown, subUnitId: string): string | undefined => {
+            const sheets = (snap as { sheets?: Record<string, { name?: string }> }).sheets ?? {};
+            return sheets[subUnitId]?.name;
+        };
+        const byName = (
+            snap: unknown,
+            items: Array<{ subUnitId: string; drawing: ImageDrawing }>,
+        ) => items.map((i) => `${nameOf(snap, i.subUnitId)}::${i.drawing.source}`).sort();
+        expect(byName(snap2, second)).toEqual(byName(snap1, first));
+
         // Exported zip carries jpeg media + a jpeg Default content-type.
         const zip = await JSZip.loadAsync(exported);
         const jpegKeys = Object.keys(zip.files).filter((p) =>
