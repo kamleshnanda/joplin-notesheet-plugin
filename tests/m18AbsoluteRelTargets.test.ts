@@ -52,4 +52,18 @@ describe('M18 — absolute relationship Targets import cleanly', () => {
             .reduce((n, sheetId) => n + Object.keys(parsed[sheetId] ?? {}).length, 0);
         expect(tableCount).toBeGreaterThanOrEqual(2);
     });
+
+    // REGRESSION GUARD (browser-renderer safety): the pre-load buffer
+    // transforms run in the Joplin editor renderer, where Node's `Buffer` is
+    // undefined. normalizeAbsoluteRelTargets() once emitted JSZip's
+    // `type: 'nodebuffer'`, which threw "Buffer is not defined" on EVERY
+    // import (surfaced as "Import failed: buffer not defined"). Node-only
+    // jest can't faithfully simulate the browser (JSZip's own isBuffer()
+    // touches the global), so we assert the SOURCE invariant instead: the
+    // import-side zip transforms must produce 'arraybuffer', never
+    // 'nodebuffer'. xlsx.ts:791 was the offender.
+    test('import-path zip transforms never use nodebuffer (browser-safe)', () => {
+        const src = readFileSync(path.join(__dirname, '..', 'src', 'xlsx.ts'), 'utf8');
+        expect(src).not.toMatch(/generateAsync\(\{\s*type:\s*['"]nodebuffer['"]/);
+    });
 });

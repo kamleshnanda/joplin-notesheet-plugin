@@ -788,7 +788,13 @@ async function normalizeAbsoluteRelTargets(
     }
 
     if (!changed) return buffer;
-    return zip.generateAsync({ type: 'nodebuffer' });
+    // MUST be 'arraybuffer', not 'nodebuffer': this runs in the Joplin editor
+    // renderer (browser-like) where Node's `Buffer` is undefined — 'nodebuffer'
+    // throws "Buffer is not defined", which surfaced as "Import failed: buffer
+    // not defined" on every workbook. Every sibling pre-load transform
+    // (stripChartPartsFromZip, the image/shape readers) uses 'arraybuffer' for
+    // exactly this reason.
+    return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
 }
 
 // zip access. Returns null if the file or attribute is absent.
