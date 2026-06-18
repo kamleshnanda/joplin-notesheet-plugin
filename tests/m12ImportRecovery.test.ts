@@ -7,41 +7,35 @@ jest.mock('@univerjs/sheets-table', () => ({
     },
 }));
 
-// Pin-down regression tests for M12 import-error recovery.
+// Pin-down regression tests for M12+ import recovery.
 //
 // Three project-owned fixtures — MultiSheet.xlsx, LargeWorkbook.xlsx,
-// FormulasAndStructuredRefs.xlsx — crash inside exceljs's reconcile
-// pipeline when loaded. The crashes reproduce on a bare
-// `await wb.xlsx.load(buf)` with zero Notesheet code involved, so they
-// are pre-existing exceljs bugs we can't fix without forking the package.
+// FormulasAndStructuredRefs.xlsx — once crashed inside exceljs's reconcile
+// pipeline on a bare `await wb.xlsx.load(buf)`. All three now import cleanly
+// after Notesheet pre-processes the buffer:
+//   * MultiSheet — chart drawings stripped pre-load (M17).
+//   * LargeWorkbook + FormulasAndStructuredRefs — their ABSOLUTE relationship
+//     Targets (`Target="/xl/tables/table1.xml"`) are normalized to relative
+//     pre-load (normalizeAbsoluteRelTargets). exceljs couldn't resolve an
+//     absolute target, so its worksheet table-reduce crashed on
+//     `tables[table.name]`. These were originally MIS-diagnosed as a
+//     "multiple sheets with named tables" limitation and gated behind a
+//     friendly xlsx-multi-table-unsupported error; the real cause was the
+//     target format, and a same-shaped file with relative targets always
+//     imported fine. Fixed 2026-06.
 //
-// Until those fixtures import cleanly (would require either an exceljs
-// patch or a switch to a different reader), xlsxBufferToSnapshot()
-// catches the crash and rethrows a typed NotesheetImportError with a
-// user-actionable message. The user-facing dialog in src/index.ts and
-// the editor status bar in src/editorView.tsx both consume `error.message`
-// already, so the wrapped error's friendly text reaches the user without
-// any caller-side change.
+// For any crash class we DON'T pre-empt, xlsxBufferToSnapshot() still
+// catches and rethrows a typed NotesheetImportError with a user-actionable
+// message (consumed by the dialog in src/index.ts + the editor status bar).
 //
-// WOULD HAVE CAUGHT (2026-05-31): the original behavior leaked a raw
-// `TypeError: Cannot read properties of undefined (reading 'anchors')`
-// stack into the Joplin error dialog. Users had no way to tell whether
-// the file was corrupt, whether they'd hit a Notesheet bug, or whether
-// to file an issue. After this wrap landed, the dialog reads "This .xlsx
-// contains chart drawings that Notesheet can't import yet" — actionable.
-//
-// REGRESSION HISTORY: future agents may be tempted to "fix" the underlying
-// exceljs crash by patching node_modules or upgrading. Two of these
-// crashes (anchors, name-in-tables-reduce) reproduce on the latest
-// 4.4.0 of exceljs as of 2026-06. If a future exceljs version DOES
-// resolve them, these tests will fail at the rejection assertion — that's
-// the signal to flip the fixture into the importable list and delete
-// the corresponding case here.
+// REGRESSION HISTORY: if a future exceljs/preprocessing change reintroduces
+// a load crash for any of these, the "imports cleanly" assertions below flip
+// to rejection — that's the signal the pre-processing path regressed.
 
 import { readFileSync } from 'fs';
 import path from 'path';
 
-import { NotesheetImportError, xlsxBufferToSnapshot } from '../src/xlsx';
+import { xlsxBufferToSnapshot } from '../src/xlsx';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'formatting-testdata');
 
@@ -82,45 +76,44 @@ describe('M12 import recovery — crashing fixtures throw typed errors', () => {
         expect(chartCount).toBeGreaterThanOrEqual(1);
     });
 
-    test('LargeWorkbook.xlsx → xlsx-multi-table-unsupported (post-M17, second crash class)', async () => {
-        // Pre-M17: this fixture surfaced the `anchors` crash class
-        // (chart-bearing drawing). M17's pre-load chart strip removed
-        // the chart parts; what remains underneath is the multi-table
-        // reduce crash in exceljs's worksheet.js:920 — the same
-        // structural issue FormulasAndStructuredRefs.xlsx exhibits.
-        // The error class flipped from xlsx-charts-unsupported to
-        // xlsx-multi-table-unsupported as a consequence.
+    // FORMERLY xlsx-multi-table-unsupported. Both LargeWorkbook.xlsx and
+    // FormulasAndStructuredRefs.xlsx were misdiagnosed as a "multiple sheets
+    // with named tables" limitation. The TRUE cause was ABSOLUTE relationship
+    // Targets (`Target="/xl/tables/table1.xml"`), which exceljs can't resolve
+    // — leaving the table part unlinked so its worksheet table-reduce crashed
+    // on `tables[table.name]`. A workbook with the SAME multi-sheet/multi-table
+    // layout but RELATIVE targets (spreadsheet1.xlsx) always imported fine.
+    // normalizeAbsoluteRelTargets() rewrites absolute → relative before load,
+    // so both now import cleanly. (If a future regression reintroduces the
+    // crash, these flip back to rejection assertions.)
+    test('LargeWorkbook.xlsx imports cleanly (absolute rel-targets normalized)', async () => {
         const err = await loadAndCatch('LargeWorkbook.xlsx');
-        expect(err).toBeInstanceOf(NotesheetImportError);
-        const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-multi-table-unsupported');
-        expect(e.message).not.toMatch(/anchors/i);
-        expect(e.message).not.toMatch(/undefined/i);
-        expect(e.message).not.toMatch(/TypeError/i);
-        expect(e.cause).toBeDefined();
+        expect(err).toBeNull();
+        const buf = readFileSync(path.join(FIXTURES_DIR, 'LargeWorkbook.xlsx'));
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
+        expect(
+            Object.keys((snap as { sheets?: Record<string, unknown> }).sheets ?? {}).length,
+        ).toBe(2);
     });
 
-    test('FormulasAndStructuredRefs.xlsx → xlsx-multi-table-unsupported', async () => {
+    test('FormulasAndStructuredRefs.xlsx imports cleanly (absolute rel-targets normalized)', async () => {
         const err = await loadAndCatch('FormulasAndStructuredRefs.xlsx');
-        expect(err).toBeInstanceOf(NotesheetImportError);
-        const e = err as NotesheetImportError;
-        expect(e.code).toBe('xlsx-multi-table-unsupported');
-
-        // Same negative checks as above. The raw exceljs error here is
-        // "Cannot read properties of undefined (reading 'name')" — the
-        // bare word "name" is too generic to forbid in the message
-        // (our friendly text legitimately uses "named tables"), so we
-        // only check that the cryptic shape is gone.
-        expect(e.message).not.toMatch(/undefined/i);
-        expect(e.message).not.toMatch(/TypeError/i);
-        expect(e.message).not.toMatch(/Cannot read properties/);
-
-        // Friendly explanation must mention what's unsupported.
-        expect(e.message).toMatch(/table/i);
-        expect(e.message).toMatch(/Notesheet/);
-
-        expect(e.cause).toBeDefined();
-        expect((e.cause as Error).message).toMatch(/name/);
+        expect(err).toBeNull();
+        const buf = readFileSync(path.join(FIXTURES_DIR, 'FormulasAndStructuredRefs.xlsx'));
+        const snap = await xlsxBufferToSnapshot(buf as unknown as Buffer);
+        // Both sheets survive AND both named tables round-trip.
+        expect(
+            Object.keys((snap as { sheets?: Record<string, unknown> }).sheets ?? {}).length,
+        ).toBe(2);
+        const resources =
+            (snap as { resources?: Array<{ name: string; data: string }> }).resources ?? [];
+        const tableRes = resources.find((r) => r.name === 'SHEET_TABLE_PLUGIN');
+        expect(tableRes).toBeDefined();
+        const parsed = JSON.parse(tableRes!.data);
+        const tableCount = Object.keys(parsed)
+            .filter((k) => !k.startsWith('_'))
+            .reduce((n, sheetId) => n + Object.keys(parsed[sheetId] ?? {}).length, 0);
+        expect(tableCount).toBeGreaterThanOrEqual(2);
     });
 });
 

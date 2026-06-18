@@ -732,6 +732,65 @@ function parseTableXml(xml: string): RawTable | null {
 // default font here (under <a:fontScheme><a:minorFont><a:latin typeface="..."/>)
 // rather than on individual cells, so cells with no explicit font.name
 // inherit from this. exceljs doesn't expose the theme XML, hence direct
+// Rewrite ABSOLUTE relationship Targets to package-relative ones across every
+// *.rels part. A Target like "/xl/tables/table1.xml" is absolute from the
+// package root; exceljs's reconcile only resolves RELATIVE targets, so an
+// absolute one leaves the part unlinked and crashes the worksheet table-reduce
+// ("reading 'name'"). We recompute each absolute target as a path relative to
+// the .rels file's OWNER directory (the dir containing the part the .rels
+// describes — i.e. the .rels file's parent minus the trailing `_rels`).
+//   e.g.  xl/worksheets/_rels/sheet1.xml.rels  → owner dir  xl/worksheets
+//         Target "/xl/tables/table1.xml"        → "../tables/table1.xml"
+// Only `Target="/..."` values are touched; already-relative targets and
+// external (TargetMode="External") URLs are left untouched. Returns a new
+// buffer; if nothing changed, returns the input unchanged.
+async function normalizeAbsoluteRelTargets(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<ArrayBuffer | Uint8Array | Buffer> {
+    const zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    let changed = false;
+
+    // Compute a relative path from `fromDir` to `toPath` (both package-root
+    // absolute, no leading slash). Pure POSIX-style segment math.
+    const relativizePath = (fromDir: string, toPath: string): string => {
+        const from = fromDir.split('/').filter(Boolean);
+        const to = toPath.split('/').filter(Boolean);
+        let i = 0;
+        while (i < from.length && i < to.length && from[i] === to[i]) i++;
+        const up = from.slice(i).map(() => '..');
+        return [...up, ...to.slice(i)].join('/');
+    };
+
+    for (const relsPath of Object.keys(zip.files)) {
+        if (!/(^|\/)_rels\/[^/]+\.rels$/i.test(relsPath)) continue;
+        // Owner directory: the dir that CONTAINS the part this .rels describes.
+        // `a/b/_rels/x.rels` describes `a/b/x`, so the owner dir is `a/b`.
+        const ownerDir = relsPath.replace(/\/?_rels\/[^/]+\.rels$/i, '');
+        const xml = await zip.files[relsPath].async('string');
+        let fileChanged = false;
+        const rewritten = xml.replace(
+            /(\bTarget=")(\/[^"]*)(")/g,
+            (_full, pre: string, target: string, post: string) => {
+                // target starts with "/" → absolute from package root.
+                const abs = target.replace(/^\//, '');
+                const rel = ownerDir ? relativizePath(ownerDir, abs) : abs;
+                if (rel && rel !== target) {
+                    fileChanged = true;
+                    return `${pre}${rel}${post}`;
+                }
+                return `${pre}${target}${post}`;
+            },
+        );
+        if (fileChanged) {
+            zip.file(relsPath, rewritten);
+            changed = true;
+        }
+    }
+
+    if (!changed) return buffer;
+    return zip.generateAsync({ type: 'nodebuffer' });
+}
+
 // zip access. Returns null if the file or attribute is absent.
 async function readThemeFont(
     buffer: ArrayBuffer | Uint8Array | Buffer,
@@ -2055,6 +2114,23 @@ export async function xlsxBufferToSnapshot(
             );
             bufferForLoad = buffer;
         }
+    }
+
+    // Normalize ABSOLUTE relationship Targets ("/xl/tables/table1.xml") to
+    // package-relative ("../tables/table1.xml"). Both are valid OOXML, but
+    // exceljs can't resolve an absolute target back to its loaded part, so
+    // its worksheet reconcile builds `tables[table.name]` over an undefined
+    // table and crashes ("Cannot read properties of undefined (reading
+    // 'name')"). openpyxl-authored files (e.g. FormulasAndStructuredRefs.xlsx)
+    // emit absolute targets; Excel emits relative. Fail-soft: a rewrite
+    // failure falls back to the un-normalized buffer.
+    try {
+        bufferForLoad = await normalizeAbsoluteRelTargets(bufferForLoad);
+    } catch (e) {
+        console.warn(
+            '[Notesheet] normalizeAbsoluteRelTargets failed; loading un-normalized buffer',
+            e,
+        );
     }
 
     // The try/catch around load() catches three reproducible exceljs reconcile

@@ -63,7 +63,6 @@ These are pinned by `KNOWN SHORTCOMING` Jest tests so accidental changes are cau
 - **Theme-tinted borders** (`{theme: N, tint: T}`) resolve against whichever `<a:clrScheme>` is loaded at import time. After round-trip the resolved RGB is fixed in the snapshot, so a later host-side theme change won't update the rendering.
 - **Unsupported chart types** (radar, scatter, area, bubble, 3-D, etc.) import as a `bar` fallback with `meta.unsupportedSourceType` recording the original type; bar / line / pie / doughnut import faithfully.
 - **Shapes (`<xdr:sp>` text boxes, rectangles, etc.) are preserve-only — not rendered inside Joplin (M18).** A shape-bearing `.xlsx` round-trips losslessly: the shape is stored verbatim in the note, survives editor edits, and is written back to exported `.xlsx` so Excel renders it. But Joplin shows nothing where the shape is — neither in the Univer editor (Univer 0.23 has no native shape renderer) nor in HTML / PDF export. Images and charts _do_ render and round-trip; only shapes are invisible-but-preserved.
-- **Multi-sheet workbooks with a named table on each sheet** trip exceljs's table-reduce — `xlsx-multi-table-unsupported`. Workaround: move all tables onto one sheet.
 - **Other exceljs reconcile failures** surface as `xlsx-import-failed` with the original error preserved in `.cause`.
 
 ### PDF / HTML export
