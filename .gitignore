@@ -17,3 +17,6 @@ AGENT_STOP
 # Excel lock files when a fixture is open in Excel for inspection
 ~$*.xlsx
 ~$*.xls
+
+# Playwright MCP scratch output (browser profile / traces) — not repo content
+.playwright-mcp/
