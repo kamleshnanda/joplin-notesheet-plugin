@@ -36,10 +36,10 @@
         "last_attempted_at": "2026-06-10T12:00:00Z"
     },
     "feature-7-m17-chart-svg-html-export-jest": {
-        "passes": false,
-        "evidence": null,
-        "evaluator_verdict": null,
-        "last_attempted_at": null
+        "passes": true,
+        "evidence": "screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png",
+        "evaluator_verdict": "PENDING",
+        "last_attempted_at": "2026-06-28T10:57:04Z"
     },
     "feature-8-m17-chart-preview-pane-pge-smoke": {
         "passes": true,
@@ -48,9 +48,9 @@
         "last_attempted_at": "2026-06-13T03:35:58Z"
     },
     "feature-9-m17-flip-pin-downs-and-test-count": {
-        "passes": false,
-        "evidence": null,
-        "evaluator_verdict": null,
-        "last_attempted_at": null
+        "passes": true,
+        "evidence": "tests/m12ImportRecovery.test.ts:55,89 (both pin-downs flipped to positive imports — MultiSheet → N charts, LargeWorkbook → clean 2-sheet import; FormulasAndStructuredRefs also now imports via the M18 abs-rel-target fix); full suite 455 tests (gate was 267 → ≥290)",
+        "evaluator_verdict": "PENDING",
+        "last_attempted_at": "2026-06-28T10:57:04Z"
     }
 }

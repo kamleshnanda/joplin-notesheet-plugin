@@ -5,6 +5,44 @@ every feature.
 
 ## Done
 
+- **feature-7 + feature-9 — verified DONE + rows flipped** (2026-06-28) —
+  Both M17-era PGE rows that were still `passes:false` are now resolved.
+  - **feature-7 (B1: chart→SVG in HTML export).** The static-SVG renderer in
+    `src/contentScripts/notesheetRenderer.ts` was already implemented; the
+    18-test `tests/m18ChartHtmlExport.test.ts` covered most of the spec but
+    MISSED two written acceptance criteria, so per the fidelity-test-gap
+    discipline I added them before flipping: (1) **pie sweep angles computed
+    from INPUT within ±3°** (parses each `<path>`'s arc endpoints, compares to
+    `data[i]/sum·360` — not the path COUNT the old test asserted), and (2) the
+    **CF + chart on one sheet** case (cellIs paints B2:B5 pink AND the chart
+    `<svg>` renders, table-before-svg document order, no absolute/z-index
+    overlay). 20/20 pass. **Live preview-pane gate:** wired feature-7 into
+    `eval-screenshot.js` (`previewPane` region, title prefix `PGE M17 chart f7
+    eval `), imported MultiSheet.xlsx, captured
+    `screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png`
+    — 3 sheet tables (Data/Chart/Summary) + the "Data Chart" bar SVG (5 bars,
+    palette blue, axis 0–60). Sidecar: `inlineSvgCount=1`, `rect=5`,
+    `rawJsonLeak=false`, `tableCount=3`. Row flipped `passes:true`,
+    `evaluator_verdict:PENDING` (no live evaluator run this session).
+  - **HARNESS FIX (load-bearing): `rawJsonLeak` false-positive.** The M16-era
+    heuristic matched `"sheetOrder"`/`"workbook-` on the whole `document.body.
+    innerHTML`. Since the M18 #37 RTE fence-integrity fix, the renderer wraps
+    the ORIGINAL fenced JSON in a HIDDEN `<div class="joplin-source">` (the
+    wrapper is REQUIRED — see [[project_rte_fence_joplin_editable]]), so the
+    raw JSON is in the DOM but NOT visible — `rawJsonLeak` reported `true` on
+    EVERY note. Fixed to strip `.joplin-source` subtrees before checking, so it
+    detects only a TRUE leak (JSON in the visible render path). Confirmed via a
+    DOM probe (`jsonOutsideSource=false`) before changing the heuristic.
+  - **feature-9 (flip m12 pin-downs + test count).** Already satisfied — both
+    pin-downs (`m12ImportRecovery.test.ts:55,89`) are positive imports
+    (MultiSheet → N charts; LargeWorkbook → clean 2-sheet); the test-count gate
+    (267 → ≥290) is far exceeded at 457. The M18 abs-rel-target fix went BEYOND
+    the spec, making FormulasAndStructuredRefs import cleanly too (spec only
+    required it stay an `xlsx-multi-table-unsupported` rejection). Row flipped.
+  - **Verified:** typecheck clean, `npm test` 457/457 (52 suites). New harness
+    util `scripts/pge/capture-image-render.js` (from the A1 gate) committed
+    earlier.
+
 - **M18 adversarial-review fixes** (2026-06-28) — An adversarial code-review
   workflow over the 8-commit M18 diff surfaced 17 findings; 9 survived
   independent verification, 8 were false positives (incl. confirming the
