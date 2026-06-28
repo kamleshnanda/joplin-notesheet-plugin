@@ -309,8 +309,8 @@ every feature.
 
 ## In progress
 
-- **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14, Jest
-  layer DONE; live PGE screenshot gate PENDING). On import, `.xlsx` images
+- **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14 Jest
+  layer; live PGE screenshot gate CLEARED 2026-06-28). On import, `.xlsx` images
   (xl/media/* + their drawing anchors) now emit into the snapshot's
   SHEET_DRAWING_PLUGIN resource as NATIVE Univer image drawings
   (`drawingType: 0`, `imageSourceType: 'BASE64'`, `source: data:<mime>;base64,…`,
@@ -356,10 +356,22 @@ every feature.
     exactly one drawing part holds BOTH chart graphicFrame + `<xdr:pic>` with
     distinct rIds; blip embed rId matches the image rel; re-import yields 1
     chart + 1 image).
-  - **Verified:** `npm test` 407/407, typecheck clean, lint clean, prettier
-    clean, `npm run dist` builds the .jpl. **PENDING: the live Joplin PGE
-    screenshot gate** (import a fixture, confirm the image actually renders in
-    the Univer editor canvas) — not done this session per task scope.
+  - **Verified:** `npm test` now 445/445 (51 suites), typecheck clean, lint
+    clean, prettier clean, `npm run dist` builds the .jpl.
+  - **Live PGE screenshot gate CLEARED (2026-06-28).** After the
+    `nodebuffer`/absolute-rel-target fix-chain (`2b8b746`/`f47b64a`) rebuilt
+    fresh (quit → install → launch), imported `HumanImage-SingleSheet.xlsx`
+    via `import-fixture.sh` (note `bd23e5a6…`) and captured the Univer root
+    via the new `scripts/pge/capture-image-render.js`:
+    `screenshots/m18-a1-image-render/humanimage-20260628T101824.png`. The
+    human-figure image renders as a NATIVE Univer drawing anchored over the
+    cells (matches the fixture's "Over Cell Image" label at A4). Probe sidecar:
+    `univerFrameFound`, main canvas 3008×1396, `imgCount=0` (expected — Univer
+    paints drawings into the canvas pixel buffer, not DOM `<img>`). The C3
+    `#VALUE!` is PRE-EXISTING in the source fixture
+    (`<c r="C3" t="e"><v>#VALUE!</v></c>`), faithfully preserved on import —
+    NOT an import defect. This import (drawings + rels) also re-confirms the
+    fix-chain didn't re-break editor imports.
 
 - **M17 manual-test fidelity fixes (issues 1/2/3/6/7/11)** (2026-06-10) —
   Operator re-ran all 11 chart fixtures through import → export →
