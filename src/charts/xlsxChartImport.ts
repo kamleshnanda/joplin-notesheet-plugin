@@ -96,6 +96,12 @@ export interface ImportedChartDrawing {
         // series (no separate label column). M10 export emits no
         // <c:cat> for these.
         categoryAxisType?: 'index' | 'category';
+        // True when sourceRange.startRow is a header row ABOVE the category
+        // data (categories begin at sheet row ≥ 2), so the live-edit
+        // re-extract must skip row 0. False when the chart's categories
+        // start at the very first sheet row (no header to skip). Distinct
+        // from categoryAxisType, which only signals "had category labels".
+        hasHeaderRow?: boolean;
         // Doughnut hole diameter, percent of outer radius. Excel
         // default 50; user-tunable up to 90. <c:holeSize val="N"/>.
         holeSize?: number;
@@ -371,6 +377,10 @@ interface ParsedChart {
     barGapWidth?: number;
     legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
     categoryAxisType?: 'index' | 'category';
+    // True when sourceRange's first row is a header ABOVE the category data
+    // (categories start at sheet row ≥ 2). The live-edit re-extract skips
+    // row 0 only when this is true. Distinct from categoryAxisType.
+    hasHeaderRow?: boolean;
     holeSize?: number;
     lineSmooth?: boolean;
     lineMarkerOn?: boolean;
@@ -751,13 +761,23 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     const reVal = new RegExp(`<${C}val>([\\s\\S]*?)</${C}val>`);
     const reNumCache = new RegExp(`<${C}numCache>([\\s\\S]*?)</${C}numCache>`);
 
-    // C1: a series' own fill colour is the FIRST <c:spPr> directly under the
-    // <c:ser> (NOT one nested in a data point <c:dPt> or marker). We read the
-    // series spPr's <a:solidFill><a:srgbClr val>. Scheme/theme colours and
-    // gradient/pattern fills aren't resolved here (fall back to palette).
-    const reSerSpPrFill = new RegExp(
-        `<${C}spPr>[\\s\\S]*?<a:solidFill>[\\s\\S]*?<a:srgbClr\\s+val="([0-9A-Fa-f]{6})"`,
-    );
+    // C1: a series' own fill colour is the FILL of the FIRST <c:spPr> directly
+    // under the <c:ser> (NOT one nested in a data point <c:dPt> or marker).
+    // Two precautions:
+    //   1. Bound the search to the first <c:spPr>…</c:spPr> BLOCK so a later
+    //      <c:marker>/<c:spPr> or line-style solidFill can't be latched onto
+    //      (the un-bounded `[\s\S]*?` form would skip across the spPr close
+    //      tag into a sibling element's fill).
+    //   2. WITHIN that block, the shape FILL is the <a:solidFill> that is a
+    //      DIRECT child of <c:spPr> — a solidFill nested inside <a:ln> is the
+    //      LINE/border colour, not the fill. We drop <a:ln>…</a:ln> subtrees
+    //      before reading the fill so a line/border-only series (common for
+    //      line charts) doesn't mis-report its stroke colour as its fill.
+    // Scheme/theme colours and gradient/pattern fills aren't resolved here
+    // (fall back to palette).
+    const reSerSpPrBlock = new RegExp(`<${C}spPr>([\\s\\S]*?)</${C}spPr>`);
+    const reLnSubtree = /<a:ln\b[\s\S]*?<\/a:ln>|<a:ln\b[^>]*\/>/g;
+    const reSolidFillSrgb = /<a:solidFill>\s*<a:srgbClr\s+val="([0-9A-Fa-f]{6})"/;
 
     for (const ser of serBodies) {
         // Series label.
@@ -775,8 +795,12 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         // the series fill.
         let color: string | undefined;
         const serHead = ser.split(new RegExp(`<${C}(?:cat|val)>`))[0];
-        const fillMatch = serHead.match(reSerSpPrFill);
-        if (fillMatch) color = '#' + fillMatch[1].toUpperCase();
+        const spPrBlock = serHead.match(reSerSpPrBlock);
+        if (spPrBlock) {
+            const fillScope = spPrBlock[1].replace(reLnSubtree, '');
+            const fillMatch = fillScope.match(reSolidFillSrgb);
+            if (fillMatch) color = '#' + fillMatch[1].toUpperCase();
+        }
 
         // Categories — only consume if the series has a <c:cat>.
         const catMatch = ser.match(reCat);
@@ -837,7 +861,15 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let startColumn = refs[0].startColumn;
     let endColumn = refs[0].endColumn;
     // The series-name (header) cell sits at the row above data, so we
-    // include that row in the bounding box.
+    // include that row in the bounding box — but ONLY when such a row
+    // exists (the categories don't already start at the first sheet row).
+    // A chart whose <c:cat> begins at $A$1 has NO header row above it; for
+    // it, sourceRange.startRow points at a REAL first category, and the
+    // live-edit re-extract must NOT skip row 0 (doing so deletes the first
+    // category + its data on the first edit — the inverse of the phantom-
+    // category bug). `hasHeaderRow` captures this precisely, independent of
+    // categoryAxisType (which only means "had explicit category labels").
+    const hasHeaderRow = !!labelsRange && labelsRange.startRow >= 1;
     if (labelsRange) {
         startRow = Math.min(startRow, labelsRange.startRow - 1);
     }
@@ -872,6 +904,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         ...(barGapWidth !== undefined ? { barGapWidth } : {}),
         ...(legendPos ? { legendPos } : {}),
         categoryAxisType: anyCatRef ? 'category' : 'index',
+        hasHeaderRow,
         ...(holeSize !== undefined ? { holeSize } : {}),
         ...(lineSmooth !== undefined ? { lineSmooth } : {}),
         ...(lineMarkerOn !== undefined ? { lineMarkerOn } : {}),
@@ -1035,6 +1068,7 @@ export async function readChartsFromXlsxZip(
                 parsed.barGapWidth !== undefined ||
                 parsed.legendPos ||
                 parsed.categoryAxisType ||
+                parsed.hasHeaderRow !== undefined ||
                 parsed.holeSize !== undefined ||
                 parsed.lineSmooth !== undefined ||
                 parsed.lineMarkerOn !== undefined ||
@@ -1059,6 +1093,9 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
                     ...(parsed.categoryAxisType
                         ? { categoryAxisType: parsed.categoryAxisType }
+                        : {}),
+                    ...(parsed.hasHeaderRow !== undefined
+                        ? { hasHeaderRow: parsed.hasHeaderRow }
                         : {}),
                     ...(parsed.holeSize !== undefined ? { holeSize: parsed.holeSize } : {}),
                     ...(parsed.lineSmooth !== undefined ? { lineSmooth: parsed.lineSmooth } : {}),

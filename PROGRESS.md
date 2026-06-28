@@ -5,6 +5,59 @@ every feature.
 
 ## Done
 
+- **M18 adversarial-review fixes** (2026-06-28) — An adversarial code-review
+  workflow over the 8-commit M18 diff surfaced 17 findings; 9 survived
+  independent verification, 8 were false positives (incl. confirming the
+  `m12ImportRecovery` assertion flip was a LEGITIMATE behaviour update, not
+  regression-hiding). Operator chose "fix all confirmed." Test count 445 → 455.
+  - **#1 (HIGH) — rel-target normalizer corrupted `TargetMode="External"`
+    hyperlinks.** `normalizeAbsoluteRelTargets` (`src/xlsx.ts`) keyed only off a
+    leading `/`, so a root-relative (`/folder/page.html`) or protocol-relative
+    (`//host/path`) EXTERNAL hyperlink got relativized to `../../…`, destroying
+    it. Now rewrites per `<Relationship>` element and SKIPS any carrying
+    `TargetMode="External"`. The function-header comment was already claiming
+    this — now true. (Scheme URLs like `https://` always escaped.)
+  - **#2 (HIGH) — live-edit dropped a legitimate first data row.**
+    `trackedCharts.hasHeaderRow` was derived from `categoryAxisType === 'category'`
+    ("had labels"), not "row 0 is a header." A chart whose `<c:cat>` starts at
+    `$A$1` (no header) rendered all N categories initially but lost the FIRST on
+    the first cell edit — the inverse of the `df2bbde` phantom-category bug. Fix:
+    importer now computes a precise `hasHeaderRow` (`labelsRange.startRow >= 1`),
+    threads it through `meta.hasHeaderRow` (round-trips), and `trackedCharts`
+    prefers it (legacy `categoryAxisType` fallback for pre-fix snapshots).
+  - **#3/#4 (MEDIUM) — percentStacked mishandled mixed-sign + cancelling
+    categories.** `NotesheetChart.buildConfig` summed SIGNED values as the
+    denominator and special-cased `total===0` to pass RAW values through (which
+    blew past the 100 axis cap and rendered full-height bars). Now normalises
+    against Σ|v| (sign preserved, absolute shares total 100) and a zero
+    abs-total → 0.
+  - **#5 (LOW) — per-series colour latched onto a nested marker/line fill.**
+    The un-bounded `<c:spPr>…<a:solidFill>` regex skipped across the series
+    spPr close tag into a sibling `<c:marker>` fill (and a series' own `<a:ln>`
+    stroke was read as its fill). Fix: bound to the first `<c:spPr>` block AND
+    strip `<a:ln>` subtrees before reading the fill.
+  - **#6 (MEDIUM, test) — EMU fidelity chart test passed via the px×9525
+    fallback, not the stash path it claimed to verify.** The synthetic snapshot
+    left the stash's cell-index fields undefined (so `anchorUnmoved` returned
+    false) and used 50px/476250 EMU which the fallback reproduces identically.
+    Rewrote the test with a sub-pixel sentinel EMU (478123; round/9525=50 but
+    50×9525=476250≠478123) and a full 8-field stash, so it only passes if the
+    exact stash is emitted. (Import already stashed all 8 fields — pure test
+    gap, no production change.)
+  - **#9 (LOW, test) — nodebuffer regression guard only checked `src/xlsx.ts`.**
+    Broadened to sweep every src file that calls JSZip (chart/image/shape zip
+    rewriters run on the same browser-side path); all already use 'arraybuffer'.
+  - **#7/#8 (LOW) — anchor "unmoved" detection is exact-integer-px + safe px
+    fallback.** Real but BOUNDED (≤½px / 3175 EMU drift; safe degradation, never
+    a crash/mis-anchor). Per "documented shortcoming over unexpected bug,"
+    DOCUMENTED precisely in `sheetIdResolver.ts:resolveAnchorEmu` rather than
+    rewritten — a dirty/moved flag through Univer's drawing service adds
+    regression risk for sub-pixel gain. **Flagged to operator.**
+  - **Verified:** typecheck clean, `npm test` 455/455 (52 suites). New tests:
+    `tests/m18ReviewFixes.test.ts` (#1/#2/#5), additions to
+    `tests/m18ChartPercentStacked.test.ts` (#3/#4) and `m18AbsoluteRelTargets`
+    (#9); `m18AnchorEmuFidelity` chart test rewritten (#6).
+
 - **feature-8-m17-chart-preview-pane-pge-smoke** (2026-06-12) — Closes the
   long-open "does the chart SVG actually reach Joplin's export?" question
   for the M18 B1 work. Wired feature-8 into the eval harness

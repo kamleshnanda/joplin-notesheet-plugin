@@ -53,6 +53,22 @@ interface PxPoint {
 //     fall back to px × 9525.
 // `matchesStash` compares each px field to round(emu / 9525); if every field
 // agrees the drawing is unmoved and the exact EMU is safe to use.
+//
+// KNOWN, BOUNDED SHORTCOMINGS (deliberately not engineered away — a dirty/moved
+// flag threaded through Univer's drawing service would add real regression risk
+// for sub-pixel gain):
+//   (a) "Unmoved" is decided purely by exact integer-pixel equality, with no
+//       separate moved flag. A genuine editor move that happens to land on the
+//       SAME rounded pixel as the source (a sub-pixel nudge) is treated as
+//       unmoved, so export re-emits the original source EMU rather than the
+//       nudged position. Worst-case error is ≤ ~½px (3175 EMU) — invisible.
+//   (b) If a future Univer re-normalises an untouched drawing's cell/offset
+//       split (e.g. rolls a large offset into the next cell index), the exact
+//       px-equality check fails and resolveAnchorEmu silently falls back to the
+//       lossy px×9525 path. That is the SAFE degradation (the same ≤½px drift
+//       the px path always had), not a crash or a gross mis-anchor.
+// Both are acceptable: the fallback is always correct to within the pixel grid
+// the editor itself works in; only the bonus "exact source EMU" is forfeited.
 export function resolveAnchorEmu(
     srcAnchorEmu: SrcAnchorEmu | undefined,
     from: PxPoint,

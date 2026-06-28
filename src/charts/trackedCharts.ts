@@ -61,7 +61,10 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                         endColumn?: number;
                     };
                     sourceSheetName?: string;
-                    meta?: { categoryAxisType?: 'index' | 'category' };
+                    meta?: {
+                        categoryAxisType?: 'index' | 'category';
+                        hasHeaderRow?: boolean;
+                    };
                 };
             };
             if (d?.componentKey !== 'NotesheetChart') continue;
@@ -89,11 +92,18 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                 ...(typeof data?.sourceSheetName === 'string' && data.sourceSheetName
                     ? { sourceSheetName: data.sourceSheetName }
                     : {}),
-                // A 'category' axis means row 0 of the source range is a
-                // header; 'index' (or absent) means the source had no <c:cat>
-                // header to skip. Default to true ONLY when explicitly
-                // 'category' so the index-axis case keeps reading every row.
-                hasHeaderRow: data?.meta?.categoryAxisType === 'category',
+                // Whether row 0 of sourceRange is a header to skip on
+                // live-edit re-extract. Prefer the explicit `hasHeaderRow`
+                // signal (set by the importer: true only when the categories
+                // start at sheet row ≥ 2, i.e. a real header sits above them).
+                // Fall back to the legacy categoryAxisType heuristic for
+                // snapshots imported before hasHeaderRow was emitted —
+                // imperfect (it over-skips charts whose <c:cat> starts at row
+                // 0) but matches the prior behaviour for old snapshots.
+                hasHeaderRow:
+                    typeof data?.meta?.hasHeaderRow === 'boolean'
+                        ? data.meta.hasHeaderRow
+                        : data?.meta?.categoryAxisType === 'category',
             });
         }
     }

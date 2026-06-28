@@ -71,10 +71,17 @@ describe('M18 A3 — EMU sub-cell anchor offset fidelity', () => {
         expect(typeof drawing._srcAnchorEmu.fromColOff).toBe('number');
     });
 
-    test('chart anchor sub-cell offset exports in EMU, not mis-scaled to ~0', async () => {
-        // Synthesize a chart snapshot whose anchor has a real sub-cell offset,
-        // then export and assert the OOXML colOff is the EMU value, not the
-        // pixel value (the latent unit bug exported px-as-EMU → ~0).
+    test('chart anchor exports the EXACT stashed EMU (stash path, not px×9525 fallback)', async () => {
+        // Synthesize a chart snapshot whose anchor has a SUB-PIXEL EMU offset
+        // and assert the export reproduces that exact EMU. The earlier version
+        // of this test used 50 px + 476250 EMU — but 50 × 9525 === 476250, so
+        // the px×9525 FALLBACK produces the identical value and the assertion
+        // passed without the _srcAnchorEmu stash path ever firing (the stash's
+        // cell-index fields were left undefined, so anchorUnmoved() returned
+        // false and the fallback ran). Here the EMU offset (478123) is NOT a
+        // whole-pixel multiple — round(478123 / 9525) = 50, so the px form
+        // matches and the drawing reads as "unmoved", but 50 × 9525 = 476250
+        // ≠ 478123. So the test only passes if the exact stash is emitted.
         const file = path.join(CHARTS, '01-bar-simple.xlsx');
         const snap: {
             resources?: Array<{ name: string; data: string }>;
@@ -84,22 +91,37 @@ describe('M18 A3 — EMU sub-cell anchor offset fidelity', () => {
         const sub = parsed[Object.keys(parsed)[0]];
         const id = Object.keys(sub.data)[0];
         const drawing = sub.data[id];
-        // Give it a known px offset AND the matching source EMU (as the import
-        // would now stash). 50 px ≈ 476250 EMU.
-        drawing.sheetTransform.from.columnOffset = 50;
-        drawing.axisAlignSheetTransform.from.columnOffset = 50;
+
+        // Drive both px transforms to a known whole-pixel anchor (export reads
+        // axisAlignSheetTransform first, falling back to sheetTransform).
+        const px = {
+            from: { column: 1, columnOffset: 50, row: 2, rowOffset: 7 },
+            to: { column: 8, columnOffset: 3, row: 30, rowOffset: 9 },
+        };
+        for (const tName of ['sheetTransform', 'axisAlignSheetTransform']) {
+            drawing[tName] = { from: { ...px.from }, to: { ...px.to } };
+        }
+        // Stash the source EMU. Every cell index matches px; every *Off rounds
+        // back to the px offset (so anchorUnmoved() holds). fromColOff is the
+        // sub-pixel sentinel that the fallback cannot reproduce.
         drawing._srcAnchorEmu = {
-            fromColOff: 476250,
-            fromRowOff: drawing._srcAnchorEmu?.fromRowOff ?? 0,
-            toColOff: drawing._srcAnchorEmu?.toColOff ?? 0,
-            toRowOff: drawing._srcAnchorEmu?.toRowOff ?? 0,
+            fromCol: 1,
+            fromColOff: 478123, // round(478123/9525)=50, but 50*9525=476250
+            fromRow: 2,
+            fromRowOff: 7 * 9525,
+            toCol: 8,
+            toColOff: 3 * 9525,
+            toRow: 30,
+            toRowOff: 9 * 9525,
         };
         res.data = JSON.stringify(parsed);
 
         const exported = await snapshotToXlsxBuffer(snap as never);
         const offs = await anchorOffsets(exported);
-        // The from.colOff must be the EMU value (476250), not 50 (px-as-EMU).
-        expect(offs).toContain(476250);
+        // The exact stashed EMU is emitted (lossless), NOT the px×9525 fallback.
+        expect(offs).toContain(478123);
+        expect(offs).not.toContain(476250);
+        // And definitely not the raw px value (the original latent unit bug).
         expect(offs).not.toContain(50);
     });
 

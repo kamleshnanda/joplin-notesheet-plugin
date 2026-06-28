@@ -53,17 +53,38 @@ describe('M18 — absolute relationship Targets import cleanly', () => {
         expect(tableCount).toBeGreaterThanOrEqual(2);
     });
 
-    // REGRESSION GUARD (browser-renderer safety): the pre-load buffer
-    // transforms run in the Joplin editor renderer, where Node's `Buffer` is
-    // undefined. normalizeAbsoluteRelTargets() once emitted JSZip's
+    // REGRESSION GUARD (browser-renderer safety): the pre-load AND export
+    // buffer transforms run in the Joplin editor renderer, where Node's
+    // `Buffer` is undefined. normalizeAbsoluteRelTargets() once emitted JSZip's
     // `type: 'nodebuffer'`, which threw "Buffer is not defined" on EVERY
     // import (surfaced as "Import failed: buffer not defined"). Node-only
     // jest can't faithfully simulate the browser (JSZip's own isBuffer()
-    // touches the global), so we assert the SOURCE invariant instead: the
-    // import-side zip transforms must produce 'arraybuffer', never
-    // 'nodebuffer'. xlsx.ts:791 was the offender.
-    test('import-path zip transforms never use nodebuffer (browser-safe)', () => {
-        const src = readFileSync(path.join(__dirname, '..', 'src', 'xlsx.ts'), 'utf8');
-        expect(src).not.toMatch(/generateAsync\(\{\s*type:\s*['"]nodebuffer['"]/);
+    // touches the global), so we assert the SOURCE invariant instead: every
+    // zip transform in the import/export pipeline must produce 'arraybuffer',
+    // never 'nodebuffer'. The original guard checked ONLY src/xlsx.ts, so a
+    // 'nodebuffer' slipping into a sibling transform (the chart / image /
+    // shape zip rewriters, which run on the same browser-side paths) would
+    // have gone uncaught. This sweeps every src file that calls JSZip.
+    test('NO import/export zip transform uses nodebuffer (browser-safe)', () => {
+        const files = [
+            'src/xlsx.ts',
+            'src/charts/xlsxChart.ts',
+            'src/charts/xlsxChartImport.ts',
+            'src/drawings/xlsxImage.ts',
+            'src/drawings/xlsxImageImport.ts',
+            'src/drawings/xlsxShape.ts',
+        ];
+        for (const rel of files) {
+            const full = path.join(__dirname, '..', rel);
+            // Tolerate a sibling that doesn't exist (defensive — the list is a
+            // superset of the JSZip callers at time of writing).
+            let src: string;
+            try {
+                src = readFileSync(full, 'utf8');
+            } catch {
+                continue;
+            }
+            expect(src).not.toMatch(/generateAsync\(\{\s*type:\s*['"]nodebuffer['"]/);
+        }
     });
 });

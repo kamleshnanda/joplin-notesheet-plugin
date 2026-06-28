@@ -768,19 +768,32 @@ async function normalizeAbsoluteRelTargets(
         const ownerDir = relsPath.replace(/\/?_rels\/[^/]+\.rels$/i, '');
         const xml = await zip.files[relsPath].async('string');
         let fileChanged = false;
-        const rewritten = xml.replace(
-            /(\bTarget=")(\/[^"]*)(")/g,
-            (_full, pre: string, target: string, post: string) => {
-                // target starts with "/" → absolute from package root.
-                const abs = target.replace(/^\//, '');
-                const rel = ownerDir ? relativizePath(ownerDir, abs) : abs;
-                if (rel && rel !== target) {
-                    fileChanged = true;
-                    return `${pre}${rel}${post}`;
-                }
-                return `${pre}${target}${post}`;
-            },
-        );
+        // Rewrite per <Relationship> ELEMENT, not per Target attribute: an
+        // external relationship (TargetMode="External") whose Target begins
+        // with "/" (root-relative, e.g. "/folder/page.html") or "//"
+        // (protocol-relative) is a real hyperlink/external reference and MUST
+        // be left verbatim — relativizing it ("../../folder/page.html") would
+        // destroy the link. Only PACKAGE-INTERNAL absolute targets (the
+        // openpyxl `/xl/...` case this normalizer exists for) get rewritten.
+        // Scheme-prefixed URLs (http://, mailto:) carry no leading slash and
+        // never matched the inner regex anyway; this guard additionally covers
+        // the root-relative / protocol-relative external shapes.
+        const rewritten = xml.replace(/<Relationship\b[^>]*?\/>/g, (rel) => {
+            if (/\bTargetMode="External"/i.test(rel)) return rel;
+            return rel.replace(
+                /(\bTarget=")(\/[^"]*)(")/g,
+                (_full, pre: string, target: string, post: string) => {
+                    // target starts with "/" → absolute from package root.
+                    const abs = target.replace(/^\//, '');
+                    const relPath = ownerDir ? relativizePath(ownerDir, abs) : abs;
+                    if (relPath && relPath !== target) {
+                        fileChanged = true;
+                        return `${pre}${relPath}${post}`;
+                    }
+                    return `${pre}${target}${post}`;
+                },
+            );
+        });
         if (fileChanged) {
             zip.file(relsPath, rewritten);
             changed = true;

@@ -77,6 +77,11 @@ export interface ChartDrawing {
     meta?: {
         legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
         categoryAxisType?: 'index' | 'category';
+        // True when sourceRange row 0 is a header above the categories
+        // (categories start at sheet row ≥ 2). Drives the live-edit
+        // re-extract's header skip; preserved on round-trip. Distinct from
+        // categoryAxisType.
+        hasHeaderRow?: boolean;
         barDir?: 'bar' | 'col';
         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
         barGapWidth?: number;

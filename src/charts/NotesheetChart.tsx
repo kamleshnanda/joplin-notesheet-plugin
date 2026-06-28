@@ -337,16 +337,21 @@ export function buildConfig(data: NotesheetChartData | undefined): ChartConfigur
 
     // C3: percentStacked normalisation. Excel's "100% Stacked" makes each
     // CATEGORY column sum to 100% — Chart.js has no native percentStacked,
-    // so we convert each point to its share of that category's total. A
-    // zero-total category is left untouched (no division by zero). The value
-    // axis is capped at 100 below (see `percentStackedMax`).
+    // so we convert each point to its share of that category's total. To
+    // match Excel for mixed-sign data the denominator is the sum of ABSOLUTE
+    // values (so each point becomes (v / Σ|v|)·100, keeping its own sign and
+    // making the column's absolute shares total 100). A zero-total category
+    // (empty, all-blank, or perfectly cancelling) normalises every point to
+    // 0 — NOT the raw value — so it can't leak an un-normalised number past
+    // the value-axis cap of 100 (see `percentStackedMax` below) and read as
+    // a full-height bar. The value axis is capped at 100 below.
     const isPercentStacked = grouping === 'percentStacked' && (type === 'bar' || type === 'line');
     if (isPercentStacked) {
         const n = Math.max(0, ...datasets.map((ds) => ds.data?.length ?? 0));
-        const colTotals = Array.from({ length: n }, (_, i) =>
+        const colAbsTotals = Array.from({ length: n }, (_, i) =>
             datasets.reduce((sum, ds) => {
                 const v = ds.data?.[i];
-                return sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+                return sum + (typeof v === 'number' && Number.isFinite(v) ? Math.abs(v) : 0);
             }, 0),
         );
         datasets = datasets.map(
@@ -354,10 +359,9 @@ export function buildConfig(data: NotesheetChartData | undefined): ChartConfigur
                 ({
                     ...ds,
                     data: (ds.data ?? []).map((v, i) => {
-                        const total = colTotals[i];
-                        return total === 0 || typeof v !== 'number' || !Number.isFinite(v)
-                            ? v
-                            : (v / total) * 100;
+                        if (typeof v !== 'number' || !Number.isFinite(v)) return v;
+                        const total = colAbsTotals[i];
+                        return total === 0 ? 0 : (v / total) * 100;
                     }),
                 }) as ChartData['datasets'][number],
         );
