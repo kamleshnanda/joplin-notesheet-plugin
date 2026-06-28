@@ -37,9 +37,9 @@
     },
     "feature-7-m17-chart-svg-html-export-jest": {
         "passes": true,
-        "evidence": "screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png",
-        "evaluator_verdict": "PENDING",
-        "last_attempted_at": "2026-06-28T10:57:04Z"
+        "evidence": "screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T11-16-53-565Z.png",
+        "evaluator_verdict": "PASS",
+        "last_attempted_at": "2026-06-28T11:16:53Z"
     },
     "feature-8-m17-chart-preview-pane-pge-smoke": {
         "passes": true,
@@ -49,8 +49,8 @@
     },
     "feature-9-m17-flip-pin-downs-and-test-count": {
         "passes": true,
-        "evidence": "tests/m12ImportRecovery.test.ts:55,89 (both pin-downs flipped to positive imports — MultiSheet → N charts, LargeWorkbook → clean 2-sheet import; FormulasAndStructuredRefs also now imports via the M18 abs-rel-target fix); full suite 455 tests (gate was 267 → ≥290)",
-        "evaluator_verdict": "PENDING",
-        "last_attempted_at": "2026-06-28T10:57:04Z"
+        "evidence": "tests/m12ImportRecovery.test.ts:55,89 (both pin-downs flipped to positive imports — MultiSheet → N charts, LargeWorkbook → clean 2-sheet import; FormulasAndStructuredRefs also now imports via the M18 abs-rel-target fix); full suite 457 tests (gate was 267 → ≥290)",
+        "evaluator_verdict": "PASS",
+        "last_attempted_at": "2026-06-28T11:18:00Z"
     }
 }

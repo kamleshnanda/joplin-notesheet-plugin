@@ -22,8 +22,13 @@ every feature.
     `screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png`
     — 3 sheet tables (Data/Chart/Summary) + the "Data Chart" bar SVG (5 bars,
     palette blue, axis 0–60). Sidecar: `inlineSvgCount=1`, `rect=5`,
-    `rawJsonLeak=false`, `tableCount=3`. Row flipped `passes:true`,
-    `evaluator_verdict:PENDING` (no live evaluator run this session).
+    `rawJsonLeak=false`, `tableCount=3`.
+  - **EVALUATOR PASS (fresh-context, 2026-06-28).** The PGE evaluator ran
+    independently, captured its OWN preview-pane screenshot
+    (`eval-2026-06-28T11-16-53-565Z.png`), and graded **PASS** — confirmed all
+    5 render cases + palette parity + no viz-lib dep, and that the M13 failure
+    mode (data correct, render flat) does NOT occur (bar heights track the
+    data). Row: `passes:true`, `evaluator_verdict:PASS`.
   - **HARNESS FIX (load-bearing): `rawJsonLeak` false-positive.** The M16-era
     heuristic matched `"sheetOrder"`/`"workbook-` on the whole `document.body.
     innerHTML`. Since the M18 #37 RTE fence-integrity fix, the renderer wraps
@@ -39,6 +44,11 @@ every feature.
     (267 → ≥290) is far exceeded at 457. The M18 abs-rel-target fix went BEYOND
     the spec, making FormulasAndStructuredRefs import cleanly too (spec only
     required it stay an `xlsx-multi-table-unsupported` rejection). Row flipped.
+    **EVALUATOR PASS (fresh-context, 2026-06-28)** — graded as a test-integrity
+    feature (no render dimension) from the test file + git diff + count gate;
+    confirmed the flips reflect REAL importer capability (not regression-hiding
+    weakening — assertions got stronger), the importable-fixtures block is
+    intact, and the count gate is exceeded. Row: `evaluator_verdict:PASS`.
   - **Verified:** typecheck clean, `npm test` 457/457 (52 suites). New harness
     util `scripts/pge/capture-image-render.js` (from the A1 gate) committed
     earlier.
