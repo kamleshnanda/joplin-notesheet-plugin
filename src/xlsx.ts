@@ -31,7 +31,7 @@ import {
     type ImportedChartDrawing,
 } from './charts/xlsxChartImport';
 import { readImagesFromXlsxZip, type ImportedImageDrawing } from './drawings/xlsxImageImport';
-import { injectImagesIntoZip } from './drawings/xlsxImage';
+import { injectImagesIntoZip, bytesToBase64 } from './drawings/xlsxImage';
 import { readShapesFromXlsxZip, type ImportedShapeDrawing } from './drawings/xlsxShapeImport';
 import { injectShapesIntoZip } from './drawings/xlsxShape';
 import { NOTESHEET_SHAPES_RESOURCE } from './drawings/sheetIdResolver';
@@ -2738,7 +2738,7 @@ export async function xlsxBufferToSnapshot(
                 drawingResource[subUnitId] = { data: {}, order: [] };
             }
             const drawingId = `image-imported-${image.sheetIndex}-${image.imageId}`;
-            const source = `data:${image.mime};base64,${Buffer.from(image.buffer).toString('base64')}`;
+            const source = `data:${image.mime};base64,${bytesToBase64(image.buffer)}`;
 
             const fromColOffPx = Math.round(image.anchor.fromColOff / 9525);
             const fromRowOffPx = Math.round(image.anchor.fromRowOff / 9525);
@@ -3082,7 +3082,12 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, { tables: TableJson[] }>;
-    } catch {
+    } catch (e) {
+        // Self-produced JSON: a parse fault here means the note body was
+        // corrupted/truncated, and silently returning {} drops EVERY table
+        // from the export. Warn so the loss isn't invisible (matches the
+        // inject* paths' logging convention).
+        console.warn('[Notesheet] table resource JSON parse failed; tables dropped from export', e);
         return {};
     }
 }
@@ -3103,7 +3108,12 @@ function readSynthStylesSidecar(
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, Record<string, string[]>>;
-    } catch {
+    } catch (e) {
+        // A parse fault here means the exporter loses its record of which
+        // styles were synthesized on import, so it re-emits them on top of
+        // Excel's own TableStyle -> doubled paint. Warn instead of silently
+        // corrupting fidelity.
+        console.warn('[Notesheet] synth-styles sidecar JSON parse failed; style dedup skipped', e);
         return {};
     }
 }
@@ -3123,7 +3133,14 @@ function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEn
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, UniverCfRuleEntry[]>;
-    } catch {
+    } catch (e) {
+        // Silently returning {} drops ALL conditional-formatting rules (color
+        // scales, data bars, icon sets) from the export. Warn so the loss is
+        // visible.
+        console.warn(
+            '[Notesheet] CF resource JSON parse failed; conditional formatting dropped from export',
+            e,
+        );
         return {};
     }
 }
