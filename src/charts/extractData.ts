@@ -135,6 +135,50 @@ export function extractRangeAsChartData(
     }
 }
 
+// Detect whether the first row of a selected range is a HEADER row (series
+// names / category-axis title) rather than data — Excel's own heuristic when
+// you insert a chart: row 0 is a header when at least one value column has a
+// TEXT cell in row 0 sitting above NUMERIC data in row 1. Used by insertChart
+// so a user selecting "Region | Q1 | Q2 …" gets series named from the header
+// instead of "Series 1/2/…". Returns false for a single-row range or when the
+// range can't be read (safe default — the header-less authoring path).
+export function detectHeaderRow(workbook: unknown, range: RangeAddress): boolean {
+    if (!workbook || !range) return false;
+    try {
+        const wb = workbook as {
+            getActiveSheet?: () => {
+                getRange?: (r: RangeAddress) => { getValues?: () => unknown[][] } | null;
+            } | null;
+            getSheetBySheetId?: (id: string) => {
+                getRange?: (r: RangeAddress) => { getValues?: () => unknown[][] } | null;
+            } | null;
+        };
+        const sheet =
+            (range.subUnitId && wb.getSheetBySheetId?.(range.subUnitId)) || wb.getActiveSheet?.();
+        const values = sheet?.getRange?.(range)?.getValues?.();
+        if (!Array.isArray(values) || values.length < 2) return false;
+
+        const isBlank = (v: unknown) => v === null || v === undefined || v === '';
+        const isNumeric = (v: unknown) =>
+            typeof v === 'number' ||
+            (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)));
+
+        const header = values[0];
+        const firstData = values[1];
+        const cols = header.length;
+        // Check value columns only (skip col 0, the category/label column).
+        for (let c = 1; c < cols; c++) {
+            const h = header[c];
+            const d = firstData[c];
+            // Header cell is non-blank text AND the data cell below is numeric.
+            if (!isBlank(h) && !isNumeric(h) && isNumeric(d)) return true;
+        }
+        return false;
+    } catch {
+        return false;
+    }
+}
+
 // Snapshot variant of extractRangeAsChartData. Reads cell values directly
 // out of a Univer snapshot's `sheets[id].cellData[row][col].v` map without
 // booting Univer. Used by:

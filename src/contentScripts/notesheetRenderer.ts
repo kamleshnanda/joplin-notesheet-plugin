@@ -1455,7 +1455,16 @@ function renderSheet(
     if (sheetName) {
         out.push(`<h3 class="notesheet-sheet-name">${escapeHtml(sheetName)}</h3>`);
     }
-    out.push('<table class="notesheet-table" style="border-collapse: collapse;">');
+    // print-color-adjust: exact forces Chromium (Joplin's Electron PDF/print
+    // engine) to KEEP cell background-colors when exporting to PDF. Without
+    // it, Chromium strips backgrounds by default, so cell fills and
+    // colorScale/cellIs conditional-formatting colours render on screen but
+    // vanish in the exported PDF. Both the -webkit- prefix and the standard
+    // property are set for the widest engine coverage.
+    out.push(
+        '<table class="notesheet-table" style="border-collapse: collapse; ' +
+            '-webkit-print-color-adjust: exact; print-color-adjust: exact;">',
+    );
 
     if (rows === 0 || cols === 0) {
         out.push('<tbody><tr><td></td></tr></tbody>');

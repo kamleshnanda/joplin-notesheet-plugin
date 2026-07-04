@@ -57,7 +57,7 @@ import {
     NOTESHEET_SHAPES_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
-import { extractRangeAsChartData, type RangeAddress } from './charts/extractData';
+import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
 
 declare global {
@@ -253,7 +253,14 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             subUnitId: fSheet.getSheetId?.(),
         };
 
-        const chartData = extractRangeAsChartData(fWorkbook, sourceRange);
+        // Detect whether row 0 of the selection is a header (text names above
+        // numeric data). When it is, series get their names from the header
+        // cells ("Region", "Q1", …) instead of the "Series N" fallback — the
+        // behaviour Excel gives when the selection includes column headers.
+        // Persisted as meta.hasHeaderRow so live-edit re-extract and export
+        // keep the names (see trackedCharts + readChartsFromSnapshot).
+        const hasHeaderRow = detectHeaderRow(fWorkbook, sourceRange);
+        const chartData = extractRangeAsChartData(fWorkbook, sourceRange, { hasHeaderRow });
         const chartId = 'chart-' + Date.now().toString(36);
 
         // CRITICAL: use addFloatDomToPosition, NOT addFloatDomToRange.
@@ -281,7 +288,16 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             {
                 componentKey: CHART_COMPONENT_KEY,
                 // chartId opens a live-update channel — see refreshChartsForEdit.
-                data: { chartId, type, sourceRange, title, ...chartData },
+                // meta.hasHeaderRow persists the header decision so live-edit
+                // re-extract and .xlsx export both keep the series names.
+                data: {
+                    chartId,
+                    type,
+                    sourceRange,
+                    title,
+                    ...chartData,
+                    meta: { hasHeaderRow },
+                },
                 allowTransform: true,
                 // Forward pointer events through the chart canvas so Univer's
                 // transformer (under the canvas) sees clicks and can attach
@@ -298,7 +314,7 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             chartId,
         );
         if (!handle) throw new Error('addFloatDomToPosition returned no handle');
-        trackedCharts.set(chartId, { id: chartId, sourceRange });
+        trackedCharts.set(chartId, { id: chartId, sourceRange, hasHeaderRow });
         setStatus('Chart inserted.');
         scheduleSave();
     } catch (e) {

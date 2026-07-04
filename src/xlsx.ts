@@ -3322,6 +3322,39 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                     // without writing into our already-populated data cells.
                     rows: Array.from({ length: dataRowCount }, () => []),
                 });
+
+                // exceljs's addTable().store() overwrites every header-row
+                // cell with a PLAIN STRING (column.name), clobbering the
+                // { text, hyperlink } / { richText } values we wrote from
+                // cellData above. A header cell that carried a hyperlink or
+                // per-run formatting therefore loses it silently. Re-apply
+                // those rich values to the header cells after the table is
+                // stored. (Data-row cells are untouched — rows are empty.)
+                if (headerRow) {
+                    const headerR = t.range.startRow; // 0-based snapshot row
+                    const headerCells = cellData[headerR];
+                    if (headerCells) {
+                        for (let ci = 0; ci < t.columns.length; ci++) {
+                            const colIdx = t.range.startColumn + ci;
+                            const hd = headerCells[colIdx];
+                            if (!hd) continue;
+                            const hUrl = extractHyperlinkFromCellP(hd.p);
+                            if (hUrl && hd.v !== undefined && hd.v !== null) {
+                                ws.getCell(headerR + 1, colIdx + 1).value = {
+                                    text: String(hd.v),
+                                    hyperlink: hUrl,
+                                };
+                                continue;
+                            }
+                            const hRuns = extractRichTextRunsFromCellP(hd.p);
+                            if (hRuns) {
+                                ws.getCell(headerR + 1, colIdx + 1).value = {
+                                    richText: hRuns,
+                                } as unknown as ExcelJS.CellValue;
+                            }
+                        }
+                    }
+                }
             } catch (e) {
                 console.warn('[Notesheet] could not export table', t?.name, e);
             }

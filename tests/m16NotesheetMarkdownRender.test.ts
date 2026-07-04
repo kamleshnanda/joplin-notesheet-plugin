@@ -92,6 +92,18 @@ describe('M16 notesheetRenderer — base shape', () => {
         expect(tdMatch![0]).toMatch(/background-color:\s*#FF0000/i);
     });
 
+    test('table carries print-color-adjust: exact so PDF export keeps fills', () => {
+        // Chromium (Joplin's Electron PDF engine) strips background-colors when
+        // printing unless print-color-adjust: exact is set. Without it, cell
+        // fills and colorScale/cellIs CF colours render on screen but vanish in
+        // the exported PDF. Assert both the standard + -webkit- properties are
+        // on the table element.
+        const tableMatch = html.match(/<table[^>]*>/);
+        expect(tableMatch).not.toBeNull();
+        expect(tableMatch![0]).toMatch(/print-color-adjust:\s*exact/i);
+        expect(tableMatch![0]).toMatch(/-webkit-print-color-adjust:\s*exact/i);
+    });
+
     test('merged cell carries colspan and skips interior cells', () => {
         // The merge anchor (row 1, col 0) should carry colspan=2.
         const anchorMatch = html.match(/<td[^>]*colspan="2"[^>]*>A2-merged-anchor<\/td>/);
