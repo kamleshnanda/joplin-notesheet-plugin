@@ -166,6 +166,33 @@ async function handleExport(): Promise<void> {
     }
 }
 
+// Autofit every column to its content width. Univer's built-in
+// header-border double-click only autofits multiple columns when the
+// selection is RANGE_TYPE.COLUMN; a Select-All selection (RANGE_TYPE.ALL)
+// falls through to autofitting just the clicked column. This button gives
+// the whole-sheet "autofit all columns" that Excel does on a select-all +
+// double-click, by calling the same SetWorksheetColAutoWidthCommand across
+// every column via the facade's autoResizeColumns(start, count).
+function handleAutofitColumns(): void {
+    try {
+        if (!activeApi) throw new Error('workbook not ready');
+        const workbook =
+            activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
+        const sheet = workbook?.getActiveSheet?.();
+        if (!sheet) throw new Error('no active sheet');
+        const maxCols = sheet.getMaxColumns?.() ?? 0;
+        if (maxCols <= 0 || typeof sheet.autoResizeColumns !== 'function') {
+            throw new Error('autofit not available');
+        }
+        sheet.autoResizeColumns(0, maxCols);
+        setStatus('Columns autofitted.');
+        scheduleSave();
+    } catch (e) {
+        console.error('[Notesheet] autofit columns failed', e);
+        setStatus('Autofit failed: ' + (e instanceof Error ? e.message : String(e)), true);
+    }
+}
+
 // Disposable returned by fWorkbook.onSelectionChange. Held while the chart
 // panel is open so the Range field tracks the user's live selection on the
 // sheet, then disposed when the panel closes.
@@ -526,6 +553,12 @@ function ensureActionBar(): void {
     exportBtn.textContent = 'Export .xlsx';
     Object.assign(exportBtn.style, buttonStyle);
 
+    const autofitBtn = document.createElement('button');
+    autofitBtn.type = 'button';
+    autofitBtn.textContent = 'Autofit columns';
+    autofitBtn.title = 'Resize every column to fit its content';
+    Object.assign(autofitBtn.style, buttonStyle);
+
     const status = document.createElement('span');
     status.id = STATUS_ID;
     Object.assign(status.style, {
@@ -549,9 +582,11 @@ function ensureActionBar(): void {
 
     importBtn.addEventListener('click', () => fileInput.click());
     exportBtn.addEventListener('click', () => void handleExport());
+    autofitBtn.addEventListener('click', () => handleAutofitColumns());
 
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
+    bar.appendChild(autofitBtn);
     bar.appendChild(status);
     bar.appendChild(fileInput);
     document.body.appendChild(bar);
