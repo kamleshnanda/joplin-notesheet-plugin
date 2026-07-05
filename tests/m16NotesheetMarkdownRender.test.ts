@@ -365,13 +365,18 @@ describe('M16 notesheetRenderer — Conditional Formatting (criterion 4)', () =>
         // white ≈ #FFEFCD), then goes transparent at the fill fraction.
         // 100 cell: tip + transparent boundary both at 100%.
         expect(html).toMatch(/#FFEFCD\s+100%,\s*transparent\s+100%/i);
-        // 0 cell: tip + transparent boundary both at 0%.
-        expect(html).toMatch(/#FFEFCD\s+0%,\s*transparent\s+0%/i);
         // The tip colour is a lightened tint, not the raw bar colour or plain
         // transparent — assert the 3-stop gradient (saturated → tint → clear).
         expect(html).toMatch(/linear-gradient\(to right,\s*#ffbe38\s+0%,\s*#FFEFCD\s+\d+%/i);
         // The value still renders (isShowValue) — the number 50 appears.
         expect(html).toContain('>50<');
+        // Match Univer: the MINIMUM value (0 here → 0% bar) gets NO gradient
+        // fill at all. There must be exactly two gradients (for 50 and 100),
+        // not three — the 0 cell keeps its plain background.
+        const gradientCount = (html.match(/linear-gradient/g) ?? []).length;
+        expect(gradientCount).toBe(2);
+        // And no 0%-width gradient is emitted.
+        expect(html).not.toMatch(/#FFEFCD\s+0%,\s*transparent\s+0%/i);
     });
 });
 

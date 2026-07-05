@@ -1007,6 +1007,12 @@ function evaluateCfFor(sheet: SnapshotSheet, rules: CfRule[]): Map<string, strin
                     // Fraction of the bar filled (clamped to 0..100%).
                     const frac = span <= 0 ? (v >= max ? 1 : 0) : (v - min) / span;
                     const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+                    // Match Univer: a value at the minimum (0% bar) gets NO bar
+                    // fill at all — the cell keeps its normal background —
+                    // rather than an invisible 0%-width gradient. (Univer's
+                    // dataBar calc returns nothing when the computed length is
+                    // 0.)
+                    if (pct === 0) continue;
                     // Gradient from saturated (left) to lightened tint at the
                     // bar's tip, then transparent. The number still shows on
                     // top (cell text is rendered separately).
