@@ -977,11 +977,14 @@ function evaluateCfFor(sheet: SnapshotSheet, rules: CfRule[]): Map<string, strin
                 break;
             }
             case 'dataBar': {
-                // Render the data bar as a horizontal fill using a CSS
-                // linear-gradient background: the bar colour from 0 to the
-                // value's fraction of [min,max], transparent beyond. This
-                // survives PDF export (print-color-adjust: exact is set on the
-                // table). iconSet still falls through to the default skip.
+                // Render the data bar as a horizontal CSS linear-gradient
+                // background, matching Univer's on-canvas look: within the
+                // filled portion the bar is a left-to-right GRADIENT from the
+                // saturated bar colour to a lightened tint (Univer fades the
+                // bar toward its tip), then transparent beyond the value's
+                // fraction of [min,max]. Survives PDF export
+                // (print-color-adjust: exact is set on the table). iconSet
+                // still falls through to the default skip.
                 const cfg = (r.config ?? {}) as {
                     min?: { type?: string; value?: number | string };
                     max?: { type?: string; value?: number | string };
@@ -990,6 +993,9 @@ function evaluateCfFor(sheet: SnapshotSheet, rules: CfRule[]): Map<string, strin
                 };
                 const barColor = cfg.positiveColor || cfg.nativeColor;
                 if (!barColor) break;
+                // Lightened tint for the tip of the bar (75% toward white),
+                // matching Univer's gradient falloff.
+                const barTip = lerpRgb(barColor, '#FFFFFF', 0.75);
                 const { byRC, sorted } = collectRangeValues(sheet, rule);
                 if (sorted.length === 0) break;
                 const lo = cfg.min ? resolveCfvo(cfg.min, sorted) : sorted[0];
@@ -1001,11 +1007,12 @@ function evaluateCfFor(sheet: SnapshotSheet, rules: CfRule[]): Map<string, strin
                     // Fraction of the bar filled (clamped to 0..100%).
                     const frac = span <= 0 ? (v >= max ? 1 : 0) : (v - min) / span;
                     const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
-                    // Solid bar to `pct`, then transparent — the number still
-                    // shows on top (the cell text is rendered separately).
+                    // Gradient from saturated (left) to lightened tint at the
+                    // bar's tip, then transparent. The number still shows on
+                    // top (cell text is rendered separately).
                     fills.set(
                         key,
-                        `linear-gradient(to right, ${barColor} 0%, ${barColor} ${pct}%, transparent ${pct}%, transparent 100%)`,
+                        `linear-gradient(to right, ${barColor} 0%, ${barTip} ${pct}%, transparent ${pct}%, transparent 100%)`,
                     );
                 }
                 break;
