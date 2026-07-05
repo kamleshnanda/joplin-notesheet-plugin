@@ -39,7 +39,7 @@ Insert ribbon → **Insert Chart** opens a docked panel that mirrors your live c
 
 ### PDF / HTML export of rendered spreadsheet
 
-A Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`) renders Notesheet fenced bodies as inline-styled HTML tables for Joplin's preview pane and PDF / HTML export. Common Excel number formats render correctly; conditional formatting (cellIs / top-N / colorScale) bakes into the static HTML. Charts render as hand-authored inline SVG (bar / column / horizontal-bar / line / pie / doughnut) so they survive export — Chart.js canvases do not.
+A Markdown-It content script (`src/contentScripts/notesheetRenderer.ts`) renders Notesheet fenced bodies as inline-styled HTML tables for Joplin's preview pane and PDF / HTML export. Common Excel number formats render correctly; conditional formatting (cellIs / top-N / colorScale / dataBar) bakes into the static HTML (dataBar as a CSS `linear-gradient` bar; only iconSet is not yet rendered). Charts render as hand-authored inline SVG (bar / column / horizontal-bar / line / pie / doughnut) so they survive export — Chart.js canvases do not.
 
 The rendered block is wrapped in Joplin's `joplin-editable` / `joplin-source` container (the convention built-in renderers like mermaid and katex use), so editing a Notesheet note in the **Rich Text (TinyMCE) editor** keeps the block atomic and round-trips the original `notesheet v=1` fence back losslessly on save — without this, TinyMCE would re-serialize the rendered table to a plain Markdown table and destroy the snapshot.
 
