@@ -215,9 +215,13 @@ function buildCellInlineStyle(base: ResolvedStyle, cfFill: string | null): strin
     const parts: string[] = [];
     // Background: CF fill (if any) wins over the base style. CF rules
     // explicitly override per-cell formatting in Excel's render order;
-    // the M16 renderer mirrors that.
+    // the M16 renderer mirrors that. `cfFill` is either a solid hex colour
+    // (cellIs / top-N / colorScale) or a `linear-gradient(...)` for a dataBar.
+    // Solid fills keep the precise `background-color` property (existing
+    // pin-downs assert it); a gradient must use the `background` shorthand.
     if (cfFill) {
-        parts.push(`background-color: ${cfFill}`);
+        const prop = cfFill.startsWith('linear-gradient') ? 'background' : 'background-color';
+        parts.push(`${prop}: ${cfFill}`);
     } else if (base.bg && base.bg.rgb) {
         parts.push(`background-color: ${base.bg.rgb}`);
     }
@@ -972,9 +976,42 @@ function evaluateCfFor(sheet: SnapshotSheet, rules: CfRule[]): Map<string, strin
                 }
                 break;
             }
-            // dataBar + iconSet: out of scope per M16. Documented in
-            // BUILD_PLAN.md `Out of scope`. The cell value still renders;
-            // only the visualisation glyph / bar is dropped.
+            case 'dataBar': {
+                // Render the data bar as a horizontal fill using a CSS
+                // linear-gradient background: the bar colour from 0 to the
+                // value's fraction of [min,max], transparent beyond. This
+                // survives PDF export (print-color-adjust: exact is set on the
+                // table). iconSet still falls through to the default skip.
+                const cfg = (r.config ?? {}) as {
+                    min?: { type?: string; value?: number | string };
+                    max?: { type?: string; value?: number | string };
+                    positiveColor?: string;
+                    nativeColor?: string;
+                };
+                const barColor = cfg.positiveColor || cfg.nativeColor;
+                if (!barColor) break;
+                const { byRC, sorted } = collectRangeValues(sheet, rule);
+                if (sorted.length === 0) break;
+                const lo = cfg.min ? resolveCfvo(cfg.min, sorted) : sorted[0];
+                const hi = cfg.max ? resolveCfvo(cfg.max, sorted) : sorted[sorted.length - 1];
+                const min = lo ?? sorted[0];
+                const max = hi ?? sorted[sorted.length - 1];
+                const span = max - min;
+                for (const [key, v] of byRC) {
+                    // Fraction of the bar filled (clamped to 0..100%).
+                    const frac = span <= 0 ? (v >= max ? 1 : 0) : (v - min) / span;
+                    const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+                    // Solid bar to `pct`, then transparent — the number still
+                    // shows on top (the cell text is rendered separately).
+                    fills.set(
+                        key,
+                        `linear-gradient(to right, ${barColor} 0%, ${barColor} ${pct}%, transparent ${pct}%, transparent 100%)`,
+                    );
+                }
+                break;
+            }
+            // iconSet: out of scope (no static-HTML glyph equivalent). The
+            // cell value still renders; only the icon is dropped.
             default:
                 break;
         }

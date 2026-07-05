@@ -308,6 +308,65 @@ describe('M16 notesheetRenderer — Conditional Formatting (criterion 4)', () =>
             .filter((x): x is string => !!x);
         expect(hexes.length).toBeGreaterThan(0);
     });
+
+    test('dataBar renders as a linear-gradient bar sized to the value', () => {
+        // dataBar was previously skipped in static HTML (value shown, no bar).
+        // Now it renders as a CSS linear-gradient background so it survives
+        // PDF export. Shape mirrors the live import: config.min/max cfvo +
+        // positiveColor. Values 0 and 100 over a [0,100] scale give 0% and
+        // 100% bars; 50 gives ~50%.
+        const snapshot = JSON.stringify({
+            id: 'wb-db',
+            sheetOrder: ['s1'],
+            sheets: {
+                s1: {
+                    id: 's1',
+                    name: 'S',
+                    cellData: { 0: { 0: { v: 0 } }, 1: { 0: { v: 50 } }, 2: { 0: { v: 100 } } },
+                },
+            },
+            resources: [
+                {
+                    name: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN',
+                    data: JSON.stringify({
+                        s1: [
+                            {
+                                cfId: 'c1',
+                                ranges: [
+                                    {
+                                        startRow: 0,
+                                        startColumn: 0,
+                                        endRow: 2,
+                                        endColumn: 0,
+                                        rangeType: 0,
+                                    },
+                                ],
+                                rule: {
+                                    type: 'dataBar',
+                                    isShowValue: true,
+                                    config: {
+                                        min: { type: 'num', value: 0 },
+                                        max: { type: 'num', value: 100 },
+                                        positiveColor: '#ffbe38',
+                                        nativeColor: '#abd91a',
+                                    },
+                                },
+                                stopIfTrue: false,
+                            },
+                        ],
+                    }),
+                },
+            ],
+        });
+        const html = renderNotesheetSnapshot(snapshot) ?? '';
+        // A gradient bar in the bar colour must be present.
+        expect(html).toMatch(/linear-gradient\(to right,\s*#ffbe38/i);
+        // The 100 cell fills to 100%; the 0 cell to 0%.
+        expect(html).toMatch(/#ffbe38\s+100%,\s*transparent\s+100%/i);
+        expect(html).toMatch(/#ffbe38\s+0%,\s*transparent\s+0%/i);
+        // The value still renders (isShowValue) — the number 50 appears.
+        expect(html).toContain('>50<');
+    });
 });
 
 // ── numFmt formatter coverage ──────────────────────────────────────
