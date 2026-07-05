@@ -44,12 +44,24 @@ and write a spec the generator can follow without ambiguity.
           import"
         - A file-content check: "exported `xl/worksheets/sheet1.xml`
           contains `<drawing r:id="..."/>` removed"
+
+        **HARD RULE — export/round-trip features.** Any feature whose
+        outcome includes export, save, or round-trip to `.xlsx` MUST
+        include at least one acceptance criterion that is a file-content
+        check on the EXPORTED artifact (e.g. "the exported `.xlsx`
+        contains a non-empty `xl/media/image1.png`" or "exported
+        `xl/charts/chart1.xml` contains `<c:barChart>`"), verifiable via
+        `scripts/pge/eval-export.js`. A render-screenshot criterion alone
+        is NOT acceptable for an export feature — the image can render
+        fine yet export empty (Buffer undefined in the webview).
+
     - **Out of scope** — explicitly call out what this feature does NOT
       cover, so the evaluator doesn't penalize for it
     - **Suggested fixture(s)** — which file(s) under
       `tests/fixtures/formatting-testdata/` exercise this
     - **Related risks** — where regressions are most likely (other
       features that share code paths)
+
 5. **Order features.** Lowest-numbered feature first. Order by
    dependency (prerequisites before dependents) and by risk-decreasing
    value (small wins early, big risks late).
@@ -69,6 +81,11 @@ and write a spec the generator can follow without ambiguity.
 - "cell.p.body.textRuns has the right shape." (Tests the data, not the
   user-visible outcome — this is the M13 failure mode.)
 - "Add support for X." (Implementation directive, not user outcome.)
+- "The image exports to .xlsx and looks right in the editor." (For an
+  export feature, a render-only criterion is not acceptable — it must
+  include a file-content check on the exported artifact, e.g. "exported
+  `xl/media/image1.png` is non-empty", verifiable via
+  `scripts/pge/eval-export.js`.)
 
 ## What goes into PROGRESS.md initially
 

@@ -31,7 +31,7 @@ import {
     type ImportedChartDrawing,
 } from './charts/xlsxChartImport';
 import { readImagesFromXlsxZip, type ImportedImageDrawing } from './drawings/xlsxImageImport';
-import { injectImagesIntoZip } from './drawings/xlsxImage';
+import { injectImagesIntoZip, bytesToBase64 } from './drawings/xlsxImage';
 import { readShapesFromXlsxZip, type ImportedShapeDrawing } from './drawings/xlsxShapeImport';
 import { injectShapesIntoZip } from './drawings/xlsxShape';
 import { NOTESHEET_SHAPES_RESOURCE } from './drawings/sheetIdResolver';
@@ -732,6 +732,84 @@ function parseTableXml(xml: string): RawTable | null {
 // default font here (under <a:fontScheme><a:minorFont><a:latin typeface="..."/>)
 // rather than on individual cells, so cells with no explicit font.name
 // inherit from this. exceljs doesn't expose the theme XML, hence direct
+// Rewrite ABSOLUTE relationship Targets to package-relative ones across every
+// *.rels part. A Target like "/xl/tables/table1.xml" is absolute from the
+// package root; exceljs's reconcile only resolves RELATIVE targets, so an
+// absolute one leaves the part unlinked and crashes the worksheet table-reduce
+// ("reading 'name'"). We recompute each absolute target as a path relative to
+// the .rels file's OWNER directory (the dir containing the part the .rels
+// describes — i.e. the .rels file's parent minus the trailing `_rels`).
+//   e.g.  xl/worksheets/_rels/sheet1.xml.rels  → owner dir  xl/worksheets
+//         Target "/xl/tables/table1.xml"        → "../tables/table1.xml"
+// Only `Target="/..."` values are touched; already-relative targets and
+// external (TargetMode="External") URLs are left untouched. Returns a new
+// buffer; if nothing changed, returns the input unchanged.
+async function normalizeAbsoluteRelTargets(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<ArrayBuffer | Uint8Array | Buffer> {
+    const zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    let changed = false;
+
+    // Compute a relative path from `fromDir` to `toPath` (both package-root
+    // absolute, no leading slash). Pure POSIX-style segment math.
+    const relativizePath = (fromDir: string, toPath: string): string => {
+        const from = fromDir.split('/').filter(Boolean);
+        const to = toPath.split('/').filter(Boolean);
+        let i = 0;
+        while (i < from.length && i < to.length && from[i] === to[i]) i++;
+        const up = from.slice(i).map(() => '..');
+        return [...up, ...to.slice(i)].join('/');
+    };
+
+    for (const relsPath of Object.keys(zip.files)) {
+        if (!/(^|\/)_rels\/[^/]+\.rels$/i.test(relsPath)) continue;
+        // Owner directory: the dir that CONTAINS the part this .rels describes.
+        // `a/b/_rels/x.rels` describes `a/b/x`, so the owner dir is `a/b`.
+        const ownerDir = relsPath.replace(/\/?_rels\/[^/]+\.rels$/i, '');
+        const xml = await zip.files[relsPath].async('string');
+        let fileChanged = false;
+        // Rewrite per <Relationship> ELEMENT, not per Target attribute: an
+        // external relationship (TargetMode="External") whose Target begins
+        // with "/" (root-relative, e.g. "/folder/page.html") or "//"
+        // (protocol-relative) is a real hyperlink/external reference and MUST
+        // be left verbatim — relativizing it ("../../folder/page.html") would
+        // destroy the link. Only PACKAGE-INTERNAL absolute targets (the
+        // openpyxl `/xl/...` case this normalizer exists for) get rewritten.
+        // Scheme-prefixed URLs (http://, mailto:) carry no leading slash and
+        // never matched the inner regex anyway; this guard additionally covers
+        // the root-relative / protocol-relative external shapes.
+        const rewritten = xml.replace(/<Relationship\b[^>]*?\/>/g, (rel) => {
+            if (/\bTargetMode="External"/i.test(rel)) return rel;
+            return rel.replace(
+                /(\bTarget=")(\/[^"]*)(")/g,
+                (_full, pre: string, target: string, post: string) => {
+                    // target starts with "/" → absolute from package root.
+                    const abs = target.replace(/^\//, '');
+                    const relPath = ownerDir ? relativizePath(ownerDir, abs) : abs;
+                    if (relPath && relPath !== target) {
+                        fileChanged = true;
+                        return `${pre}${relPath}${post}`;
+                    }
+                    return `${pre}${target}${post}`;
+                },
+            );
+        });
+        if (fileChanged) {
+            zip.file(relsPath, rewritten);
+            changed = true;
+        }
+    }
+
+    if (!changed) return buffer;
+    // MUST be 'arraybuffer', not 'nodebuffer': this runs in the Joplin editor
+    // renderer (browser-like) where Node's `Buffer` is undefined — 'nodebuffer'
+    // throws "Buffer is not defined", which surfaced as "Import failed: buffer
+    // not defined" on every workbook. Every sibling pre-load transform
+    // (stripChartPartsFromZip, the image/shape readers) uses 'arraybuffer' for
+    // exactly this reason.
+    return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
+}
+
 // zip access. Returns null if the file or attribute is absent.
 async function readThemeFont(
     buffer: ArrayBuffer | Uint8Array | Buffer,
@@ -2057,6 +2135,23 @@ export async function xlsxBufferToSnapshot(
         }
     }
 
+    // Normalize ABSOLUTE relationship Targets ("/xl/tables/table1.xml") to
+    // package-relative ("../tables/table1.xml"). Both are valid OOXML, but
+    // exceljs can't resolve an absolute target back to its loaded part, so
+    // its worksheet reconcile builds `tables[table.name]` over an undefined
+    // table and crashes ("Cannot read properties of undefined (reading
+    // 'name')"). openpyxl-authored files (e.g. FormulasAndStructuredRefs.xlsx)
+    // emit absolute targets; Excel emits relative. Fail-soft: a rewrite
+    // failure falls back to the un-normalized buffer.
+    try {
+        bufferForLoad = await normalizeAbsoluteRelTargets(bufferForLoad);
+    } catch (e) {
+        console.warn(
+            '[Notesheet] normalizeAbsoluteRelTargets failed; loading un-normalized buffer',
+            e,
+        );
+    }
+
     // The try/catch around load() catches three reproducible exceljs reconcile
     // crashes: chart drawings whose drawing reference doesn't resolve (`anchors`
     // crash in lib/xlsx/xlsx.js:100) and multi-sheet workbooks with multiple
@@ -2545,6 +2640,7 @@ export async function xlsxBufferToSnapshot(
                     chartId: chart.chartId,
                     type: chart.type,
                     title: chart.title,
+                    ...(chart.titleRuns ? { titleRuns: chart.titleRuns } : {}),
                     sourceRange: chart.sourceRange,
                     ...(chart.sourceSheetName ? { sourceSheetName: chart.sourceSheetName } : {}),
                     labels: chartLabels,
@@ -2603,6 +2699,20 @@ export async function xlsxBufferToSnapshot(
                         rowOffset: Math.round(chart.anchor.toRowOff / 9525),
                     },
                 },
+                // A3: exact source EMU offsets (see the image path for the
+                // rationale + the editor-move fallback). Also fixes a latent
+                // unit bug: chart export previously read columnOffset (PIXELS)
+                // as if it were EMU, mis-scaling any sub-cell offset to ~0.
+                _srcAnchorEmu: {
+                    fromCol: chart.anchor.fromCol,
+                    fromColOff: chart.anchor.fromColOff,
+                    fromRow: chart.anchor.fromRow,
+                    fromRowOff: chart.anchor.fromRowOff,
+                    toCol: chart.anchor.toCol,
+                    toColOff: chart.anchor.toColOff,
+                    toRow: chart.anchor.toRow,
+                    toRowOff: chart.anchor.toRowOff,
+                },
             };
             drawingResource[subUnitId].order.push(drawingId);
         }
@@ -2628,7 +2738,7 @@ export async function xlsxBufferToSnapshot(
                 drawingResource[subUnitId] = { data: {}, order: [] };
             }
             const drawingId = `image-imported-${image.sheetIndex}-${image.imageId}`;
-            const source = `data:${image.mime};base64,${Buffer.from(image.buffer).toString('base64')}`;
+            const source = `data:${image.mime};base64,${bytesToBase64(image.buffer)}`;
 
             const fromColOffPx = Math.round(image.anchor.fromColOff / 9525);
             const fromRowOffPx = Math.round(image.anchor.fromRowOff / 9525);
@@ -2692,6 +2802,23 @@ export async function xlsxBufferToSnapshot(
                         row: image.anchor.toRow,
                         rowOffset: toRowOffPx,
                     },
+                },
+                // A3: the EXACT source EMU offsets, stashed so export can
+                // reproduce them losslessly instead of reconstructing from the
+                // rounded pixel sheetTransform (which drifts ~⅓px per round).
+                // Univer ignores unknown keys on a drawing entry; if the user
+                // moves the drawing in the editor, export falls back to
+                // px×9525 (the editor only updates the px sheetTransform, so a
+                // stale _srcAnchorEmu would be wrong — see readImagesFromSnapshot).
+                _srcAnchorEmu: {
+                    fromCol: image.anchor.fromCol,
+                    fromColOff: image.anchor.fromColOff,
+                    fromRow: image.anchor.fromRow,
+                    fromRowOff: image.anchor.fromRowOff,
+                    toCol: image.anchor.toCol,
+                    toColOff: image.anchor.toColOff,
+                    toRow: image.anchor.toRow,
+                    toRowOff: image.anchor.toRowOff,
                 },
             };
             drawingResource[subUnitId].order.push(drawingId);
@@ -2955,7 +3082,12 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, { tables: TableJson[] }>;
-    } catch {
+    } catch (e) {
+        // Self-produced JSON: a parse fault here means the note body was
+        // corrupted/truncated, and silently returning {} drops EVERY table
+        // from the export. Warn so the loss isn't invisible (matches the
+        // inject* paths' logging convention).
+        console.warn('[Notesheet] table resource JSON parse failed; tables dropped from export', e);
         return {};
     }
 }
@@ -2976,7 +3108,12 @@ function readSynthStylesSidecar(
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, Record<string, string[]>>;
-    } catch {
+    } catch (e) {
+        // A parse fault here means the exporter loses its record of which
+        // styles were synthesized on import, so it re-emits them on top of
+        // Excel's own TableStyle -> doubled paint. Warn instead of silently
+        // corrupting fidelity.
+        console.warn('[Notesheet] synth-styles sidecar JSON parse failed; style dedup skipped', e);
         return {};
     }
 }
@@ -2996,7 +3133,14 @@ function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEn
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, UniverCfRuleEntry[]>;
-    } catch {
+    } catch (e) {
+        // Silently returning {} drops ALL conditional-formatting rules (color
+        // scales, data bars, icon sets) from the export. Warn so the loss is
+        // visible.
+        console.warn(
+            '[Notesheet] CF resource JSON parse failed; conditional formatting dropped from export',
+            e,
+        );
         return {};
     }
 }
@@ -3178,6 +3322,39 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                     // without writing into our already-populated data cells.
                     rows: Array.from({ length: dataRowCount }, () => []),
                 });
+
+                // exceljs's addTable().store() overwrites every header-row
+                // cell with a PLAIN STRING (column.name), clobbering the
+                // { text, hyperlink } / { richText } values we wrote from
+                // cellData above. A header cell that carried a hyperlink or
+                // per-run formatting therefore loses it silently. Re-apply
+                // those rich values to the header cells after the table is
+                // stored. (Data-row cells are untouched — rows are empty.)
+                if (headerRow) {
+                    const headerR = t.range.startRow; // 0-based snapshot row
+                    const headerCells = cellData[headerR];
+                    if (headerCells) {
+                        for (let ci = 0; ci < t.columns.length; ci++) {
+                            const colIdx = t.range.startColumn + ci;
+                            const hd = headerCells[colIdx];
+                            if (!hd) continue;
+                            const hUrl = extractHyperlinkFromCellP(hd.p);
+                            if (hUrl && hd.v !== undefined && hd.v !== null) {
+                                ws.getCell(headerR + 1, colIdx + 1).value = {
+                                    text: String(hd.v),
+                                    hyperlink: hUrl,
+                                };
+                                continue;
+                            }
+                            const hRuns = extractRichTextRunsFromCellP(hd.p);
+                            if (hRuns) {
+                                ws.getCell(headerR + 1, colIdx + 1).value = {
+                                    richText: hRuns,
+                                } as unknown as ExcelJS.CellValue;
+                            }
+                        }
+                    }
+                }
             } catch (e) {
                 console.warn('[Notesheet] could not export table', t?.name, e);
             }

@@ -18,6 +18,7 @@ import JSZip from 'jszip';
 import type { UniverSnapshot } from '../snapshot';
 import { CHART_PALETTE } from './extractData';
 import { CHART_STYLE_XML, CHART_COLORS_XML } from './xlsxChartConstants';
+import { resolveAnchorEmu, type SrcAnchorEmu } from '../drawings/sheetIdResolver';
 
 // ─── Public types ──────────────────────────────────────────────────────────
 
@@ -25,11 +26,23 @@ export type ChartType = 'bar' | 'line' | 'pie' | 'doughnut';
 
 // One chart, normalized for emission. Read out of the snapshot's
 // SHEET_DRAWING_PLUGIN resource, stripped of Univer-internal noise.
+// C2: a formatted run of a chart title (mirrors ImportedChartDrawing's).
+export interface ChartTitleRun {
+    text: string;
+    bold?: boolean;
+    italic?: boolean;
+    size?: number; // OOXML sz (hundredths of a point)
+    color?: string; // #RRGGBB
+}
+
 export interface ChartDrawing {
     chartId: string;
     sheetId: string;
     type: ChartType;
     title: string;
+    // C2: per-run title formatting; when present, export emits one <a:r> per
+    // run with its <a:rPr> instead of a single default run.
+    titleRuns?: ChartTitleRun[];
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     // Display name of the sheet whose data the chart references. For a chart
     // anchored on the SAME sheet as its data, equals the host sheet's name.
@@ -40,7 +53,7 @@ export interface ChartDrawing {
     // Excel's re-evaluation from cells on cross-sheet charts).
     sourceSheetName?: string;
     labels: string[];
-    datasets: Array<{ label?: string; data: number[] }>;
+    datasets: Array<{ label?: string; data: number[]; color?: string }>;
     anchor: {
         fromCol: number;
         fromColOff: number;
@@ -64,6 +77,11 @@ export interface ChartDrawing {
     meta?: {
         legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
         categoryAxisType?: 'index' | 'category';
+        // True when sourceRange row 0 is a header above the categories
+        // (categories start at sheet row ≥ 2). Drives the live-edit
+        // re-extract's header skip; preserved on round-trip. Distinct from
+        // categoryAxisType.
+        hasHeaderRow?: boolean;
         barDir?: 'bar' | 'col';
         barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
         barGapWidth?: number;
@@ -170,6 +188,32 @@ function paletteHex(seriesIndex: number): string {
     return c.replace(/^#/, '').toUpperCase();
 }
 
+// C1: a series' own colour (#RRGGBB → RRGGBB, no hash) when the imported
+// dataset carried one from the source <c:spPr>; otherwise the palette colour
+// for its index. Only #RRGGBB hex is honoured (scheme/theme colours fall back
+// to palette, matching the import side).
+function seriesHex(ds: { color?: string }, seriesIndex: number): string {
+    if (typeof ds.color === 'string' && /^#?[0-9A-Fa-f]{6}$/.test(ds.color)) {
+        return ds.color.replace(/^#/, '').toUpperCase();
+    }
+    return paletteHex(seriesIndex);
+}
+
+// C2: one title <a:r> with its formatting. rPr attribute order is lang, then
+// sz, b, i (Excel's order); the optional colour is a <a:solidFill> child.
+function buildTitleRunXml(run: ChartTitleRun): string {
+    const attrs = ['lang="en-US"'];
+    if (typeof run.size === 'number') attrs.push(`sz="${run.size}"`);
+    if (run.bold) attrs.push('b="1"');
+    if (run.italic) attrs.push('i="1"');
+    const fill =
+        typeof run.color === 'string' && /^#?[0-9A-Fa-f]{6}$/.test(run.color)
+            ? `<a:solidFill><a:srgbClr val="${run.color.replace(/^#/, '').toUpperCase()}"/></a:solidFill>`
+            : '';
+    const rPr = fill ? `<a:rPr ${attrs.join(' ')}>${fill}</a:rPr>` : `<a:rPr ${attrs.join(' ')}/>`;
+    return `<a:r>${rPr}<a:t>${escapeXml(run.text)}</a:t></a:r>`;
+}
+
 // Build the chart-level <c:dLbls> XML from meta.dLbls. Element order
 // inside <c:dLbls> is strict (showLegendKey, showVal, showCatName,
 // showSerName, showPercent, showBubbleSize) — Excel rejects out-of-order.
@@ -216,7 +260,7 @@ export function buildBarChartXml(c: ChartDrawing, opts: BuildChartOpts): string 
         // override.
         const gapWidth = c.meta?.barGapWidth ?? 150;
         const seriesXml = c.datasets
-            .map((ds, i) => buildSeriesXml(c, opts, ds, i, /* solidFill */ paletteHex(i)))
+            .map((ds, i) => buildSeriesXml(c, opts, ds, i, /* solidFill */ seriesHex(ds, i)))
             .join('');
         const dLblsXml = buildDataLabelsXml(c);
         return `<c:barChart><c:barDir val="${barDir}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:gapWidth val="${gapWidth}"/>${overlapXml}<c:axId val="111111"/><c:axId val="222222"/></c:barChart>${categoryAndValueAxes(c)}`;
@@ -237,7 +281,7 @@ export function buildLineChartXml(c: ChartDrawing, opts: BuildChartOpts): string
         // meta.lineMarkerOn so a fixture with markers round-trips.
         const markerOn = c.meta?.lineMarkerOn ? '1' : '0';
         const seriesXml = c.datasets
-            .map((ds, i) => buildSeriesXml(c, opts, ds, i, paletteHex(i), /* lineSeries */ true))
+            .map((ds, i) => buildSeriesXml(c, opts, ds, i, seriesHex(ds, i), /* lineSeries */ true))
             .join('');
         const dLblsXml = buildDataLabelsXml(c);
         return `<c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${dLblsXml}<c:marker val="${markerOn}"/><c:axId val="111111"/><c:axId val="222222"/></c:lineChart>${categoryAndValueAxes(c)}`;
@@ -281,8 +325,14 @@ function chartSpaceWrap(
     _hasAxes: boolean,
     plotAreaInner: () => string,
 ): string {
+    // C2: emit one <a:r> per formatted run when titleRuns is present (each
+    // with its <a:rPr> bold/italic/size/colour), else a single default run.
+    const titleRunsXml =
+        c.titleRuns && c.titleRuns.length > 0
+            ? c.titleRuns.map(buildTitleRunXml).join('')
+            : `<a:r><a:rPr lang="en-US"/><a:t>${escapeXml(c.title)}</a:t></a:r>`;
     const titleXml = c.title
-        ? `<c:title><c:tx><c:rich><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400" b="0" kern="1200"/></a:pPr><a:r><a:rPr lang="en-US"/><a:t>${escapeXml(c.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`
+        ? `<c:title><c:tx><c:rich><a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400" b="0" kern="1200"/></a:pPr>${titleRunsXml}</a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`
         : `<c:autoTitleDeleted val="1"/>`;
 
     const showLegend = c.type === 'pie' || c.type === 'doughnut' || c.datasets.length > 1;
@@ -619,6 +669,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
         for (const drawingId of Object.keys(drawings)) {
             const d = drawings[drawingId] as {
                 componentKey?: string;
+                _srcAnchorEmu?: SrcAnchorEmu;
                 data?: {
                     chartId?: string;
                     type?: string;
@@ -630,8 +681,9 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     };
                     sourceSheetName?: string;
                     title?: string;
+                    titleRuns?: ChartTitleRun[];
                     labels?: unknown[];
-                    datasets?: Array<{ label?: string; data?: unknown[] }>;
+                    datasets?: Array<{ label?: string; data?: unknown[]; color?: string }>;
                     meta?: {
                         legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
                         categoryAxisType?: 'index' | 'category';
@@ -730,6 +782,7 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                 ? data.datasets.map((ds) => ({
                       label: ds?.label,
                       data: Array.isArray(ds?.data) ? ds.data.map((v) => Number(v)) : [],
+                      ...(typeof ds?.color === 'string' ? { color: ds.color } : {}),
                   }))
                 : [];
 
@@ -738,6 +791,9 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                 sheetId: subUnitId,
                 type,
                 title: typeof data.title === 'string' ? data.title : '',
+                ...(Array.isArray(data.titleRuns) && data.titleRuns.length > 0
+                    ? { titleRuns: data.titleRuns }
+                    : {}),
                 sourceRange: {
                     startRow: sr.startRow,
                     endRow: sr.endRow,
@@ -749,16 +805,13 @@ export function readChartsFromSnapshot(snapshot: UniverSnapshot): ChartDrawing[]
                     : {}),
                 labels,
                 datasets,
-                anchor: {
-                    fromCol: tx.from.column ?? 0,
-                    fromColOff: tx.from.columnOffset ?? 0,
-                    fromRow: tx.from.row ?? 0,
-                    fromRowOff: tx.from.rowOffset ?? 0,
-                    toCol: tx.to.column ?? 0,
-                    toColOff: tx.to.columnOffset ?? 0,
-                    toRow: tx.to.row ?? 0,
-                    toRowOff: tx.to.rowOffset ?? 0,
-                },
+                // A3: reproduce the EXACT source EMU anchor when present +
+                // unmoved, else px × 9525. This also FIXES a latent unit bug:
+                // the offsets here were previously read as EMU but the
+                // snapshot stores PIXELS, so any sub-cell offset exported at
+                // ~1/9525 of its value (≈0). resolveAnchorEmu does the px→EMU
+                // conversion the old code omitted.
+                anchor: resolveAnchorEmu(d._srcAnchorEmu, tx.from, tx.to),
                 ...(data.meta && Object.keys(data.meta).length > 0 ? { meta: data.meta } : {}),
             });
         }

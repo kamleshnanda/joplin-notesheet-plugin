@@ -20,6 +20,12 @@ export interface TrackedChart {
     id: string;
     sourceRange: RangeAddress;
     sourceSheetName?: string;
+    // True when the sourceRange's first row is a header (category-axis title
+    // + series names), so the live-edit re-extract must skip it. Derived from
+    // the chart's meta.categoryAxisType === 'category'. Without this, editing
+    // a cell re-reads the whole range and the header leaks in as a phantom
+    // category (the "Quarter" 5th-bar bug).
+    hasHeaderRow?: boolean;
 }
 
 export const trackedCharts = new Map<string, TrackedChart>();
@@ -55,6 +61,10 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                         endColumn?: number;
                     };
                     sourceSheetName?: string;
+                    meta?: {
+                        categoryAxisType?: 'index' | 'category';
+                        hasHeaderRow?: boolean;
+                    };
                 };
             };
             if (d?.componentKey !== 'NotesheetChart') continue;
@@ -82,6 +92,18 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                 ...(typeof data?.sourceSheetName === 'string' && data.sourceSheetName
                     ? { sourceSheetName: data.sourceSheetName }
                     : {}),
+                // Whether row 0 of sourceRange is a header to skip on
+                // live-edit re-extract. Prefer the explicit `hasHeaderRow`
+                // signal (set by the importer: true only when the categories
+                // start at sheet row ≥ 2, i.e. a real header sits above them).
+                // Fall back to the legacy categoryAxisType heuristic for
+                // snapshots imported before hasHeaderRow was emitted —
+                // imperfect (it over-skips charts whose <c:cat> starts at row
+                // 0) but matches the prior behaviour for old snapshots.
+                hasHeaderRow:
+                    typeof data?.meta?.hasHeaderRow === 'boolean'
+                        ? data.meta.hasHeaderRow
+                        : data?.meta?.categoryAxisType === 'category',
             });
         }
     }

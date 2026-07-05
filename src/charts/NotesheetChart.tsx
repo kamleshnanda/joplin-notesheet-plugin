@@ -207,7 +207,10 @@ function linearFit(values: number[]): { slope: number; intercept: number; r2: nu
     return { slope, intercept, r2 };
 }
 
-function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
+// Exported for unit tests (C3 percent-stack normalisation, grouping, etc.).
+// The live component calls it internally; tests assert the Chart.js config
+// shape without booting a canvas.
+export function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
     const type = (data?.type ?? 'bar') as ChartType;
     let labels = data?.labels ?? [];
     let datasets = data?.datasets ?? [];
@@ -239,7 +242,11 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         // shifts and the bars turn grey. Assigning deterministically keeps
         // the first series blue regardless of how many datasets follow.
         datasets = datasets.map((ds, i) => {
-            const colour = CHART_PALETTE[i % CHART_PALETTE.length];
+            // C1: prefer the source per-series colour (imported into
+            // `ds.color` from <c:ser><c:spPr>), then any explicit
+            // backgroundColor, then the palette for this series index.
+            const srcColor = (ds as { color?: string }).color;
+            const colour = srcColor ?? CHART_PALETTE[i % CHART_PALETTE.length];
             return {
                 ...ds,
                 backgroundColor: ds.backgroundColor ?? colour,
@@ -325,6 +332,38 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
                     ...ds,
                     fill: i === 0 ? 'origin' : ('-1' as const),
                 }) as ChartData['datasets'][number] & { fill: string },
+        );
+    }
+
+    // C3: percentStacked normalisation. Excel's "100% Stacked" makes each
+    // CATEGORY column sum to 100% — Chart.js has no native percentStacked,
+    // so we convert each point to its share of that category's total. To
+    // match Excel for mixed-sign data the denominator is the sum of ABSOLUTE
+    // values (so each point becomes (v / Σ|v|)·100, keeping its own sign and
+    // making the column's absolute shares total 100). A zero-total category
+    // (empty, all-blank, or perfectly cancelling) normalises every point to
+    // 0 — NOT the raw value — so it can't leak an un-normalised number past
+    // the value-axis cap of 100 (see `percentStackedMax` below) and read as
+    // a full-height bar. The value axis is capped at 100 below.
+    const isPercentStacked = grouping === 'percentStacked' && (type === 'bar' || type === 'line');
+    if (isPercentStacked) {
+        const n = Math.max(0, ...datasets.map((ds) => ds.data?.length ?? 0));
+        const colAbsTotals = Array.from({ length: n }, (_, i) =>
+            datasets.reduce((sum, ds) => {
+                const v = ds.data?.[i];
+                return sum + (typeof v === 'number' && Number.isFinite(v) ? Math.abs(v) : 0);
+            }, 0),
+        );
+        datasets = datasets.map(
+            (ds) =>
+                ({
+                    ...ds,
+                    data: (ds.data ?? []).map((v, i) => {
+                        if (typeof v !== 'number' || !Number.isFinite(v)) return v;
+                        const total = colAbsTotals[i];
+                        return total === 0 ? 0 : (v / total) * 100;
+                    }),
+                }) as ChartData['datasets'][number],
         );
     }
 
@@ -435,6 +474,12 @@ function buildConfig(data: NotesheetChartData | undefined): ChartConfiguration {
         if (isStacked && (type === 'bar' || type === 'line')) {
             out.x = { ...(out.x ?? {}), stacked: true };
             out.y = { ...(out.y ?? {}), stacked: true };
+        }
+        // C3: cap the value axis at 100 for percentStacked (data is already
+        // normalised to per-category percentages above). valAxisKey is 'x'
+        // for horizontal bars, else 'y'.
+        if (isPercentStacked) {
+            out[valAxisKey] = { ...(out[valAxisKey] ?? {}), max: 100 };
         }
         if (tickFormatter && (type === 'bar' || type === 'line')) {
             out[valAxisKey] = {

@@ -25,6 +25,16 @@ import JSZip from 'jszip';
 import type { ChartType } from './xlsxChart';
 import { buildFilenameToSheetId } from '../drawings/sheetIdResolver';
 
+// C2: one formatted run of a chart title. `size` is OOXML hundredths of a
+// point (sz attr); `color` is #RRGGBB. Absent fields = inherit the default.
+export interface ChartTitleRun {
+    text: string;
+    bold?: boolean;
+    italic?: boolean;
+    size?: number;
+    color?: string;
+}
+
 // One chart, after import. Keyed by sheetIndex (the 1-based exceljs
 // worksheet index — matches xl/worksheets/sheet{N}.xml).
 export interface ImportedChartDrawing {
@@ -32,10 +42,14 @@ export interface ImportedChartDrawing {
     chartId: string;
     type: ChartType;
     title: string;
+    // C2: per-run title formatting (bold/italic/size/colour). Omitted when
+    // the title is empty or a single default run. The flat `title` is kept
+    // for the live render + as a fallback.
+    titleRuns?: ChartTitleRun[];
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     sourceSheetName?: string;
     labels: string[];
-    datasets: Array<{ label?: string; data: number[] }>;
+    datasets: Array<{ label?: string; data: number[]; color?: string }>;
     anchor: {
         fromCol: number;
         fromColOff: number;
@@ -82,6 +96,12 @@ export interface ImportedChartDrawing {
         // series (no separate label column). M10 export emits no
         // <c:cat> for these.
         categoryAxisType?: 'index' | 'category';
+        // True when sourceRange.startRow is a header row ABOVE the category
+        // data (categories begin at sheet row ≥ 2), so the live-edit
+        // re-extract must skip row 0. False when the chart's categories
+        // start at the very first sheet row (no header to skip). Distinct
+        // from categoryAxisType, which only signals "had category labels".
+        hasHeaderRow?: boolean;
         // Doughnut hole diameter, percent of outer radius. Excel
         // default 50; user-tunable up to 90. <c:holeSize val="N"/>.
         holeSize?: number;
@@ -346,16 +366,21 @@ function colIndex(letters: string): number {
 interface ParsedChart {
     type: ChartType;
     title: string;
+    titleRuns?: ChartTitleRun[];
     sourceSheetName?: string;
     sourceRange: { startRow: number; endRow: number; startColumn: number; endColumn: number };
     labels: string[];
-    datasets: Array<{ label?: string; data: number[] }>;
+    datasets: Array<{ label?: string; data: number[]; color?: string }>;
     unsupportedSourceType?: string;
     barDir?: 'bar' | 'col';
     barGrouping?: 'clustered' | 'stacked' | 'percentStacked' | 'standard';
     barGapWidth?: number;
     legendPos?: 'r' | 'l' | 't' | 'b' | 'tr';
     categoryAxisType?: 'index' | 'category';
+    // True when sourceRange's first row is a header ABOVE the category data
+    // (categories start at sheet row ≥ 2). The live-edit re-extract skips
+    // row 0 only when this is true. Distinct from categoryAxisType.
+    hasHeaderRow?: boolean;
     holeSize?: number;
     lineSmooth?: boolean;
     lineMarkerOn?: boolean;
@@ -659,12 +684,39 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     // truncated multi-run titles. Walk every <a:t> inside the title
     // block and join them.
     let title = '';
+    // C2: per-run title formatting. Each <a:r> is <a:rPr .../><a:t>text</a:t>;
+    // rPr carries b/i/sz attrs + an optional <a:solidFill><a:srgbClr>. We
+    // capture the runs so export can re-emit the bold/colour/size; the flat
+    // `title` (all run text joined) drives the single-font live render.
+    const titleRuns: ChartTitleRun[] = [];
     const titleBlock = chartXml.match(/<(?:c:)?title\b[\s\S]*?<\/(?:c:)?title>/);
     if (titleBlock) {
-        const runs = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) =>
-            decodeXmlEntities(m[1]),
-        );
-        title = runs.join('');
+        const runMatches = [...titleBlock[0].matchAll(/<a:r>([\s\S]*?)<\/a:r>/g)];
+        for (const rm of runMatches) {
+            const runBody = rm[1];
+            const tMatch = runBody.match(/<a:t>([\s\S]*?)<\/a:t>/);
+            if (!tMatch) continue;
+            const text = decodeXmlEntities(tMatch[1]);
+            const rPr =
+                runBody.match(/<a:rPr\b([^>]*?)\/>/)?.[1] ??
+                runBody.match(/<a:rPr\b([^>]*?)>/)?.[1] ??
+                '';
+            const run: ChartTitleRun = { text };
+            if (/\bb="1"/.test(rPr)) run.bold = true;
+            if (/\bi="1"/.test(rPr)) run.italic = true;
+            const sz = rPr.match(/\bsz="(\d+)"/);
+            if (sz) run.size = parseInt(sz[1], 10);
+            const clr = runBody.match(/<a:solidFill>[\s\S]*?<a:srgbClr\s+val="([0-9A-Fa-f]{6})"/);
+            if (clr) run.color = '#' + clr[1].toUpperCase();
+            titleRuns.push(run);
+        }
+        title = titleRuns.map((r) => r.text).join('');
+        // Fallback: no <a:r> runs (rare) — still grab any bare <a:t>s.
+        if (title === '') {
+            title = [...titleBlock[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
+                .map((m) => decodeXmlEntities(m[1]))
+                .join('');
+        }
     }
 
     // Legend position. <c:legend><c:legendPos val="b|l|r|t|tr"/></c:legend>.
@@ -690,7 +742,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let sourceSheetName: string | undefined;
     let labelsRange: DecodedRef | null = null;
     const valRanges: DecodedRef[] = [];
-    const datasets: Array<{ label?: string; data: number[] }> = [];
+    const datasets: Array<{ label?: string; data: number[]; color?: string }> = [];
     // Track whether any series provided a <c:cat>. When NONE do, Excel
     // shows row index 1..N as the X-axis and treats every column in
     // the value-refs as a separate values series. We surface this
@@ -709,6 +761,24 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     const reVal = new RegExp(`<${C}val>([\\s\\S]*?)</${C}val>`);
     const reNumCache = new RegExp(`<${C}numCache>([\\s\\S]*?)</${C}numCache>`);
 
+    // C1: a series' own fill colour is the FILL of the FIRST <c:spPr> directly
+    // under the <c:ser> (NOT one nested in a data point <c:dPt> or marker).
+    // Two precautions:
+    //   1. Bound the search to the first <c:spPr>…</c:spPr> BLOCK so a later
+    //      <c:marker>/<c:spPr> or line-style solidFill can't be latched onto
+    //      (the un-bounded `[\s\S]*?` form would skip across the spPr close
+    //      tag into a sibling element's fill).
+    //   2. WITHIN that block, the shape FILL is the <a:solidFill> that is a
+    //      DIRECT child of <c:spPr> — a solidFill nested inside <a:ln> is the
+    //      LINE/border colour, not the fill. We drop <a:ln>…</a:ln> subtrees
+    //      before reading the fill so a line/border-only series (common for
+    //      line charts) doesn't mis-report its stroke colour as its fill.
+    // Scheme/theme colours and gradient/pattern fills aren't resolved here
+    // (fall back to palette).
+    const reSerSpPrBlock = new RegExp(`<${C}spPr>([\\s\\S]*?)</${C}spPr>`);
+    const reLnSubtree = /<a:ln\b[\s\S]*?<\/a:ln>|<a:ln\b[^>]*\/>/g;
+    const reSolidFillSrgb = /<a:solidFill>\s*<a:srgbClr\s+val="([0-9A-Fa-f]{6})"/;
+
     for (const ser of serBodies) {
         // Series label.
         const txMatch = ser.match(reTx);
@@ -718,6 +788,18 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
             const inlineV = !strCacheVal && txMatch[1].match(reInlineV);
             if (strCacheVal) label = decodeXmlEntities(strCacheVal[1]);
             else if (inlineV) label = decodeXmlEntities(inlineV[1]);
+        }
+
+        // Series fill colour (C1). Only consider the spPr BEFORE the first
+        // <c:cat>/<c:val> so a data-point or cache spPr can't be mistaken for
+        // the series fill.
+        let color: string | undefined;
+        const serHead = ser.split(new RegExp(`<${C}(?:cat|val)>`))[0];
+        const spPrBlock = serHead.match(reSerSpPrBlock);
+        if (spPrBlock) {
+            const fillScope = spPrBlock[1].replace(reLnSubtree, '');
+            const fillMatch = fillScope.match(reSolidFillSrgb);
+            if (fillMatch) color = '#' + fillMatch[1].toUpperCase();
         }
 
         // Categories — only consume if the series has a <c:cat>.
@@ -759,7 +841,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
                 }
             }
         }
-        datasets.push({ label, data });
+        datasets.push({ label, data, ...(color ? { color } : {}) });
     }
 
     if (datasets.length === 0) return null;
@@ -779,7 +861,15 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     let startColumn = refs[0].startColumn;
     let endColumn = refs[0].endColumn;
     // The series-name (header) cell sits at the row above data, so we
-    // include that row in the bounding box.
+    // include that row in the bounding box — but ONLY when such a row
+    // exists (the categories don't already start at the first sheet row).
+    // A chart whose <c:cat> begins at $A$1 has NO header row above it; for
+    // it, sourceRange.startRow points at a REAL first category, and the
+    // live-edit re-extract must NOT skip row 0 (doing so deletes the first
+    // category + its data on the first edit — the inverse of the phantom-
+    // category bug). `hasHeaderRow` captures this precisely, independent of
+    // categoryAxisType (which only means "had explicit category labels").
+    const hasHeaderRow = !!labelsRange && labelsRange.startRow >= 1;
     if (labelsRange) {
         startRow = Math.min(startRow, labelsRange.startRow - 1);
     }
@@ -794,6 +884,16 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
     return {
         type,
         title,
+        // Only carry titleRuns when at least one run has REAL formatting
+        // (bold/italic/size/colour). Multiple unformatted runs (Excel often
+        // splits a plain title into runs) flatten to the single `title`
+        // string — no formatting to preserve, and re-emitting them as split
+        // <a:t>s would be needless churn.
+        ...(titleRuns.some(
+            (r) => r.bold || r.italic || r.size !== undefined || r.color !== undefined,
+        )
+            ? { titleRuns }
+            : {}),
         sourceSheetName,
         sourceRange: { startRow, endRow, startColumn, endColumn },
         labels,
@@ -804,6 +904,7 @@ export function parseChartXml(chartXml: string): ParsedChart | null {
         ...(barGapWidth !== undefined ? { barGapWidth } : {}),
         ...(legendPos ? { legendPos } : {}),
         categoryAxisType: anyCatRef ? 'category' : 'index',
+        hasHeaderRow,
         ...(holeSize !== undefined ? { holeSize } : {}),
         ...(lineSmooth !== undefined ? { lineSmooth } : {}),
         ...(lineMarkerOn !== undefined ? { lineMarkerOn } : {}),
@@ -959,6 +1060,7 @@ export async function readChartsFromXlsxZip(
                 },
             };
             if (parsed.sourceSheetName) drawing.sourceSheetName = parsed.sourceSheetName;
+            if (parsed.titleRuns) drawing.titleRuns = parsed.titleRuns;
             const hasMeta =
                 parsed.unsupportedSourceType ||
                 parsed.barDir ||
@@ -966,6 +1068,7 @@ export async function readChartsFromXlsxZip(
                 parsed.barGapWidth !== undefined ||
                 parsed.legendPos ||
                 parsed.categoryAxisType ||
+                parsed.hasHeaderRow !== undefined ||
                 parsed.holeSize !== undefined ||
                 parsed.lineSmooth !== undefined ||
                 parsed.lineMarkerOn !== undefined ||
@@ -990,6 +1093,9 @@ export async function readChartsFromXlsxZip(
                     ...(parsed.legendPos ? { legendPos: parsed.legendPos } : {}),
                     ...(parsed.categoryAxisType
                         ? { categoryAxisType: parsed.categoryAxisType }
+                        : {}),
+                    ...(parsed.hasHeaderRow !== undefined
+                        ? { hasHeaderRow: parsed.hasHeaderRow }
                         : {}),
                     ...(parsed.holeSize !== undefined ? { holeSize: parsed.holeSize } : {}),
                     ...(parsed.lineSmooth !== undefined ? { lineSmooth: parsed.lineSmooth } : {}),

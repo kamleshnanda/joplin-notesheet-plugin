@@ -1,4 +1,4 @@
-import { extractRangeAsChartData } from '../src/charts/extractData';
+import { extractRangeAsChartData, detectHeaderRow } from '../src/charts/extractData';
 
 function fakeWorkbook(values: unknown[][] | null) {
     return {
@@ -107,5 +107,51 @@ describe('extractRangeAsChartData', () => {
         });
         const colors = datasets.map((d) => d.backgroundColor);
         expect(new Set(colors).size).toBe(3);
+    });
+});
+
+describe('detectHeaderRow', () => {
+    const range = { startRow: 0, endRow: 3, startColumn: 0, endColumn: 2 };
+
+    test('true when row 0 is text names above numeric data', () => {
+        const wb = fakeWorkbook([
+            ['Region', 'Q1', 'Q2'],
+            ['East', 10, 20],
+            ['West', 15, 25],
+        ]);
+        expect(detectHeaderRow(wb, range)).toBe(true);
+    });
+
+    test('false when every row is numeric data (no header)', () => {
+        const wb = fakeWorkbook([
+            ['East', 10, 20],
+            ['West', 15, 25],
+            ['North', 12, 22],
+        ]);
+        expect(detectHeaderRow(wb, range)).toBe(false);
+    });
+
+    test('false for a single-row range', () => {
+        const wb = fakeWorkbook([['Region', 'Q1', 'Q2']]);
+        expect(detectHeaderRow(wb, { ...range, endRow: 0 })).toBe(false);
+    });
+
+    test('false when the range cannot be read', () => {
+        expect(detectHeaderRow(fakeWorkbook(null), range)).toBe(false);
+        expect(detectHeaderRow(null as unknown, range)).toBe(false);
+    });
+
+    test('this is the bug fix: header text + numeric data → series named from header', () => {
+        // The exact scenario the user hit: selecting the header row should
+        // make the series use the header names, not "Series N".
+        const wb = fakeWorkbook([
+            ['Month', 'Sales', 'Costs'],
+            ['Jan', 100, 40],
+            ['Feb', 120, 45],
+        ]);
+        const hasHeaderRow = detectHeaderRow(wb, range);
+        expect(hasHeaderRow).toBe(true);
+        const { datasets } = extractRangeAsChartData(wb, range, { hasHeaderRow });
+        expect(datasets.map((d) => d.label)).toEqual(['Sales', 'Costs']);
     });
 });

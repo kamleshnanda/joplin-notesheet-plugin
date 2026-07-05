@@ -92,6 +92,18 @@ describe('M16 notesheetRenderer — base shape', () => {
         expect(tdMatch![0]).toMatch(/background-color:\s*#FF0000/i);
     });
 
+    test('table carries print-color-adjust: exact so PDF export keeps fills', () => {
+        // Chromium (Joplin's Electron PDF engine) strips background-colors when
+        // printing unless print-color-adjust: exact is set. Without it, cell
+        // fills and colorScale/cellIs CF colours render on screen but vanish in
+        // the exported PDF. Assert both the standard + -webkit- properties are
+        // on the table element.
+        const tableMatch = html.match(/<table[^>]*>/);
+        expect(tableMatch).not.toBeNull();
+        expect(tableMatch![0]).toMatch(/print-color-adjust:\s*exact/i);
+        expect(tableMatch![0]).toMatch(/-webkit-print-color-adjust:\s*exact/i);
+    });
+
     test('merged cell carries colspan and skips interior cells', () => {
         // The merge anchor (row 1, col 0) should carry colspan=2.
         const anchorMatch = html.match(/<td[^>]*colspan="2"[^>]*>A2-merged-anchor<\/td>/);
@@ -295,6 +307,76 @@ describe('M16 notesheetRenderer — Conditional Formatting (criterion 4)', () =>
             .map((td) => /background-color:\s*(#[0-9A-Fa-f]{6})/i.exec(td)?.[1]?.toUpperCase())
             .filter((x): x is string => !!x);
         expect(hexes.length).toBeGreaterThan(0);
+    });
+
+    test('dataBar renders as a linear-gradient bar sized to the value', () => {
+        // dataBar was previously skipped in static HTML (value shown, no bar).
+        // Now it renders as a CSS linear-gradient background so it survives
+        // PDF export. Shape mirrors the live import: config.min/max cfvo +
+        // positiveColor. Values 0 and 100 over a [0,100] scale give 0% and
+        // 100% bars; 50 gives ~50%.
+        const snapshot = JSON.stringify({
+            id: 'wb-db',
+            sheetOrder: ['s1'],
+            sheets: {
+                s1: {
+                    id: 's1',
+                    name: 'S',
+                    cellData: { 0: { 0: { v: 0 } }, 1: { 0: { v: 50 } }, 2: { 0: { v: 100 } } },
+                },
+            },
+            resources: [
+                {
+                    name: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN',
+                    data: JSON.stringify({
+                        s1: [
+                            {
+                                cfId: 'c1',
+                                ranges: [
+                                    {
+                                        startRow: 0,
+                                        startColumn: 0,
+                                        endRow: 2,
+                                        endColumn: 0,
+                                        rangeType: 0,
+                                    },
+                                ],
+                                rule: {
+                                    type: 'dataBar',
+                                    isShowValue: true,
+                                    config: {
+                                        min: { type: 'num', value: 0 },
+                                        max: { type: 'num', value: 100 },
+                                        positiveColor: '#ffbe38',
+                                        nativeColor: '#abd91a',
+                                    },
+                                },
+                                stopIfTrue: false,
+                            },
+                        ],
+                    }),
+                },
+            ],
+        });
+        const html = renderNotesheetSnapshot(snapshot) ?? '';
+        // A gradient bar starting in the saturated bar colour must be present.
+        expect(html).toMatch(/linear-gradient\(to right,\s*#ffbe38\s+0%/i);
+        // The bar fades to a lightened tip colour (barColor lerped 75% to
+        // white ≈ #FFEFCD), then goes transparent at the fill fraction.
+        // 100 cell: tip + transparent boundary both at 100%.
+        expect(html).toMatch(/#FFEFCD\s+100%,\s*transparent\s+100%/i);
+        // The tip colour is a lightened tint, not the raw bar colour or plain
+        // transparent — assert the 3-stop gradient (saturated → tint → clear).
+        expect(html).toMatch(/linear-gradient\(to right,\s*#ffbe38\s+0%,\s*#FFEFCD\s+\d+%/i);
+        // The value still renders (isShowValue) — the number 50 appears.
+        expect(html).toContain('>50<');
+        // Match Univer: the MINIMUM value (0 here → 0% bar) gets NO gradient
+        // fill at all. There must be exactly two gradients (for 50 and 100),
+        // not three — the 0 cell keeps its plain background.
+        const gradientCount = (html.match(/linear-gradient/g) ?? []).length;
+        expect(gradientCount).toBe(2);
+        // And no 0%-width gradient is emitted.
+        expect(html).not.toMatch(/#FFEFCD\s+0%,\s*transparent\s+0%/i);
     });
 });
 

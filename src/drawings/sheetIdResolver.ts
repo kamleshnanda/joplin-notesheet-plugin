@@ -18,6 +18,105 @@
 
 import JSZip from 'jszip';
 
+// EMU per pixel at 96 DPI.
+const EMU_PER_PX = 9525;
+
+// The eight-field EMU anchor (from/to cell + offset), as stashed on a drawing
+// at import under `_srcAnchorEmu`.
+export interface SrcAnchorEmu {
+    fromCol: number;
+    fromColOff: number;
+    fromRow: number;
+    fromRowOff: number;
+    toCol: number;
+    toColOff: number;
+    toRow: number;
+    toRowOff: number;
+}
+
+interface PxPoint {
+    column?: number;
+    columnOffset?: number;
+    row?: number;
+    rowOffset?: number;
+}
+
+// M18 A3: resolve a drawing's OOXML EMU anchor for export.
+//
+// A drawing imported from .xlsx carries `_srcAnchorEmu` (the EXACT source EMU
+// offsets). Univer's px `sheetTransform` is a lossy projection of that (EMU →
+// round(px) → EMU drifts ~⅓px, and the editor only ever updates the px form).
+// So:
+//   - If `_srcAnchorEmu` is present AND the px transform still matches it
+//     (drawing not moved in the editor), reproduce the source EMU EXACTLY.
+//   - Otherwise (no stash, or the user moved the drawing so px diverged),
+//     fall back to px × 9525.
+// `matchesStash` compares each px field to round(emu / 9525); if every field
+// agrees the drawing is unmoved and the exact EMU is safe to use.
+//
+// KNOWN, BOUNDED SHORTCOMINGS (deliberately not engineered away — a dirty/moved
+// flag threaded through Univer's drawing service would add real regression risk
+// for sub-pixel gain):
+//   (a) "Unmoved" is decided purely by exact integer-pixel equality, with no
+//       separate moved flag. A genuine editor move that happens to land on the
+//       SAME rounded pixel as the source (a sub-pixel nudge) is treated as
+//       unmoved, so export re-emits the original source EMU rather than the
+//       nudged position. Worst-case error is ≤ ~½px (3175 EMU) — invisible.
+//   (b) If a future Univer re-normalises an untouched drawing's cell/offset
+//       split (e.g. rolls a large offset into the next cell index), the exact
+//       px-equality check fails and resolveAnchorEmu silently falls back to the
+//       lossy px×9525 path. That is the SAFE degradation (the same ≤½px drift
+//       the px path always had), not a crash or a gross mis-anchor.
+// Both are acceptable: the fallback is always correct to within the pixel grid
+// the editor itself works in; only the bonus "exact source EMU" is forfeited.
+export function resolveAnchorEmu(
+    srcAnchorEmu: SrcAnchorEmu | undefined,
+    from: PxPoint,
+    to: PxPoint,
+): SrcAnchorEmu {
+    const px = {
+        fromCol: from.column ?? 0,
+        fromColOff: from.columnOffset ?? 0,
+        fromRow: from.row ?? 0,
+        fromRowOff: from.rowOffset ?? 0,
+        toCol: to.column ?? 0,
+        toColOff: to.columnOffset ?? 0,
+        toRow: to.row ?? 0,
+        toRowOff: to.rowOffset ?? 0,
+    };
+    if (srcAnchorEmu && anchorUnmoved(srcAnchorEmu, px)) {
+        return srcAnchorEmu;
+    }
+    return {
+        fromCol: px.fromCol,
+        fromColOff: Math.round(px.fromColOff * EMU_PER_PX),
+        fromRow: px.fromRow,
+        fromRowOff: Math.round(px.fromRowOff * EMU_PER_PX),
+        toCol: px.toCol,
+        toColOff: Math.round(px.toColOff * EMU_PER_PX),
+        toRow: px.toRow,
+        toRowOff: Math.round(px.toRowOff * EMU_PER_PX),
+    };
+}
+
+// True when every px field equals the stash's EMU field projected to px —
+// i.e. the editor hasn't moved the drawing since import.
+function anchorUnmoved(
+    emu: SrcAnchorEmu,
+    px: SrcAnchorEmu, // here the *Off fields hold PX, cells hold indices
+): boolean {
+    return (
+        px.fromCol === emu.fromCol &&
+        px.fromRow === emu.fromRow &&
+        px.toCol === emu.toCol &&
+        px.toRow === emu.toRow &&
+        px.fromColOff === Math.round(emu.fromColOff / EMU_PER_PX) &&
+        px.fromRowOff === Math.round(emu.fromRowOff / EMU_PER_PX) &&
+        px.toColOff === Math.round(emu.toColOff / EMU_PER_PX) &&
+        px.toRowOff === Math.round(emu.toRowOff / EMU_PER_PX)
+    );
+}
+
 // M18 A2: Notesheet-private resource holding preserve-only shape anchors,
 // keyed by subUnitId -> string[] of verbatim <xdr:*Anchor> XML. Lives here
 // (a leaf module both xlsx.ts and the shape modules already depend on) to

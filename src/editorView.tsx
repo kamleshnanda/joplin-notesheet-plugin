@@ -57,7 +57,7 @@ import {
     NOTESHEET_SHAPES_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
-import { extractRangeAsChartData, type RangeAddress } from './charts/extractData';
+import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
 
 declare global {
@@ -166,6 +166,33 @@ async function handleExport(): Promise<void> {
     }
 }
 
+// Autofit every column to its content width. Univer's built-in
+// header-border double-click only autofits multiple columns when the
+// selection is RANGE_TYPE.COLUMN; a Select-All selection (RANGE_TYPE.ALL)
+// falls through to autofitting just the clicked column. This button gives
+// the whole-sheet "autofit all columns" that Excel does on a select-all +
+// double-click, by calling the same SetWorksheetColAutoWidthCommand across
+// every column via the facade's autoResizeColumns(start, count).
+function handleAutofitColumns(): void {
+    try {
+        if (!activeApi) throw new Error('workbook not ready');
+        const workbook =
+            activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
+        const sheet = workbook?.getActiveSheet?.();
+        if (!sheet) throw new Error('no active sheet');
+        const maxCols = sheet.getMaxColumns?.() ?? 0;
+        if (maxCols <= 0 || typeof sheet.autoResizeColumns !== 'function') {
+            throw new Error('autofit not available');
+        }
+        sheet.autoResizeColumns(0, maxCols);
+        setStatus('Columns autofitted.');
+        scheduleSave();
+    } catch (e) {
+        console.error('[Notesheet] autofit columns failed', e);
+        setStatus('Autofit failed: ' + (e instanceof Error ? e.message : String(e)), true);
+    }
+}
+
 // Disposable returned by fWorkbook.onSelectionChange. Held while the chart
 // panel is open so the Range field tracks the user's live selection on the
 // sheet, then disposed when the panel closes.
@@ -200,7 +227,13 @@ function refreshChartsForEdit(): void {
 
         for (const chart of trackedCharts.values()) {
             if (!rangeContainsCell(chart.sourceRange, editedRow, editedCol)) continue;
-            const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange);
+            // Pass hasHeaderRow so an imported chart (whose sourceRange spans
+            // the header row) re-extracts the same way the importer did —
+            // skipping row 0 — instead of leaking the header in as a phantom
+            // category on edit.
+            const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange, {
+                hasHeaderRow: chart.hasHeaderRow === true,
+            });
             pushChartUpdate(chart.id, fresh);
         }
     } catch (e) {
@@ -247,7 +280,14 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             subUnitId: fSheet.getSheetId?.(),
         };
 
-        const chartData = extractRangeAsChartData(fWorkbook, sourceRange);
+        // Detect whether row 0 of the selection is a header (text names above
+        // numeric data). When it is, series get their names from the header
+        // cells ("Region", "Q1", …) instead of the "Series N" fallback — the
+        // behaviour Excel gives when the selection includes column headers.
+        // Persisted as meta.hasHeaderRow so live-edit re-extract and export
+        // keep the names (see trackedCharts + readChartsFromSnapshot).
+        const hasHeaderRow = detectHeaderRow(fWorkbook, sourceRange);
+        const chartData = extractRangeAsChartData(fWorkbook, sourceRange, { hasHeaderRow });
         const chartId = 'chart-' + Date.now().toString(36);
 
         // CRITICAL: use addFloatDomToPosition, NOT addFloatDomToRange.
@@ -275,7 +315,16 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             {
                 componentKey: CHART_COMPONENT_KEY,
                 // chartId opens a live-update channel — see refreshChartsForEdit.
-                data: { chartId, type, sourceRange, title, ...chartData },
+                // meta.hasHeaderRow persists the header decision so live-edit
+                // re-extract and .xlsx export both keep the series names.
+                data: {
+                    chartId,
+                    type,
+                    sourceRange,
+                    title,
+                    ...chartData,
+                    meta: { hasHeaderRow },
+                },
                 allowTransform: true,
                 // Forward pointer events through the chart canvas so Univer's
                 // transformer (under the canvas) sees clicks and can attach
@@ -292,7 +341,7 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             chartId,
         );
         if (!handle) throw new Error('addFloatDomToPosition returned no handle');
-        trackedCharts.set(chartId, { id: chartId, sourceRange });
+        trackedCharts.set(chartId, { id: chartId, sourceRange, hasHeaderRow });
         setStatus('Chart inserted.');
         scheduleSave();
     } catch (e) {
@@ -504,6 +553,12 @@ function ensureActionBar(): void {
     exportBtn.textContent = 'Export .xlsx';
     Object.assign(exportBtn.style, buttonStyle);
 
+    const autofitBtn = document.createElement('button');
+    autofitBtn.type = 'button';
+    autofitBtn.textContent = 'Autofit columns';
+    autofitBtn.title = 'Resize every column to fit its content';
+    Object.assign(autofitBtn.style, buttonStyle);
+
     const status = document.createElement('span');
     status.id = STATUS_ID;
     Object.assign(status.style, {
@@ -527,9 +582,11 @@ function ensureActionBar(): void {
 
     importBtn.addEventListener('click', () => fileInput.click());
     exportBtn.addEventListener('click', () => void handleExport());
+    autofitBtn.addEventListener('click', () => handleAutofitColumns());
 
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
+    bar.appendChild(autofitBtn);
     bar.appendChild(status);
     bar.appendChild(fileInput);
     document.body.appendChild(bar);
@@ -828,12 +885,68 @@ function saveNow(): void {
     }
 }
 
+// UX shortcut for Univer's "All functions" (More Functions) dialog.
+//
+// Univer's dialog is a two-step flow: clicking a function name only shows its
+// help/params; you must then click the "Confirm" button to insert
+// `=FUNCTION(` into the active cell. Users reasonably expect double-clicking
+// the name to insert it (Excel-like). We add exactly that, WITHOUT
+// reimplementing insertion: on a double-click of a function-list <li>, we let
+// Univer's own selection fire (the native click already ran), then
+// programmatically click Univer's Confirm button — reusing Univer's real
+// insert logic. Fully defensive: it only acts when it can positively identify
+// both a function-list item and an enabled Confirm button in the same dialog,
+// and never throws into the user's session.
+//
+// A document-level delegated listener installed once; it survives the dialog
+// opening/closing because the dialog mounts/unmounts under document.body.
+function installFunctionListDblClickShortcut(): void {
+    document.addEventListener(
+        'dblclick',
+        (ev) => {
+            try {
+                const target = ev.target as HTMLElement | null;
+                if (!target) return;
+                // The list item is an <li class="...cursor-pointer...">; the
+                // text node clicked may be a child <span>. Walk up to the <li>.
+                const li = target.closest('li');
+                if (!li) return;
+                // Guard: must look like a Univer function-list row (Univer's
+                // utility classes) sitting inside a <ul>. Avoids firing on any
+                // other <li> in the app.
+                const cls = String(li.className);
+                if (!/cursor-pointer/.test(cls)) return;
+                const ul = li.closest('ul');
+                if (!ul) return;
+                // The row text is the function name (e.g. "SUM"); sanity-check
+                // shape so we don't act on unrelated lists.
+                const name = (li.textContent ?? '').trim();
+                if (!/^[A-Z][A-Z0-9._]{1,30}$/.test(name)) return;
+
+                // Find the dialog's Confirm button and click it. Univer's own
+                // click handler (fired by this same double-click's first click)
+                // has already selected the function and enabled Confirm.
+                const confirmBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+                    /^confirm$/i.test((b.textContent ?? '').trim()),
+                ) as HTMLButtonElement | undefined;
+                if (!confirmBtn || confirmBtn.disabled) return;
+                confirmBtn.click();
+            } catch (e) {
+                // Never let a UX shortcut break the editor.
+                console.warn('[Notesheet] function-list double-click shortcut failed', e);
+            }
+        },
+        true, // capture: run before the dialog can steal/stop the event
+    );
+}
+
 function init(): void {
     if (!window.webviewApi) {
         console.error('[Notesheet] webviewApi not available; cannot communicate with Joplin host');
         return;
     }
     ensureActionBar();
+    installFunctionListDblClickShortcut();
     window.webviewApi.onMessage((event) => {
         const m = event?.message as LoadMessage | undefined;
         if (m && m.type === 'load' && m.snapshot) {

@@ -5,6 +5,107 @@ every feature.
 
 ## Done
 
+- **feature-7 + feature-9 — verified DONE + rows flipped** (2026-06-28) —
+  Both M17-era PGE rows that were still `passes:false` are now resolved.
+  - **feature-7 (B1: chart→SVG in HTML export).** The static-SVG renderer in
+    `src/contentScripts/notesheetRenderer.ts` was already implemented; the
+    18-test `tests/m18ChartHtmlExport.test.ts` covered most of the spec but
+    MISSED two written acceptance criteria, so per the fidelity-test-gap
+    discipline I added them before flipping: (1) **pie sweep angles computed
+    from INPUT within ±3°** (parses each `<path>`'s arc endpoints, compares to
+    `data[i]/sum·360` — not the path COUNT the old test asserted), and (2) the
+    **CF + chart on one sheet** case (cellIs paints B2:B5 pink AND the chart
+    `<svg>` renders, table-before-svg document order, no absolute/z-index
+    overlay). 20/20 pass. **Live preview-pane gate:** wired feature-7 into
+    `eval-screenshot.js` (`previewPane` region, title prefix `PGE M17 chart f7
+    eval `), imported MultiSheet.xlsx, captured
+    `screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png`
+    — 3 sheet tables (Data/Chart/Summary) + the "Data Chart" bar SVG (5 bars,
+    palette blue, axis 0–60). Sidecar: `inlineSvgCount=1`, `rect=5`,
+    `rawJsonLeak=false`, `tableCount=3`.
+  - **EVALUATOR PASS (fresh-context, 2026-06-28).** The PGE evaluator ran
+    independently, captured its OWN preview-pane screenshot
+    (`eval-2026-06-28T11-16-53-565Z.png`), and graded **PASS** — confirmed all
+    5 render cases + palette parity + no viz-lib dep, and that the M13 failure
+    mode (data correct, render flat) does NOT occur (bar heights track the
+    data). Row: `passes:true`, `evaluator_verdict:PASS`.
+  - **HARNESS FIX (load-bearing): `rawJsonLeak` false-positive.** The M16-era
+    heuristic matched `"sheetOrder"`/`"workbook-` on the whole `document.body.
+    innerHTML`. Since the M18 #37 RTE fence-integrity fix, the renderer wraps
+    the ORIGINAL fenced JSON in a HIDDEN `<div class="joplin-source">` (the
+    wrapper is REQUIRED — see [[project_rte_fence_joplin_editable]]), so the
+    raw JSON is in the DOM but NOT visible — `rawJsonLeak` reported `true` on
+    EVERY note. Fixed to strip `.joplin-source` subtrees before checking, so it
+    detects only a TRUE leak (JSON in the visible render path). Confirmed via a
+    DOM probe (`jsonOutsideSource=false`) before changing the heuristic.
+  - **feature-9 (flip m12 pin-downs + test count).** Already satisfied — both
+    pin-downs (`m12ImportRecovery.test.ts:55,89`) are positive imports
+    (MultiSheet → N charts; LargeWorkbook → clean 2-sheet); the test-count gate
+    (267 → ≥290) is far exceeded at 457. The M18 abs-rel-target fix went BEYOND
+    the spec, making FormulasAndStructuredRefs import cleanly too (spec only
+    required it stay an `xlsx-multi-table-unsupported` rejection). Row flipped.
+    **EVALUATOR PASS (fresh-context, 2026-06-28)** — graded as a test-integrity
+    feature (no render dimension) from the test file + git diff + count gate;
+    confirmed the flips reflect REAL importer capability (not regression-hiding
+    weakening — assertions got stronger), the importable-fixtures block is
+    intact, and the count gate is exceeded. Row: `evaluator_verdict:PASS`.
+  - **Verified:** typecheck clean, `npm test` 457/457 (52 suites). New harness
+    util `scripts/pge/capture-image-render.js` (from the A1 gate) committed
+    earlier.
+
+- **M18 adversarial-review fixes** (2026-06-28) — An adversarial code-review
+  workflow over the 8-commit M18 diff surfaced 17 findings; 9 survived
+  independent verification, 8 were false positives (incl. confirming the
+  `m12ImportRecovery` assertion flip was a LEGITIMATE behaviour update, not
+  regression-hiding). Operator chose "fix all confirmed." Test count 445 → 455.
+  - **#1 (HIGH) — rel-target normalizer corrupted `TargetMode="External"`
+    hyperlinks.** `normalizeAbsoluteRelTargets` (`src/xlsx.ts`) keyed only off a
+    leading `/`, so a root-relative (`/folder/page.html`) or protocol-relative
+    (`//host/path`) EXTERNAL hyperlink got relativized to `../../…`, destroying
+    it. Now rewrites per `<Relationship>` element and SKIPS any carrying
+    `TargetMode="External"`. The function-header comment was already claiming
+    this — now true. (Scheme URLs like `https://` always escaped.)
+  - **#2 (HIGH) — live-edit dropped a legitimate first data row.**
+    `trackedCharts.hasHeaderRow` was derived from `categoryAxisType === 'category'`
+    ("had labels"), not "row 0 is a header." A chart whose `<c:cat>` starts at
+    `$A$1` (no header) rendered all N categories initially but lost the FIRST on
+    the first cell edit — the inverse of the `df2bbde` phantom-category bug. Fix:
+    importer now computes a precise `hasHeaderRow` (`labelsRange.startRow >= 1`),
+    threads it through `meta.hasHeaderRow` (round-trips), and `trackedCharts`
+    prefers it (legacy `categoryAxisType` fallback for pre-fix snapshots).
+  - **#3/#4 (MEDIUM) — percentStacked mishandled mixed-sign + cancelling
+    categories.** `NotesheetChart.buildConfig` summed SIGNED values as the
+    denominator and special-cased `total===0` to pass RAW values through (which
+    blew past the 100 axis cap and rendered full-height bars). Now normalises
+    against Σ|v| (sign preserved, absolute shares total 100) and a zero
+    abs-total → 0.
+  - **#5 (LOW) — per-series colour latched onto a nested marker/line fill.**
+    The un-bounded `<c:spPr>…<a:solidFill>` regex skipped across the series
+    spPr close tag into a sibling `<c:marker>` fill (and a series' own `<a:ln>`
+    stroke was read as its fill). Fix: bound to the first `<c:spPr>` block AND
+    strip `<a:ln>` subtrees before reading the fill.
+  - **#6 (MEDIUM, test) — EMU fidelity chart test passed via the px×9525
+    fallback, not the stash path it claimed to verify.** The synthetic snapshot
+    left the stash's cell-index fields undefined (so `anchorUnmoved` returned
+    false) and used 50px/476250 EMU which the fallback reproduces identically.
+    Rewrote the test with a sub-pixel sentinel EMU (478123; round/9525=50 but
+    50×9525=476250≠478123) and a full 8-field stash, so it only passes if the
+    exact stash is emitted. (Import already stashed all 8 fields — pure test
+    gap, no production change.)
+  - **#9 (LOW, test) — nodebuffer regression guard only checked `src/xlsx.ts`.**
+    Broadened to sweep every src file that calls JSZip (chart/image/shape zip
+    rewriters run on the same browser-side path); all already use 'arraybuffer'.
+  - **#7/#8 (LOW) — anchor "unmoved" detection is exact-integer-px + safe px
+    fallback.** Real but BOUNDED (≤½px / 3175 EMU drift; safe degradation, never
+    a crash/mis-anchor). Per "documented shortcoming over unexpected bug,"
+    DOCUMENTED precisely in `sheetIdResolver.ts:resolveAnchorEmu` rather than
+    rewritten — a dirty/moved flag through Univer's drawing service adds
+    regression risk for sub-pixel gain. **Flagged to operator.**
+  - **Verified:** typecheck clean, `npm test` 455/455 (52 suites). New tests:
+    `tests/m18ReviewFixes.test.ts` (#1/#2/#5), additions to
+    `tests/m18ChartPercentStacked.test.ts` (#3/#4) and `m18AbsoluteRelTargets`
+    (#9); `m18AnchorEmuFidelity` chart test rewritten (#6).
+
 - **feature-8-m17-chart-preview-pane-pge-smoke** (2026-06-12) — Closes the
   long-open "does the chart SVG actually reach Joplin's export?" question
   for the M18 B1 work. Wired feature-8 into the eval harness
@@ -309,8 +410,8 @@ every feature.
 
 ## In progress
 
-- **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14, Jest
-  layer DONE; live PGE screenshot gate PENDING). On import, `.xlsx` images
+- **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14 Jest
+  layer; live PGE screenshot gate CLEARED 2026-06-28). On import, `.xlsx` images
   (xl/media/* + their drawing anchors) now emit into the snapshot's
   SHEET_DRAWING_PLUGIN resource as NATIVE Univer image drawings
   (`drawingType: 0`, `imageSourceType: 'BASE64'`, `source: data:<mime>;base64,…`,
@@ -356,10 +457,22 @@ every feature.
     exactly one drawing part holds BOTH chart graphicFrame + `<xdr:pic>` with
     distinct rIds; blip embed rId matches the image rel; re-import yields 1
     chart + 1 image).
-  - **Verified:** `npm test` 407/407, typecheck clean, lint clean, prettier
-    clean, `npm run dist` builds the .jpl. **PENDING: the live Joplin PGE
-    screenshot gate** (import a fixture, confirm the image actually renders in
-    the Univer editor canvas) — not done this session per task scope.
+  - **Verified:** `npm test` now 445/445 (51 suites), typecheck clean, lint
+    clean, prettier clean, `npm run dist` builds the .jpl.
+  - **Live PGE screenshot gate CLEARED (2026-06-28).** After the
+    `nodebuffer`/absolute-rel-target fix-chain (`2b8b746`/`f47b64a`) rebuilt
+    fresh (quit → install → launch), imported `HumanImage-SingleSheet.xlsx`
+    via `import-fixture.sh` (note `bd23e5a6…`) and captured the Univer root
+    via the new `scripts/pge/capture-image-render.js`:
+    `screenshots/m18-a1-image-render/humanimage-20260628T101824.png`. The
+    human-figure image renders as a NATIVE Univer drawing anchored over the
+    cells (matches the fixture's "Over Cell Image" label at A4). Probe sidecar:
+    `univerFrameFound`, main canvas 3008×1396, `imgCount=0` (expected — Univer
+    paints drawings into the canvas pixel buffer, not DOM `<img>`). The C3
+    `#VALUE!` is PRE-EXISTING in the source fixture
+    (`<c r="C3" t="e"><v>#VALUE!</v></c>`), faithfully preserved on import —
+    NOT an import defect. This import (drawings + rels) also re-confirms the
+    fix-chain didn't re-break editor imports.
 
 - **M17 manual-test fidelity fixes (issues 1/2/3/6/7/11)** (2026-06-10) —
   Operator re-ran all 11 chart fixtures through import → export →
