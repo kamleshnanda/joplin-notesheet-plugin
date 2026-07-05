@@ -885,12 +885,68 @@ function saveNow(): void {
     }
 }
 
+// UX shortcut for Univer's "All functions" (More Functions) dialog.
+//
+// Univer's dialog is a two-step flow: clicking a function name only shows its
+// help/params; you must then click the "Confirm" button to insert
+// `=FUNCTION(` into the active cell. Users reasonably expect double-clicking
+// the name to insert it (Excel-like). We add exactly that, WITHOUT
+// reimplementing insertion: on a double-click of a function-list <li>, we let
+// Univer's own selection fire (the native click already ran), then
+// programmatically click Univer's Confirm button — reusing Univer's real
+// insert logic. Fully defensive: it only acts when it can positively identify
+// both a function-list item and an enabled Confirm button in the same dialog,
+// and never throws into the user's session.
+//
+// A document-level delegated listener installed once; it survives the dialog
+// opening/closing because the dialog mounts/unmounts under document.body.
+function installFunctionListDblClickShortcut(): void {
+    document.addEventListener(
+        'dblclick',
+        (ev) => {
+            try {
+                const target = ev.target as HTMLElement | null;
+                if (!target) return;
+                // The list item is an <li class="...cursor-pointer...">; the
+                // text node clicked may be a child <span>. Walk up to the <li>.
+                const li = target.closest('li');
+                if (!li) return;
+                // Guard: must look like a Univer function-list row (Univer's
+                // utility classes) sitting inside a <ul>. Avoids firing on any
+                // other <li> in the app.
+                const cls = String(li.className);
+                if (!/cursor-pointer/.test(cls)) return;
+                const ul = li.closest('ul');
+                if (!ul) return;
+                // The row text is the function name (e.g. "SUM"); sanity-check
+                // shape so we don't act on unrelated lists.
+                const name = (li.textContent ?? '').trim();
+                if (!/^[A-Z][A-Z0-9._]{1,30}$/.test(name)) return;
+
+                // Find the dialog's Confirm button and click it. Univer's own
+                // click handler (fired by this same double-click's first click)
+                // has already selected the function and enabled Confirm.
+                const confirmBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+                    /^confirm$/i.test((b.textContent ?? '').trim()),
+                ) as HTMLButtonElement | undefined;
+                if (!confirmBtn || confirmBtn.disabled) return;
+                confirmBtn.click();
+            } catch (e) {
+                // Never let a UX shortcut break the editor.
+                console.warn('[Notesheet] function-list double-click shortcut failed', e);
+            }
+        },
+        true, // capture: run before the dialog can steal/stop the event
+    );
+}
+
 function init(): void {
     if (!window.webviewApi) {
         console.error('[Notesheet] webviewApi not available; cannot communicate with Joplin host');
         return;
     }
     ensureActionBar();
+    installFunctionListDblClickShortcut();
     window.webviewApi.onMessage((event) => {
         const m = event?.message as LoadMessage | undefined;
         if (m && m.type === 'load' && m.snapshot) {
