@@ -2767,7 +2767,10 @@ export async function xlsxBufferToSnapshot(
                 transform: {
                     flipY: false,
                     flipX: false,
-                    angle: 0,
+                    // Univer's transform.angle is in DEGREES (verified against
+                    // Univer 0.23 engine-render + the FImage.setRotate facade),
+                    // so the imported rot/60000 degrees flows straight through.
+                    angle: image.rotationDeg ?? 0,
                     skewX: 0,
                     skewY: 0,
                     left,

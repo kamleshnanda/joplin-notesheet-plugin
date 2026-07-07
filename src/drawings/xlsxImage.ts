@@ -50,6 +50,9 @@ export interface ImageDrawing {
         toRow: number;
         toRowOff: number; // EMU
     };
+    // Rotation in DEGREES (Univer transform.angle). Re-emitted as <a:xfrm rot>
+    // in 60000ths of a degree. Absent/0 → no <a:xfrm> written (axis-aligned).
+    rotationDeg?: number;
 }
 
 // --- MIME / extension helpers ---
@@ -175,6 +178,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                 imageSourceType?: string;
                 source?: string;
                 _srcAnchorEmu?: SrcAnchorEmu;
+                transform?: { angle?: number };
                 sheetTransform?: {
                     from?: {
                         column?: number;
@@ -233,12 +237,21 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
 
             // A3: reproduce the EXACT source EMU anchor when present + unmoved;
             // otherwise px × 9525 (editor-authored or user-moved drawing).
+            // Rotation lives on the live transform (the editor updates it when
+            // the user rotates the image), normalised into [0,360). 0 → omit.
+            const angle = d.transform?.angle;
+            const rotationDeg =
+                typeof angle === 'number' && Number.isFinite(angle)
+                    ? ((angle % 360) + 360) % 360
+                    : 0;
+
             out.push({
                 drawingId,
                 sheetId: subUnitId,
                 extension: ext,
                 bytes: decoded.bytes,
                 anchor: resolveAnchorEmu(d._srcAnchorEmu, tx.from, tx.to),
+                ...(rotationDeg ? { rotationDeg } : {}),
             });
         }
     }
@@ -258,6 +271,17 @@ export function buildImagePicXml(
     name: string,
 ): string {
     const a = image.anchor;
+    // Rotation → <a:xfrm rot="..."> in 60000ths of a degree. For a
+    // twoCellAnchor, Excel derives the shape's position/size from the from/to
+    // cells, and <a:off>/<a:ext> inside <a:xfrm> are optional (ECMA-376
+    // CT_Transform2D minOccurs=0), so we emit rot alone — no fabricated
+    // geometry. Omit the whole <a:xfrm> when unrotated to keep byte-identical
+    // output for the common axis-aligned case.
+    let xfrmXml = '';
+    if (image.rotationDeg) {
+        const rot = Math.round((((image.rotationDeg % 360) + 360) % 360) * 60000);
+        if (rot !== 0) xfrmXml = `<a:xfrm rot="${rot}"/>`;
+    }
     return (
         `<xdr:twoCellAnchor editAs="oneCell">` +
         `<xdr:from><xdr:col>${a.fromCol}</xdr:col><xdr:colOff>${a.fromColOff}</xdr:colOff><xdr:row>${a.fromRow}</xdr:row><xdr:rowOff>${a.fromRowOff}</xdr:rowOff></xdr:from>` +
@@ -272,6 +296,7 @@ export function buildImagePicXml(
         `<a:stretch><a:fillRect/></a:stretch>` +
         `</xdr:blipFill>` +
         `<xdr:spPr>` +
+        xfrmXml +
         `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
         `</xdr:spPr>` +
         `</xdr:pic>` +
