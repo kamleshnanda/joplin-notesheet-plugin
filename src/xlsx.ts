@@ -2778,7 +2778,16 @@ export async function xlsxBufferToSnapshot(
                     width,
                     height,
                 },
+                // NOTE: Univer recomputes the live `transform` from
+                // `sheetTransform` on load (drawingPositionToTransform reads
+                // `angle` off sheetTransform, defaulting to 0), so the angle
+                // MUST live here too — setting it only on `transform` above is
+                // silently overwritten back to 0 at render time. Both the
+                // rotated and the axis-aligned sheet transforms carry it (for a
+                // sub-45° tilt Univer's own transformToAxisAlignPosition keeps
+                // the angle on the axis-aligned bound).
                 sheetTransform: {
+                    angle: image.rotationDeg ?? 0,
                     from: {
                         column: image.anchor.fromCol,
                         columnOffset: fromColOffPx,
@@ -2793,6 +2802,7 @@ export async function xlsxBufferToSnapshot(
                     },
                 },
                 axisAlignSheetTransform: {
+                    angle: image.rotationDeg ?? 0,
                     from: {
                         column: image.anchor.fromCol,
                         columnOffset: fromColOffPx,

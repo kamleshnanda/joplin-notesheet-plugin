@@ -180,6 +180,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                 _srcAnchorEmu?: SrcAnchorEmu;
                 transform?: { angle?: number };
                 sheetTransform?: {
+                    angle?: number;
                     from?: {
                         column?: number;
                         columnOffset?: number;
@@ -194,6 +195,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                     };
                 };
                 axisAlignSheetTransform?: {
+                    angle?: number;
                     from?: {
                         column?: number;
                         columnOffset?: number;
@@ -237,9 +239,12 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
 
             // A3: reproduce the EXACT source EMU anchor when present + unmoved;
             // otherwise px × 9525 (editor-authored or user-moved drawing).
-            // Rotation lives on the live transform (the editor updates it when
-            // the user rotates the image), normalised into [0,360). 0 → omit.
-            const angle = d.transform?.angle;
+            // Rotation. Univer keeps the authoritative angle on sheetTransform
+            // (it recomputes `transform` from there on load), so read it from
+            // sheetTransform first, then axisAlignSheetTransform, then the live
+            // `transform` as a last resort. Normalise into [0,360); 0 → omit.
+            const angle =
+                d.sheetTransform?.angle ?? d.axisAlignSheetTransform?.angle ?? d.transform?.angle;
             const rotationDeg =
                 typeof angle === 'number' && Number.isFinite(angle)
                     ? ((angle % 360) + 360) % 360
