@@ -410,6 +410,33 @@ every feature.
 
 ## In progress
 
+- **Build-identification version scheme** (2026-07-08, on
+  `m18-a3-emu-anchor-offsets`) — every locally built `.jpl` is now uniquely
+  identifiable at a glance, both in the UI and the console, so the operator
+  can tell a fresh build from a stale one without a commit-hash grep.
+  - **How to read it while testing:** Joplin → Settings → Plugins → Notesheet
+    shows `v1.0.0+build.N`. DevTools console still logs
+    `[Notesheet] build #N (<commit><-dirty> @ <UTC time>)` on startup.
+  - **Mechanism** (all in `webpack.config.js`): a monotonic counter in
+    `build-number.json` (gitignored per-user state) bumps ONCE per
+    `npm run dist`. `npm run dist` runs webpack as THREE separate processes
+    (`buildMain && buildExtraScripts && createArchive`); each loads
+    webpack.config.js fresh, so the increment is gated on
+    `IS_BUILD_MAIN_STEP` (argv sniff of `joplin-plugin-config=buildMain`) —
+    the later two steps read the same N. `stampDistManifestVersion()` (called
+    from `onBuildCompleted`, just before the `.jpl` is tarred) rewrites ONLY
+    `dist/manifest.json`'s version to `<base>+build.N` using SemVer build
+    metadata. **The committed `src/manifest.json` and the publish-info
+    `.json` stay clean at `1.0.0`** — build metadata never leaks to a
+    release artifact. The existing `__NOTESHEET_BUILD__` DefinePlugin stamp
+    now carries the number too.
+  - **Verified:** two consecutive `npm run dist` runs produced `+build.1`
+    then `+build.2` (single increment each despite 3 webpack processes);
+    packaged `.jpl` manifest = `1.0.0+build.N`, `src/manifest.json` = `1.0.0`.
+    Confirmed against Joplin's installed source that the Plugins panel renders
+    `v<version>` verbatim with NO semver validation, so `+build.N` displays
+    fine. typecheck + prettier clean.
+
 - **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14 Jest
   layer; live PGE screenshot gate CLEARED 2026-06-28). On import, `.xlsx` images
   (xl/media/* + their drawing anchors) now emit into the snapshot's
