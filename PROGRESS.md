@@ -414,22 +414,28 @@ every feature.
   Operator retested build #5 and reported: #4 ✓, #3 convert ✓ but **undo broken**,
   #5 **still circular-ref in Excel**, #1 still shows plain image, #2 deferred.
   Root-caused and fixed the two real regressions:
-  - **#5 — REAL FIX (was false-confidence test).** The prior test asserted only
-    the SUBTOTAL formula TEXT; the actual Excel-breaking issue was the DROPPED
-    cached `<v>`. Research (exceljs source + OOXML recalc model) confirmed:
-    exceljs `Table.store()` rewrites each totals cell as
-    `{formula, result: column.totalsRowResult}` — we never set totalsRowResult,
-    so it emits `<f>…</f>` with NO `<v>`. A value-less totals formula forces
-    Excel to recalc on open; during load-time eval the structured ref
-    `ProjectTracker[Status]` transiently spans the whole column incl. the totals
-    cell → circular ref. FIX: re-apply totals-row formula cells (with imported
-    cached value) AFTER `addTable().store()` (mirrors the header re-apply) →
-    emits `<f>SUBTOTAL(103,…)</f><v>8</v>` like native Excel. PLUS `patchCalcId`:
-    exceljs hard-codes older `calcId="171027"` (itself a recalc-on-open trigger)
-    → bump to 191029. Verified on BOTH ProjectTracker + ProductCatalog fixtures.
-    Test strengthened to assert the cached `<v>` on every totals formula cell +
-    calcId. LESSON (again): pin the Excel-critical value, not our own emit —
-    see [[feedback_pge_fidelity_test_gap]].
+  - **#5 — took THREE attempts; root cause was the export PATH, not the payload.**
+    Attempt 1 (totalsRowFunction meta): passed a false-confidence test, shipped
+    broken. Attempt 2 (cached `<v>` + calcId): also passed its test, ALSO shipped
+    broken. The reason both tests lied: they ran `xlsxBufferToSnapshot` →
+    `snapshotToXlsxBuffer` DIRECTLY, but the real Joplin export goes through
+    **Univer's editor `save()` first**, and Univer's sheets-table plugin does
+    NOT model a totals row — its save() snapshot returns the table with
+    `showFooter:false` (full range kept). Exporting THAT made exceljs emit
+    `totalsRowShown="1"` (NO `totalsRowCount`) + `autoFilter A1:G10`, so Excel
+    treated row 10 as a data row → `[Status]` spanned G10 → self-reference →
+    circular ref. Attempt 3 (REAL FIX): stamp `notesheetTotalsRowCount` on the
+    table meta at import (Univer round-trips table meta, verified live); on
+    export drive `totalsRow` from that — NOT from `options.showFooter` (Univer
+    zeroes it) and NOT from column `totalsRowLabel` (exceljs defaults it to
+    "Total" on EVERY column → false-fired and wiped the last data row of
+    no-totals tables = M9 regression hit mid-fix). Also kept the cached-`<v>`
+    re-apply + calcId bump from attempt 2 (both still needed). Test now
+    exercises the REAL path via a live Univer save() snapshot fixture
+    (`tests/fixtures/snapshots/FormattingSmorgasboard-univer-save.json`,
+    showFooter:false). LESSON: for round-trip export bugs, the test MUST feed a
+    Univer-save() snapshot, not the direct importer output — the two pipelines
+    diverge on table/CF/drawing resources. See [[feedback_pge_fidelity_test_gap]].
   - **#3 undo — FIXED.** The handler applied a bare SetRangeValuesMutation, which
     changes cells but registers nothing on the undo stack. Now mirrors the
     built-in: build inverse via SetRangeValuesUndoMutationFactory, sequenceExecute
