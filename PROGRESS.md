@@ -452,12 +452,31 @@ every feature.
     (effectLst into spPr after prstGeom; srcRect into blipFill before stretch,
     per CT schema order). The round-tripped .xlsx shows the frame in Excel; the
     live Univer canvas shows a plain image (documented gap). README note needed.
-  - **#3 (IN PROGRESS) — Data→Text to Number no-op** on imported text-stored
-    numbers (C3 worked, C10/C11 didn't). Univer built-in command; researching
-    why it no-ops on our imported cells.
-  - **#6 (IN PROGRESS) — iconSet 3Arrows renders differently in Univer canvas**
-    (export is correct). Researching whether it's a value→arrow mapping bug in
-    our translation or a cosmetic Univer glyph difference.
+  - **#3 (DONE in code; live screenshot proof pending) — Data→Text to Number.**
+    ROOT CAUSE: Univer's built-in `sheet.command.text-to-number` converts a cell
+    only when `isRealNum(cell.v)` — C3 = "0" (parses → works); C10/C11 = literally
+    "0%" (the % is part of the shared string, `quotePrefix="1"`; `Number("0%")`=NaN
+    → no-op). Operator asked for a GENERIC replacement (not percent-only). FIX:
+    `src/formulas/textToNumber.ts` (pure parser: int/float→General; "50%"→0.5+"0%";
+    grouped→"#,##0"; currency→currency pattern; accounting parens→negative; real
+    text/format-codes/dates→null so we never clobber text) + 25 unit tests
+    (`tests/textToNumber.test.ts`). `src/formulas/registerTextToNumber.ts`
+    registers the command + a Data-ribbon menu item on the injector AFTER
+    createUnit (sheet plugins are lazily instantiated then; ribbon rebuilds
+    reactively on menuChanged$). Values via SetRangeValuesMutation, numfmt via
+    the high-level SetNumfmtCommand. Built-in item hidden via the preset `menu`
+    config. All symbols imported from `@univerjs/preset-sheets-core` barrel (not
+    deep transitive pkgs). Command id + `ribbon.data` confirmed in the built
+    editorView.js bundle. STILL TODO: build+install+screenshot in live Joplin to
+    prove the menu appears and C10/C11 convert (needs Joplin restart).
+  - **#6 (DONE — document-only, no code) — iconSet 3Arrows.** Research verified
+    our translation yields the CORRECT value→arrow mapping in Univer 0.23
+    (0/10/20→red-down, 30-60→gold-flat, 70-90→green-up — matches Excel exactly).
+    The descending+catch-all transform (PROGRESS note ~1359) correctly
+    compensates for Univer's internally-reversed icon-map index order. The visible
+    difference is purely Univer's arrow SVG artwork vs Excel's — cosmetic, baked
+    into the preset, not fixable in the importer. Export is byte-correct. Needs a
+    README known-shortcomings note; no code change.
   - **Pre-existing unrelated failure:** `tests/m12FixtureRoundTrip.test.ts`
     "row 11 preserves numFmt pattern m/d/yy" expects `m/d/yy` but gets
     `mm-dd-yy` — fails identically on clean HEAD with all my changes stashed.
