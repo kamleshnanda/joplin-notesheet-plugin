@@ -60,6 +60,7 @@ import {
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
 import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
+import { registerTextToNumberCommand } from './formulas/registerTextToNumber';
 
 declare global {
     interface Window {
@@ -634,6 +635,14 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                             'sort-custom': 'Sort...',
                         },
                     },
+                    // Finding #3: labels for the generic Text-to-Number menu item.
+                    notesheet: {
+                        textToNumber: {
+                            title: 'Text to Number',
+                            tooltip:
+                                'Convert numbers stored as text (incl. %, currency, grouped) to real numbers',
+                        },
+                    },
                 },
             ),
         },
@@ -655,6 +664,11 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                     'sheet.command.sort-range-desc-ctx': { hidden: true },
                     'sheet.command.sort-range-asc-ext-ctx': { hidden: true },
                     'sheet.command.sort-range-desc-ext-ctx': { hidden: true },
+                    // Finding #3: hide Univer's built-in Text-to-Number (it
+                    // only converts bare numerals — refuses "0%", "1,234",
+                    // "$5"). We register a generic replacement that mirrors
+                    // Excel's Convert-to-Number under the same Data-ribbon group.
+                    'sheet.command.text-to-number': { hidden: true },
                 },
             }),
             UniverSheetsSortPreset(),
@@ -765,6 +779,21 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     univer.createUnit(UniverInstanceType.UNIVER_SHEET, snapshot);
     activeUniver = univer;
     activeApi = univerAPI;
+
+    // Finding #3: register the generic "Text to Number" command + Data-ribbon
+    // menu item. MUST run AFTER createUnit — the UNIVER_SHEET plugins (sheets,
+    // sheets-ui, sheets-numfmt) are only instantiated on createUnit, so the
+    // selection/numfmt services and the ribbon menu schema don't exist before
+    // it. The ribbon rebuilds reactively on menuChanged$, so this late merge
+    // still appears. Fail-soft inside the helper.
+    try {
+        const cmdInjector = (univer as { __getInjector?: () => unknown }).__getInjector?.();
+        if (cmdInjector) {
+            registerTextToNumberCommand(cmdInjector as { get: (id: unknown) => unknown });
+        }
+    } catch (e) {
+        console.warn('[Notesheet] Text-to-Number registration failed', e);
+    }
 
     // M17: hydrate the editor's chart-tracking map from the snapshot's
     // SHEET_DRAWING_PLUGIN resource. Charts that arrived via
