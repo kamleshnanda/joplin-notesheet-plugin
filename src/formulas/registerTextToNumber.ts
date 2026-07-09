@@ -24,8 +24,10 @@
 import {
     ICommandService,
     IUniverInstanceService,
+    IUndoRedoService,
     CommandType,
     ObjectMatrix,
+    sequenceExecute,
 } from '@univerjs/presets';
 // Sheet services, mutations, numfmt command, and the menu/ribbon symbols are
 // all re-exported by @univerjs/preset-sheets-core (which the editor already
@@ -37,6 +39,7 @@ import {
     SheetsSelectionsService,
     getSheetCommandTarget,
     SetRangeValuesMutation,
+    SetRangeValuesUndoMutationFactory,
     IMenuManagerService,
     RibbonPosition,
     RibbonDataGroup,
@@ -152,12 +155,40 @@ export function registerTextToNumberCommand(injector: { get: (id: unknown) => un
                 }
                 if (converted === 0) return true; // nothing to do — silent no-op
 
-                commandService.syncExecuteCommand(SetRangeValuesMutation.id, {
-                    unitId,
-                    subUnitId,
-                    cellValue: newValues.getMatrix(),
-                });
-                return true;
+                // Run as a redo/undo pair so Ctrl+Z reverts the conversion.
+                // A bare syncExecuteCommand(mutation) applies the change but
+                // never registers it on the undo stack (mutations are the
+                // low-level layer; undo lives at the command layer). Mirror the
+                // built-in TextToNumberCommand: build the inverse mutation from
+                // the CURRENT state via SetRangeValuesUndoMutationFactory,
+                // sequenceExecute the redo, then pushUndoRedo.
+                const undoRedoService = accessor.get(IUndoRedoService) as {
+                    pushUndoRedo: (item: {
+                        unitID: string;
+                        undoMutations: unknown[];
+                        redoMutations: unknown[];
+                    }) => void;
+                };
+                const setParams = { unitId, subUnitId, cellValue: newValues.getMatrix() };
+                const redos = [{ id: SetRangeValuesMutation.id, params: setParams }];
+                const undos = [
+                    {
+                        id: SetRangeValuesMutation.id,
+                        params: (
+                            SetRangeValuesUndoMutationFactory as (a: unknown, p: unknown) => unknown
+                        )(accessor, setParams),
+                    },
+                ];
+                const seq = sequenceExecute as (m: unknown[], cs: unknown) => { result: boolean };
+                if (seq(redos, commandService).result) {
+                    undoRedoService.pushUndoRedo({
+                        unitID: unitId,
+                        undoMutations: undos,
+                        redoMutations: redos,
+                    });
+                    return true;
+                }
+                return false;
             },
         });
 
