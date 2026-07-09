@@ -410,6 +410,60 @@ every feature.
 
 ## In progress
 
+- **M18 manual-test findings (round 3) — export-correctness & fidelity fixes**
+  (2026-07-08, on `m18-a3-emu-anchor-offsets`). Operator round-tripped real
+  fixtures through import → export → reopen-in-Excel and reported 6 issues.
+  Tests in `tests/m18ManualTestFixes.test.ts` (anchored to SOURCE fixture XML,
+  not our own emit). Full suite 495 pass (1 pre-existing unrelated failure —
+  see below).
+  - **#4 (DONE) — array (CSE) formula `=A2:A6*2` → `=@A2:A6*2` in Excel.**
+    Source F7 is `<f t="array" ref="F7:F11">A2:A6*2</f>`. exceljs's cell model
+    has NO array-formula representation (FormulaType = None/Master/Shared only),
+    so export wrote a plain `<f>` and Excel reinterpreted it as
+    implicit-intersection. FIX: new `src/formulas/arrayFormulas.ts` — zip-direct
+    reader captures `t="array"`+`ref` at import into a sidecar resource
+    (`SHEET_NOTESHEET_ARRAY_FORMULAS_PLUGIN`); `injectArrayFormulasIntoZip`
+    (export pipeline tail, after shapes) rewrites the exported `<f>` back to
+    `<f t="array" ref="…">`, but ONLY when the exported formula body still
+    matches what we captured (never marks a user-edited formula). Survives a
+    double round-trip. NOTE: `FormulasAndStructuredRefs.xlsx` crashes raw
+    exceljs load (worksheet.js:920 multi-table) — that's WHY the capture must be
+    zip-direct, not via the loaded workbook's cell model.
+  - **#5 (DONE) — table totals row → circular-reference error in Excel.**
+    Source columns carry `totalsRowFunction="sum"/"average"/"count"` +
+    `totalsRowLabel`; our table import captured only column NAMES, so export
+    wrote `totalsRowFunction="none"` everywhere and dropped the totals SUBTOTAL.
+    exceljs's `addTable().store()` then wiped the totals row, and Excel's
+    structured ref `[Status]` no longer excluded the totals cell → self-ref.
+    FIX: `RawTable.columns` is now `RawTableColumn[]` (name + totalsRowFunction +
+    totalsRowLabel); threaded through `parseTableXml` → each `TableColumnJson`'s
+    opaque `meta` (`notesheetTotalsRowFunction`/`notesheetTotalsRowLabel`,
+    round-trips via Univer) → export's `ws.addTable` columns. exceljs then
+    regenerates the correctly-scoped `SUBTOTAL(103,ProjectTracker[Status])`.
+  - **#1 (DONE — preserve-only) — styled-image glow/shadow frame lost.**
+    `Multi-sheet-StlyedImages.xlsx` "Styled Image" carries `<a:effectLst>` (glow
+    accent2 + outerShdw) in `<xdr:spPr>` and an `<a:srcRect>` crop in
+    `<xdr:blipFill>`. VERIFIED against Univer 0.23 source: `IImageData` supports
+    `srcRect`+`prstGeom` but has NO field for `effectLst` — Univer CANNOT render
+    image glow/shadow live. So this is preserve-on-export (like shapes): import
+    captures the verbatim `<a:effectLst>`/`<a:srcRect>` per pic
+    (`xlsxImageImport.ts`), stashes on the drawing entry as `_srcSpPrExtras`
+    (Univer ignores unknown keys), and `buildImagePicXml` re-emits them
+    (effectLst into spPr after prstGeom; srcRect into blipFill before stretch,
+    per CT schema order). The round-tripped .xlsx shows the frame in Excel; the
+    live Univer canvas shows a plain image (documented gap). README note needed.
+  - **#3 (IN PROGRESS) — Data→Text to Number no-op** on imported text-stored
+    numbers (C3 worked, C10/C11 didn't). Univer built-in command; researching
+    why it no-ops on our imported cells.
+  - **#6 (IN PROGRESS) — iconSet 3Arrows renders differently in Univer canvas**
+    (export is correct). Researching whether it's a value→arrow mapping bug in
+    our translation or a cosmetic Univer glyph difference.
+  - **Pre-existing unrelated failure:** `tests/m12FixtureRoundTrip.test.ts`
+    "row 11 preserves numFmt pattern m/d/yy" expects `m/d/yy` but gets
+    `mm-dd-yy` — fails identically on clean HEAD with all my changes stashed.
+    A date number-format normalization issue, not caused by this work. Flag to
+    operator; don't block the PR on it.
+
 - **Build-identification version scheme** (2026-07-08, on
   `m18-a3-emu-anchor-offsets`) — every locally built `.jpl` is now uniquely
   identifiable at a glance, both in the UI and the console, so the operator

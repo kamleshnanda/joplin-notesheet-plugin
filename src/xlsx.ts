@@ -35,6 +35,12 @@ import { injectImagesIntoZip, bytesToBase64 } from './drawings/xlsxImage';
 import { readShapesFromXlsxZip, type ImportedShapeDrawing } from './drawings/xlsxShapeImport';
 import { injectShapesIntoZip } from './drawings/xlsxShape';
 import { NOTESHEET_SHAPES_RESOURCE } from './drawings/sheetIdResolver';
+import {
+    readArrayFormulasFromXlsxZip,
+    injectArrayFormulasIntoZip,
+    NOTESHEET_ARRAY_FORMULAS_RESOURCE,
+    type ArrayFormulaMap,
+} from './formulas/arrayFormulas';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
@@ -656,12 +662,24 @@ function parseA1Range(
 // (1) defaults missing headerRowCount to false (OOXML spec says 1), and
 // (2) drops every column after one whose <tableColumn> has nested
 // children like <calculatedColumnFormula>. Both problems break round-trip.
+// One <tableColumn> as parsed from xl/tables/*.xml. `totalsRowFunction` /
+// `totalsRowLabel` are what a table's totals row is built from — Excel
+// regenerates the SUBTOTAL(...) from the function and scopes the structured
+// ref to the data body (excluding the totals cell). Dropping them makes the
+// exported totals row a self-referencing formula → circular-reference error
+// on open (M18 manual-test finding #5).
+interface RawTableColumn {
+    name: string;
+    totalsRowFunction?: string;
+    totalsRowLabel?: string;
+}
+
 interface RawTable {
     name: string;
     ref: string;
     headerRowCount: number;
     totalsRowCount: number;
-    columns: string[];
+    columns: RawTableColumn[];
     styleName?: string;
     showRowStripes?: boolean;
 }
@@ -705,14 +723,23 @@ function parseTableXml(xml: string): RawTable | null {
     const totalsRowCount = totalsRowCountStr === null ? 0 : parseInt(totalsRowCountStr, 10);
 
     // Pull every <tableColumn ... name="..." ... /> or <tableColumn ...>...</tableColumn>.
-    // The opening tag is what carries the name attribute; nested children
+    // The opening tag carries name + the totals-row attributes; nested children
     // (<calculatedColumnFormula>, <xmlColumnPr>, etc.) don't matter to us.
-    const columns: string[] = [];
+    // totalsRowFunction / totalsRowLabel MUST round-trip (finding #5): they're
+    // what Excel builds the totals-row SUBTOTAL from, correctly scoped to the
+    // data body. Dropping them yields a self-referencing formula (circular ref).
+    const columns: RawTableColumn[] = [];
     const colRe = /<tableColumn\b[^>]*?(?:\/>|>)/g;
     let m: RegExpExecArray | null;
     while ((m = colRe.exec(xml)) !== null) {
         const cname = getAttr(m[0], 'name');
-        if (cname) columns.push(cname);
+        if (!cname) continue;
+        const col: RawTableColumn = { name: cname };
+        const fn = getAttr(m[0], 'totalsRowFunction');
+        if (fn) col.totalsRowFunction = fn;
+        const label = getAttr(m[0], 'totalsRowLabel');
+        if (label !== null) col.totalsRowLabel = label;
+        columns.push(col);
     }
 
     const styleTagMatch = /<tableStyleInfo\b[^>]*\/?>/.exec(xml);
@@ -2036,19 +2063,29 @@ function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): T
         const dataStartRow = range.startRow + headerRows;
         const dataEndRow = range.endRow - totalRows;
 
-        const columns: TableColumnJson[] = t.columns.map((cname, idx) => ({
-            id: `tblcol-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-            displayName: cname,
-            dataType: inferColumnDataType(
-                ws,
-                range.startColumn + idx + 1,
-                dataStartRow + 1,
-                dataEndRow + 1,
-            ),
-            formula: '',
-            meta: {},
-            style: {},
-        }));
+        const columns: TableColumnJson[] = t.columns.map((rawCol, idx) => {
+            // Stash the totals-row function/label in the column's opaque meta
+            // so export can reconstruct the totals row (finding #5). Univer's
+            // sheets-table plugin round-trips `meta` verbatim through reloads.
+            const colMeta: Record<string, unknown> = {};
+            if (rawCol.totalsRowFunction)
+                colMeta.notesheetTotalsRowFunction = rawCol.totalsRowFunction;
+            if (rawCol.totalsRowLabel !== undefined)
+                colMeta.notesheetTotalsRowLabel = rawCol.totalsRowLabel;
+            return {
+                id: `tblcol-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                displayName: rawCol.name,
+                dataType: inferColumnDataType(
+                    ws,
+                    range.startColumn + idx + 1,
+                    dataStartRow + 1,
+                    dataEndRow + 1,
+                ),
+                formula: '',
+                meta: colMeta,
+                style: {},
+            };
+        });
 
         const meta: NotesheetTableMeta = {};
         if (t.styleName) meta.notesheetExcelStyleName = t.styleName;
@@ -2117,6 +2154,16 @@ export async function xlsxBufferToSnapshot(
     } catch (e) {
         console.warn('[Notesheet] M18: readShapesFromXlsxZip threw; continuing without shapes', e);
         importedShapes = [];
+    }
+    // M18 finding #4: array (CSE) formulas. exceljs can't represent the
+    // t="array"+ref marker, so read it zip-direct from the ORIGINAL buffer and
+    // stash it on a sidecar; export re-injects the marker. Fail-soft.
+    let arrayFormulas: ArrayFormulaMap = {};
+    try {
+        arrayFormulas = await readArrayFormulasFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] readArrayFormulasFromXlsxZip threw; array markers dropped', e);
+        arrayFormulas = {};
     }
     // Build a chart-stripped buffer iff there's at least one chart drawing
     // present. For chart-less workbooks we pass the original buffer through
@@ -2488,6 +2535,14 @@ export async function xlsxBufferToSnapshot(
             data: JSON.stringify(synthStyleSidecar),
         });
     }
+    if (Object.keys(arrayFormulas).length > 0) {
+        // Finding #4: array-formula markers exceljs can't represent. Export's
+        // injectArrayFormulasIntoZip re-applies them to the written worksheet XML.
+        resources.push({
+            name: NOTESHEET_ARRAY_FORMULAS_RESOURCE,
+            data: JSON.stringify(arrayFormulas),
+        });
+    }
     if (themeClrScheme) {
         resources.push({
             name: NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
@@ -2833,6 +2888,19 @@ export async function xlsxBufferToSnapshot(
                     toRow: image.anchor.toRow,
                     toRowOff: image.anchor.toRowOff,
                 },
+                // Finding #1: the source picture's <a:effectLst> (glow/shadow)
+                // and <a:srcRect> crop. Univer 0.23 can't render the effects,
+                // but we re-emit them on export so the round-tripped .xlsx still
+                // shows the frame in Excel (preserve-only). Univer ignores
+                // unknown keys on a drawing entry, so this survives reloads.
+                ...(image.effectLstXml || image.srcRectXml
+                    ? {
+                          _srcSpPrExtras: {
+                              ...(image.effectLstXml ? { effectLst: image.effectLstXml } : {}),
+                              ...(image.srcRectXml ? { srcRect: image.srcRectXml } : {}),
+                          },
+                      }
+                    : {}),
             };
             drawingResource[subUnitId].order.push(drawingId);
         }
@@ -3330,7 +3398,23 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                     headerRow,
                     totalsRow,
                     ...(Object.keys(tableStyle).length > 0 ? { style: tableStyle } : {}),
-                    columns: t.columns.map((c) => ({ name: c.displayName })),
+                    // Re-attach each column's totals-row function/label (finding
+                    // #5). exceljs regenerates the correctly-scoped
+                    // SUBTOTAL(...) from totalsRowFunction; without it the
+                    // totals row is wiped and the structured ref self-refers.
+                    columns: t.columns.map((c) => {
+                        const cm = (c.meta ?? {}) as {
+                            notesheetTotalsRowFunction?: string;
+                            notesheetTotalsRowLabel?: string;
+                        };
+                        const col: ExcelJS.TableColumnProperties = { name: c.displayName };
+                        if (cm.notesheetTotalsRowFunction)
+                            col.totalsRowFunction =
+                                cm.notesheetTotalsRowFunction as ExcelJS.TableColumnProperties['totalsRowFunction'];
+                        if (cm.notesheetTotalsRowLabel !== undefined)
+                            col.totalsRowLabel = cm.notesheetTotalsRowLabel;
+                        return col;
+                    }),
                     // Sized empty rows so exceljs derives the right tableRef
                     // without writing into our already-populated data cells.
                     rows: Array.from({ length: dataRowCount }, () => []),
@@ -3436,6 +3520,10 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     // AFTER charts + images so shapes merge into a sheet's existing drawing
     // part rather than create a colliding second one.
     out = await injectShapesIntoZip(out, snapshot);
+    // Finding #4: re-apply array-formula markers (t="array" ref="...") that
+    // exceljs stripped. Order-independent of the drawing injectors — it only
+    // rewrites <f> elements in the worksheet XML.
+    out = await injectArrayFormulasIntoZip(out, snapshot);
     return out;
 }
 

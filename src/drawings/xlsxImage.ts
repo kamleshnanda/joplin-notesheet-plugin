@@ -53,6 +53,12 @@ export interface ImageDrawing {
     // Rotation in DEGREES (Univer transform.angle). Re-emitted as <a:xfrm rot>
     // in 60000ths of a degree. Absent/0 → no <a:xfrm> written (axis-aligned).
     rotationDeg?: number;
+    // Finding #1: verbatim source `<a:effectLst>` (glow/shadow) re-emitted into
+    // <xdr:spPr>, and `<a:srcRect>` crop re-emitted into <xdr:blipFill>, so a
+    // styled image round-trips its frame into the exported .xlsx even though
+    // Univer 0.23 can't render the effects live. Empty when the source had none.
+    effectLstXml?: string;
+    srcRectXml?: string;
 }
 
 // --- MIME / extension helpers ---
@@ -209,6 +215,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                         rowOffset?: number;
                     };
                 };
+                _srcSpPrExtras?: { effectLst?: string; srcRect?: string };
             };
 
             // Charts are drawingType 8 + componentKey; never treat as image.
@@ -257,6 +264,10 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                 bytes: decoded.bytes,
                 anchor: resolveAnchorEmu(d._srcAnchorEmu, tx.from, tx.to),
                 ...(rotationDeg ? { rotationDeg } : {}),
+                ...(d._srcSpPrExtras?.effectLst
+                    ? { effectLstXml: d._srcSpPrExtras.effectLst }
+                    : {}),
+                ...(d._srcSpPrExtras?.srcRect ? { srcRectXml: d._srcSpPrExtras.srcRect } : {}),
             });
         }
     }
@@ -287,6 +298,12 @@ export function buildImagePicXml(
         const rot = Math.round((((image.rotationDeg % 360) + 360) % 360) * 60000);
         if (rot !== 0) xfrmXml = `<a:xfrm rot="${rot}"/>`;
     }
+    // Finding #1: re-emit the preserved crop + effect frame. srcRect belongs in
+    // <xdr:blipFill> (before <a:stretch>); effectLst belongs in <xdr:spPr>
+    // (after <a:prstGeom>, per CT_ShapeProperties order). Empty strings when the
+    // source picture carried none — keeps axis-aligned output byte-identical.
+    const srcRectXml = image.srcRectXml ?? '';
+    const effectLstXml = image.effectLstXml ?? '';
     return (
         `<xdr:twoCellAnchor editAs="oneCell">` +
         `<xdr:from><xdr:col>${a.fromCol}</xdr:col><xdr:colOff>${a.fromColOff}</xdr:colOff><xdr:row>${a.fromRow}</xdr:row><xdr:rowOff>${a.fromRowOff}</xdr:rowOff></xdr:from>` +
@@ -298,11 +315,13 @@ export function buildImagePicXml(
         `</xdr:nvPicPr>` +
         `<xdr:blipFill>` +
         `<a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId${rId}"/>` +
+        srcRectXml +
         `<a:stretch><a:fillRect/></a:stretch>` +
         `</xdr:blipFill>` +
         `<xdr:spPr>` +
         xfrmXml +
         `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+        effectLstXml +
         `</xdr:spPr>` +
         `</xdr:pic>` +
         `<xdr:clientData/>` +
