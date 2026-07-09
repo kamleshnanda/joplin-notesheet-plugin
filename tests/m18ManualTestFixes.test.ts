@@ -99,6 +99,44 @@ describe('#5 — table totals-row functions survive export (no circular ref)', (
         expect(wb).not.toMatch(/calcId="171027"/);
         expect(wb).toMatch(/calcId="191029"/);
     });
+
+    // CRITICAL: exercise the REAL export path. The direct
+    // xlsxBufferToSnapshot → snapshotToXlsxBuffer round-trip above does NOT
+    // reproduce the shipped bug, because the actual Joplin export goes through
+    // Univer's editor save() FIRST — and Univer's sheets-table plugin returns
+    // the table with `showFooter: false` (it doesn't model a totals row),
+    // dropping the totals-row flag. Exporting THAT snapshot is what produced
+    // `totalsRowShown="1"` (no totalsRowCount) + `autoFilter A1:G10`, which made
+    // Excel treat row 10 as data → structured-ref self-reference → circular ref.
+    // This fixture is a real Univer save() snapshot captured live from the
+    // editor (showFooter:false, meta on columns), so it pins the real path.
+    describe('exported from a Univer save() snapshot (real Joplin export path)', () => {
+        async function exportSavedSnapshot(): Promise<JSZip> {
+            const p = path.resolve(
+                __dirname,
+                'fixtures/snapshots/FormattingSmorgasboard-univer-save.json',
+            );
+            const snap = JSON.parse(fs.readFileSync(p, 'utf8'));
+            const out = await snapshotToXlsxBuffer(snap);
+            return JSZip.loadAsync(out);
+        }
+
+        test('table declares totalsRowCount="1" (not totalsRowShown) so row 10 is the totals row', async () => {
+            const zip = await exportSavedSnapshot();
+            const t = (await zip.file('xl/tables/table1.xml')?.async('string')) ?? '';
+            expect(t).toMatch(/<table\b[^>]*\btotalsRowCount="1"/);
+            // The autofilter must exclude the totals row (A1:G9, not A1:G10).
+            expect(t).toMatch(/<autoFilter ref="A1:G9"/);
+            // And the totals functions must still be present.
+            expect(t).toMatch(/name="Status"[^>]*totalsRowFunction="count"/);
+        });
+
+        test('Status totals cell keeps SUBTOTAL + cached value (no circular ref)', async () => {
+            const zip = await exportSavedSnapshot();
+            const s1 = (await zip.file('xl/worksheets/sheet1.xml')?.async('string')) ?? '';
+            expect(s1).toMatch(/SUBTOTAL\(103,ProjectTracker\[Status\]\)<\/f><v>8<\/v>/);
+        });
+    });
 });
 
 describe('#1 — styled image glow/shadow frame survives export', () => {

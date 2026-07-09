@@ -214,6 +214,13 @@ interface TableColumnJson {
 interface NotesheetTableMeta {
     notesheetExcelStyleName?: string;
     notesheetShowRowStripes?: boolean;
+    // Whether the SOURCE table had a totals row (from <table totalsRowCount>).
+    // The authoritative totals-row signal on export: Univer's sheets-table
+    // plugin doesn't model a totals row and returns showFooter:false, so we
+    // can't trust options.showFooter. We must NOT infer from column
+    // totalsRowLabel either — exceljs writes a default totalsRowLabel="Total"
+    // on EVERY column even for tables with no totals row (M9 round-trip).
+    notesheetTotalsRowCount?: number;
 }
 interface TableJson {
     id: string;
@@ -2094,6 +2101,7 @@ function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): T
         const meta: NotesheetTableMeta = {};
         if (t.styleName) meta.notesheetExcelStyleName = t.styleName;
         if (t.showRowStripes) meta.notesheetShowRowStripes = true;
+        if (t.totalsRowCount > 0) meta.notesheetTotalsRowCount = t.totalsRowCount;
 
         out.push({
             id: `tbl-${t.name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -3163,6 +3171,7 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === TABLE_PLUGIN_NAME);
     if (!entry || typeof entry.data !== 'string') return {};
+    if (entry.data.trim() === '') return {}; // registered-but-empty → no tables
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
@@ -3189,6 +3198,7 @@ function readSynthStylesSidecar(
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === NOTESHEET_SYNTH_STYLES_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
+    if (entry.data.trim() === '') return {}; // registered-but-empty → nothing to skip
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
@@ -3214,14 +3224,17 @@ function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEn
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === CONDITIONAL_FORMATTING_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
+    // Univer emits an EMPTY-STRING `data` for a registered-but-empty resource
+    // (no CF rules on this workbook). That's "nothing to read", not corruption —
+    // don't JSON.parse('') (throws) and don't warn.
+    if (entry.data.trim() === '') return {};
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, UniverCfRuleEntry[]>;
     } catch (e) {
-        // Silently returning {} drops ALL conditional-formatting rules (color
-        // scales, data bars, icon sets) from the export. Warn so the loss is
-        // visible.
+        // A non-empty but unparseable payload IS a real loss (drops ALL CF
+        // rules). Warn so it's visible.
         console.warn(
             '[Notesheet] CF resource JSON parse failed; conditional formatting dropped from export',
             e,
@@ -3382,8 +3395,27 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
             try {
                 if (!t.range || !Array.isArray(t.columns) || t.columns.length === 0) continue;
                 const headerRow = t.options?.showHeader !== false;
-                const totalsRow = !!t.options?.showFooter;
-                const totalHeight = t.range.endRow - t.range.startRow + 1;
+                // Detect a totals row from the TABLE meta (notesheetTotalsRowCount,
+                // stamped at import from <table totalsRowCount>), NOT from
+                // options.showFooter and NOT from column totalsRowLabel. Two
+                // traps this avoids:
+                //   1. Univer's sheets-table plugin doesn't model a totals row —
+                //      the editor save() snapshot returns showFooter:false even
+                //      when the source had one. So showFooter can't be trusted.
+                //   2. exceljs writes a DEFAULT totalsRowLabel="Total" on every
+                //      column even for tables with NO totals row, so inferring
+                //      "has totals" from column labels false-fires and wipes the
+                //      last data row (M9 round-trip regression).
+                // The source's totalsRowCount is the only authoritative signal.
+                const metaEarly = (t.meta ?? {}) as NotesheetTableMeta;
+                const totalsRow =
+                    !!t.options?.showFooter || (metaEarly.notesheetTotalsRowCount ?? 0) > 0;
+                // Univer keeps the FULL range (startRow..endRow still spans the
+                // totals row) but drops showFooter — it just doesn't flag the
+                // last row as totals. So we flip totalsRow on WITHOUT changing
+                // the range; the totals row is the existing range's last row.
+                const rangeEndRow = t.range.endRow;
+                const totalHeight = rangeEndRow - t.range.startRow + 1;
                 const dataRowCount = Math.max(
                     0,
                     totalHeight - (headerRow ? 1 : 0) - (totalsRow ? 1 : 0),
@@ -3470,7 +3502,7 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                 // <f>SUBTOTAL(103,ProjectTracker[Status])</f><v>8</v>, matching
                 // what native Excel stores, so no load-time recalc fires.
                 if (totalsRow) {
-                    const totalsR = t.range.endRow; // 0-based snapshot totals row
+                    const totalsR = rangeEndRow; // 0-based snapshot totals row
                     const totalsCells = cellData[totalsR];
                     if (totalsCells) {
                         for (let ci = 0; ci < t.columns.length; ci++) {

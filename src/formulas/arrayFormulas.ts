@@ -142,6 +142,9 @@ export function readArrayFormulaSidecar(snapshot: {
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === NOTESHEET_ARRAY_FORMULAS_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
+    // Univer emits an empty-string `data` for a registered-but-empty resource
+    // (no array formulas). That's "nothing to read", not corruption — skip.
+    if (entry.data.trim() === '') return {};
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
