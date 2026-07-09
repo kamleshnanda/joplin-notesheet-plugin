@@ -410,6 +410,44 @@ every feature.
 
 ## In progress
 
+- **M18 manual-test findings (round 3) — RETEST results (2026-07-09, build #7).**
+  Operator retested build #5 and reported: #4 ✓, #3 convert ✓ but **undo broken**,
+  #5 **still circular-ref in Excel**, #1 still shows plain image, #2 deferred.
+  Root-caused and fixed the two real regressions:
+  - **#5 — REAL FIX (was false-confidence test).** The prior test asserted only
+    the SUBTOTAL formula TEXT; the actual Excel-breaking issue was the DROPPED
+    cached `<v>`. Research (exceljs source + OOXML recalc model) confirmed:
+    exceljs `Table.store()` rewrites each totals cell as
+    `{formula, result: column.totalsRowResult}` — we never set totalsRowResult,
+    so it emits `<f>…</f>` with NO `<v>`. A value-less totals formula forces
+    Excel to recalc on open; during load-time eval the structured ref
+    `ProjectTracker[Status]` transiently spans the whole column incl. the totals
+    cell → circular ref. FIX: re-apply totals-row formula cells (with imported
+    cached value) AFTER `addTable().store()` (mirrors the header re-apply) →
+    emits `<f>SUBTOTAL(103,…)</f><v>8</v>` like native Excel. PLUS `patchCalcId`:
+    exceljs hard-codes older `calcId="171027"` (itself a recalc-on-open trigger)
+    → bump to 191029. Verified on BOTH ProjectTracker + ProductCatalog fixtures.
+    Test strengthened to assert the cached `<v>` on every totals formula cell +
+    calcId. LESSON (again): pin the Excel-critical value, not our own emit —
+    see [[feedback_pge_fidelity_test_gap]].
+  - **#3 undo — FIXED.** The handler applied a bare SetRangeValuesMutation, which
+    changes cells but registers nothing on the undo stack. Now mirrors the
+    built-in: build inverse via SetRangeValuesUndoMutationFactory, sequenceExecute
+    the redo, undoRedoService.pushUndoRedo. Live-verified: convert C3:C11 → undo
+    reverts all to original text. (Also earlier this round: repointed the built-in
+    ribbon button at our command + single atomic mutation so percent cells convert
+    via the button — live-verified.)
+  - **#1 — confirmed NOT fixable live; preserve-only is the ceiling.** Operator's
+    NotesheetStyledImage.png shows the image rendering perfectly as a plain rect,
+    no glow/shadow frame. Univer 0.23 `IImageData` has no effectLst field — the
+    editor CANNOT paint image glow/shadow. Our export DOES preserve it (Excel
+    re-renders the frame on the round-tripped file). Documented in README
+    known-shortcomings. Fixing live would require a custom Univer render layer
+    (out of scope).
+  - **#2 — deferred to M21** (in-cell/rich-value images), as planned.
+  - Pre-existing unrelated `m/d/yy`→`mm-dd-yy` date-format test failure still
+    present on clean HEAD; flagged to operator, not part of this work.
+
 - **M18 manual-test findings (round 3) — export-correctness & fidelity fixes**
   (2026-07-08, on `m18-a3-emu-anchor-offsets`). Operator round-tripped real
   fixtures through import → export → reopen-in-Excel and reported 6 issues.
