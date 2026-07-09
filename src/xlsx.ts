@@ -3456,6 +3456,35 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                         }
                     }
                 }
+
+                // Finding #5: re-apply the TOTALS-ROW cells after store(), with
+                // their CACHED VALUE. exceljs's Table.store() overwrites each
+                // totals cell with { formula: <generated SUBTOTAL>, result:
+                // column.totalsRowResult } — and since exceljs has no cached
+                // result, it emits <f>…</f> with NO <v>. A value-less totals
+                // formula forces Excel to recalc it on open, and during load-
+                // time evaluation the structured ref (ProjectTracker[Status])
+                // transiently spans the whole column INCLUDING the totals cell
+                // itself → "circular reference" error. Writing back our imported
+                // formula + cached value (from cellData) makes exceljs emit
+                // <f>SUBTOTAL(103,ProjectTracker[Status])</f><v>8</v>, matching
+                // what native Excel stores, so no load-time recalc fires.
+                if (totalsRow) {
+                    const totalsR = t.range.endRow; // 0-based snapshot totals row
+                    const totalsCells = cellData[totalsR];
+                    if (totalsCells) {
+                        for (let ci = 0; ci < t.columns.length; ci++) {
+                            const colIdx = t.range.startColumn + ci;
+                            const td = totalsCells[colIdx];
+                            if (!td || !td.f) continue; // only re-apply formula cells
+                            const formula = td.f.startsWith('=') ? td.f.slice(1) : td.f;
+                            ws.getCell(totalsR + 1, colIdx + 1).value = {
+                                formula,
+                                result: td.v as ExcelJS.CellFormulaValue['result'],
+                            };
+                        }
+                    }
+                }
             } catch (e) {
                 console.warn('[Notesheet] could not export table', t?.name, e);
             }
@@ -3528,6 +3557,10 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     // exceljs stripped. Order-independent of the drawing injectors — it only
     // rewrites <f> elements in the worksheet XML.
     out = await injectArrayFormulasIntoZip(out, snapshot);
+    // Finding #5 (supporting): bump exceljs's hard-coded older calcId so Excel
+    // trusts the cached results and doesn't force a recalc-on-open (which is
+    // what surfaces the totals-row structured-ref self-reference).
+    out = await patchCalcId(out);
     return out;
 }
 
@@ -3597,6 +3630,43 @@ async function patchThemeFont(buffer: ArrayBuffer, fontName: string): Promise<Ar
 // cells inherit) with the size captured on import. Only the first <font>
 // in <fonts> is touched — explicit per-cell font sizes are left alone.
 // Fails soft (returns the input) so a parse miss never corrupts the file.
+// Finding #5 (supporting fix): exceljs hard-codes `<calcPr calcId="171027"/>`
+// in its workbook serializer, ignoring the source workbook. 171027 is an OLDER
+// calc-engine stamp than modern Excel writes (e.g. 191029/196...), and Excel
+// treats a file whose calcId predates its own engine as "recalculate on load".
+// A forced load-time recalc is what exposes the totals-row structured-ref
+// self-reference (see the totals-row re-apply above). Bumping the emitted
+// calcId to a current value tells Excel the cached results are trustworthy, so
+// it doesn't recalc on open. Fidelity-neutral: calcId only influences whether a
+// recalc is forced, not any cell content. Fail-soft.
+const NOTESHEET_CALC_ID = 191029;
+async function patchCalcId(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+    try {
+        const zip = await JSZip.loadAsync(buffer);
+        const wbPath = Object.keys(zip.files).find((p) => /^xl\/workbook\.xml$/i.test(p));
+        if (!wbPath) return buffer;
+        const xml = await zip.files[wbPath].async('string');
+        let patched: string;
+        if (/<calcPr\b[^>]*\bcalcId="\d+"/.test(xml)) {
+            patched = xml.replace(/(<calcPr\b[^>]*\bcalcId=")\d+(")/, `$1${NOTESHEET_CALC_ID}$2`);
+        } else if (/<calcPr\b/.test(xml)) {
+            patched = xml.replace(/<calcPr\b/, `<calcPr calcId="${NOTESHEET_CALC_ID}"`);
+        } else {
+            // No <calcPr> at all — insert one before </workbook>.
+            patched = xml.replace(
+                /<\/workbook>/,
+                `<calcPr calcId="${NOTESHEET_CALC_ID}"/></workbook>`,
+            );
+        }
+        if (patched === xml) return buffer;
+        zip.file(wbPath, patched);
+        return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
+    } catch (e) {
+        console.warn('[Notesheet] patchCalcId failed; keeping exceljs default calcId', e);
+        return buffer;
+    }
+}
+
 async function patchDefaultFontSize(buffer: ArrayBuffer, sizePts: number): Promise<ArrayBuffer> {
     try {
         const zip = await JSZip.loadAsync(buffer);

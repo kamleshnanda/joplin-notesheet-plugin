@@ -6,19 +6,20 @@
 //
 // Registration recipe verified against @univerjs 0.23.0 bundled source:
 //   - Register AFTER univer.createUnit(): the UNIVER_SHEET plugins (sheets,
-//     sheets-ui, sheets-numfmt) are lazily instantiated on createUnit, so
-//     SheetsSelectionsService / SetNumfmtCommand / the ribbon menu schema only
-//     exist afterwards. The ribbon rebuilds reactively on menuChanged$, so a
-//     late mergeMenu still appears.
+//     sheets-ui) are lazily instantiated on createUnit, so
+//     SheetsSelectionsService / the ribbon menu schema only exist afterwards.
+//     The ribbon rebuilds reactively on menuChanged$, so a late mergeMenu is
+//     picked up.
 //   - Command mirrors the built-in TextToNumberCommand structure
-//     (@univerjs/sheets: getSheetCommandTarget + SheetsSelectionsService +
-//     SetRangeValuesMutation), but relaxes the numeric gate via
-//     parseTextToNumber and applies the derived numfmt via the high-level
-//     SetNumfmtCommand (@univerjs/sheets-numfmt), which also fixes up the cell
-//     value-type and handles undo.
-//   - The built-in Data → Text to Number item is hidden via the preset `menu`
-//     config in editorView (commandId can't be repointed on an existing item),
-//     and we add our own item under the same Data-ribbon group.
+//     (getSheetCommandTarget + SheetsSelectionsService + SetRangeValuesMutation
+//     + SetRangeValuesUndoMutationFactory + IUndoRedoService.pushUndoRedo), but
+//     relaxes the numeric gate via parseTextToNumber and folds the derived
+//     number format INLINE on the same mutation (s.n.pattern) instead of a
+//     follow-up SetNumfmtCommand — see the handler comment for why.
+//   - Rather than add a second menu item + hide the built-in, we REPOINT the
+//     existing built-in `sheet.toolbar.text-to-number` ribbon button's
+//     menuItemFactory at our command id (mergeMenu replaces the factory for a
+//     matching key). Reusing the drawn button is more robust than adding one.
 
 // Core DI + data types come from the presets barrel (re-exports @univerjs/core).
 import {

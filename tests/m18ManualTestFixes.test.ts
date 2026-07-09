@@ -68,6 +68,37 @@ describe('#5 — table totals-row functions survive export (no circular ref)', (
         // this is what prevents the circular-reference error.
         expect(sheet1).toMatch(/SUBTOTAL\(103,ProjectTracker\[Status\]\)/);
     });
+
+    test('totals-row formula cells keep their CACHED VALUE (no recalc-on-open)', async () => {
+        // The earlier version of this fix asserted only the formula TEXT and
+        // still shipped the circular-ref bug: exceljs's Table.store() rewrote
+        // the totals cells as <f>…</f> with NO <v>, and a value-less totals
+        // formula forces Excel to recalc on open, which mis-resolves the
+        // structured ref into a self-reference. The cached <v> is the actual
+        // fix — assert it survives for every totals-row formula cell.
+        const zip = await roundTripToZip('FormattingSmorgasboard.xlsx');
+        const sheet1 = (await zip.file('xl/worksheets/sheet1.xml')?.async('string')) ?? '';
+        const row10 = sheet1.match(/<row r="10"[\s\S]*?<\/row>/)?.[0] ?? '';
+        // Every totals cell that carries an <f> must also carry a <v>.
+        const cellsWithFormula =
+            row10.match(/<c\b[^>]*>(?:(?!<\/c>)[\s\S])*?<f>[\s\S]*?<\/c>/g) ?? [];
+        expect(cellsWithFormula.length).toBeGreaterThanOrEqual(4); // C/D/E/G totals
+        for (const cell of cellsWithFormula) {
+            expect(cell).toMatch(/<f>[\s\S]*?<\/f>\s*<v>[\s\S]*?<\/v>/);
+        }
+        // Status totals specifically: SUBTOTAL(103,…) with cached count 8.
+        expect(row10).toMatch(/SUBTOTAL\(103,ProjectTracker\[Status\]\)<\/f><v>8<\/v>/);
+    });
+
+    test('workbook calcId is not the stale exceljs default (no forced recalc)', async () => {
+        const zip = await roundTripToZip('FormattingSmorgasboard.xlsx');
+        const wb = (await zip.file('xl/workbook.xml')?.async('string')) ?? '';
+        // exceljs hard-codes calcId="171027" (older than modern Excel); that
+        // stale stamp forces a recalc-on-open. We bump it so Excel trusts the
+        // cached results.
+        expect(wb).not.toMatch(/calcId="171027"/);
+        expect(wb).toMatch(/calcId="191029"/);
+    });
 });
 
 describe('#1 — styled image glow/shadow frame survives export', () => {
