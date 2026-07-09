@@ -664,11 +664,10 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                     'sheet.command.sort-range-desc-ctx': { hidden: true },
                     'sheet.command.sort-range-asc-ext-ctx': { hidden: true },
                     'sheet.command.sort-range-desc-ext-ctx': { hidden: true },
-                    // Finding #3: hide Univer's built-in Text-to-Number (it
-                    // only converts bare numerals — refuses "0%", "1,234",
-                    // "$5"). We register a generic replacement that mirrors
-                    // Excel's Convert-to-Number under the same Data-ribbon group.
-                    'sheet.command.text-to-number': { hidden: true },
+                    // Finding #3: the built-in "Text to Number" ribbon button is
+                    // KEPT visible, but registerTextToNumberCommand repoints its
+                    // menuItemFactory at our generic command (percent / currency
+                    // / grouped / float), replacing Univer's numeral-only one.
                 },
             }),
             UniverSheetsSortPreset(),

@@ -37,7 +37,6 @@ import {
     SheetsSelectionsService,
     getSheetCommandTarget,
     SetRangeValuesMutation,
-    SetNumfmtCommand,
     IMenuManagerService,
     RibbonPosition,
     RibbonDataGroup,
@@ -51,6 +50,10 @@ import { parseTextToNumber } from './textToNumber';
 const CELL_TYPE_NUMBER = 2;
 
 export const NOTESHEET_TEXT_TO_NUMBER_COMMAND_ID = 'notesheet.command.text-to-number-generic';
+
+// Univer's built-in Text-to-Number ribbon button id (sheets-ui). We repoint
+// this existing item's command at ours rather than adding a second button.
+const BUILTIN_TEXT_TO_NUMBER_MENU_ID = 'sheet.toolbar.text-to-number';
 
 // A minimal structural view of the Univer accessor + services we touch. The
 // bundled packages are loosely typed here (the presets barrel doesn't re-export
@@ -115,12 +118,6 @@ export function registerTextToNumberCommand(injector: { get: (id: unknown) => un
                 if (!ranges.length) return false;
 
                 const newValues = new ObjectMatrix();
-                const numfmtValues: Array<{
-                    row: number;
-                    col: number;
-                    pattern: string;
-                    type: string;
-                }> = [];
                 let converted = 0;
 
                 for (const rng of ranges) {
@@ -131,18 +128,24 @@ export function registerTextToNumberCommand(injector: { get: (id: unknown) => un
                             if (cell.t === CELL_TYPE_NUMBER) continue; // already numeric
                             const parsed = parseTextToNumber(String(cell.v));
                             if (!parsed) continue; // not a number → leave as text
-                            newValues.setValue(r, c, {
-                                v: parsed.value,
-                                t: CELL_TYPE_NUMBER,
-                            });
-                            if (parsed.pattern) {
-                                numfmtValues.push({
-                                    row: r,
-                                    col: c,
-                                    pattern: parsed.pattern,
-                                    type: 'unknown',
-                                });
-                            }
+                            // Write value + type + (optional) number format in ONE
+                            // cell payload. Folding the numfmt into an inline style
+                            // (s.n.pattern) on the SAME SetRangeValuesMutation is
+                            // deliberate: a separate follow-up SetNumfmtCommand
+                            // reverts the just-converted percent cells when the
+                            // command is dispatched from the ribbon button (the
+                            // button's layoutService.focus() re-enters the numfmt
+                            // interceptor and re-derives the cell type from the
+                            // pre-conversion text). One atomic mutation is
+                            // dispatch-path-independent — it converts identically
+                            // whether invoked from the menu or programmatically.
+                            const payload: {
+                                v: number;
+                                t: number;
+                                s?: { n: { pattern: string } };
+                            } = { v: parsed.value, t: CELL_TYPE_NUMBER };
+                            if (parsed.pattern) payload.s = { n: { pattern: parsed.pattern } };
+                            newValues.setValue(r, c, payload);
                             converted++;
                         }
                     }
@@ -154,20 +157,19 @@ export function registerTextToNumberCommand(injector: { get: (id: unknown) => un
                     subUnitId,
                     cellValue: newValues.getMatrix(),
                 });
-                if (numfmtValues.length) {
-                    // High-level command: applies numfmt + fixes cell value-type
-                    // + registers undo. `values` is keyed to the active sheet.
-                    commandService.syncExecuteCommand((SetNumfmtCommand as { id: string }).id, {
-                        values: numfmtValues,
-                    });
-                }
                 return true;
             },
         });
 
-        // Add our menu item under Data → Others (the built-in text-to-number
-        // lives here too; it's hidden via the preset menu config). The ribbon
-        // rebuilds reactively, so this late merge appears.
+        // Repoint the EXISTING built-in "Text to Number" ribbon button at our
+        // command. The built-in item id is `sheet.toolbar.text-to-number`,
+        // placed at [DATA][OTHERS] in the ribbon schema. mergeMenu deep-merges
+        // by key, replacing the `menuItemFactory` function reference for a key
+        // that already exists — so returning a factory with the SAME id + label
+        // but our `commandId` makes the visible button dispatch our generic
+        // command instead of Univer's numeral-only one. (Adding a SEPARATE item
+        // didn't render, and hiding the built-in + adding our own is more
+        // fragile than reusing the button the ribbon already draws.)
         const menuManager = injector.get(IMenuManagerService) as {
             mergeMenu?: (schema: unknown) => void;
         };
@@ -175,15 +177,13 @@ export function registerTextToNumberCommand(injector: { get: (id: unknown) => un
             menuManager.mergeMenu({
                 [RibbonPosition.DATA]: {
                     [RibbonDataGroup.OTHERS]: {
-                        [NOTESHEET_TEXT_TO_NUMBER_COMMAND_ID]: {
-                            order: 1,
+                        [BUILTIN_TEXT_TO_NUMBER_MENU_ID]: {
                             menuItemFactory: () => ({
-                                id: NOTESHEET_TEXT_TO_NUMBER_COMMAND_ID,
+                                id: BUILTIN_TEXT_TO_NUMBER_MENU_ID,
                                 commandId: NOTESHEET_TEXT_TO_NUMBER_COMMAND_ID,
                                 type: MenuItemType.BUTTON,
                                 title: 'notesheet.textToNumber.title',
                                 tooltip: 'notesheet.textToNumber.tooltip',
-                                icon: 'AutoNumberSingle',
                             }),
                         },
                     },
