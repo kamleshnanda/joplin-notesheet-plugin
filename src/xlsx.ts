@@ -128,6 +128,10 @@ export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SC
 // it's imported above and re-exported here for callers that reach it via the
 // xlsx module.
 export { NOTESHEET_SHAPES_RESOURCE };
+// Re-export so editorView can register the array-formula sidecar in the
+// resource round-trip hook (finding #4) — without it, Univer drops the
+// unregistered resource on editor save and array markers vanish on export.
+export { NOTESHEET_ARRAY_FORMULAS_RESOURCE };
 
 // Univer's Conditional Formatting plugin reads / writes its rules
 // through this resource entry name (M15). Confirmed in

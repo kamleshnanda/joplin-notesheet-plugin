@@ -55,6 +55,7 @@ import {
     NOTESHEET_SYNTH_STYLES_RESOURCE,
     NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
     NOTESHEET_SHAPES_RESOURCE,
+    NOTESHEET_ARRAY_FORMULAS_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
 import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
@@ -732,6 +733,11 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                 // (without it, Univer drops the unregistered resource on save
                 // and shapes vanish the moment the user edits the note).
                 NOTESHEET_SHAPES_RESOURCE,
+                // Finding #4: array-formula sidecar (t="array" ref markers).
+                // Same passthrough reasoning — Univer doesn't model array
+                // formulas, so without this hook the sidecar is dropped on the
+                // first editor save and the markers are lost on re-export.
+                NOTESHEET_ARRAY_FORMULAS_RESOURCE,
             ]) {
                 const stash = new Map<string, string>();
                 resourceManager.registerPluginResource({
