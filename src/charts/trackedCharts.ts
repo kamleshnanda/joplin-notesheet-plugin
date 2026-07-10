@@ -26,6 +26,14 @@ export interface TrackedChart {
     // a cell re-reads the whole range and the header leaks in as a phantom
     // category (the "Quarter" 5th-bar bug).
     hasHeaderRow?: boolean;
+    // True when the sourceRange's FIRST COLUMN is the category (X-axis label)
+    // column, false when EVERY column is a value series (categories are row
+    // indices). Derived from meta.categoryAxisType: 'category' → true,
+    // 'index' → false (the source chart had no <c:cat>, e.g. 11-stacked-bar:
+    // A=Investment, B=Balance both series). The live-edit / undo re-extract
+    // MUST honour this — otherwise a no-category chart re-extracts with column
+    // A as labels + one series and renders empty on refresh (chart-revert bug).
+    firstColumnIsCategory?: boolean;
 }
 
 export const trackedCharts = new Map<string, TrackedChart>();
@@ -104,6 +112,10 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                     typeof data?.meta?.hasHeaderRow === 'boolean'
                         ? data.meta.hasHeaderRow
                         : data?.meta?.categoryAxisType === 'category',
+                // 'index' → no category column (all columns are series);
+                // 'category' or absent → first column is the category axis
+                // (the header-less authoring path also uses column 0 as labels).
+                firstColumnIsCategory: data?.meta?.categoryAxisType !== 'index',
             });
         }
     }

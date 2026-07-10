@@ -210,34 +210,65 @@ function rangeContainsCell(r: RangeAddress, row: number, col: number): boolean {
     return row >= r.startRow && row <= r.endRow && col >= r.startColumn && col <= r.endColumn;
 }
 
-// Re-extract chart data and push it through the dataBus when an edit lands
-// inside any tracked chart's source range. This never touches Univer's
-// drawing service — the chart's float-dom (position, size, drag state) is
-// untouched. Only the canvas contents update.
-function refreshChartsForEdit(): void {
+// Re-extract chart data and push it through the dataBus. This never touches
+// Univer's drawing service — the chart's float-dom (position, size, drag
+// state) is untouched. Only the canvas contents update.
+//
+// `opts.editedCell` is the ACTIVE-cell hint used by the SheetEditEnded path
+// (a direct type-in edit): only charts whose source range contains that cell
+// refresh. When omitted (undo / redo / paste / fill / any command-driven value
+// change), we can't trust the active cell to indicate what changed, so we
+// refresh EVERY tracked chart by re-extracting its source range. Re-extraction
+// is cheap (a sparse read over a small range) and always yields the current
+// values — this is what makes the chart recover on revert. Without the
+// unconditional path, undo changed the cell but left the chart stale (the bug:
+// increase-then-revert never repainted the bars).
+function refreshCharts(opts?: { editedCell?: { row: number; col: number } }): void {
     if (!activeApi || trackedCharts.size === 0) return;
     try {
         const fWorkbook = activeApi.getActiveWorkbook?.();
-        const fSheet = fWorkbook?.getActiveSheet?.();
-        if (!fSheet) return;
-        const cell = fSheet.getActiveRange?.();
-        if (!cell) return;
-        const r = cell.getRange?.() ?? cell.getRangeData?.();
-        const editedRow = typeof cell.getRow === 'function' ? cell.getRow() : r?.startRow;
-        const editedCol = typeof cell.getColumn === 'function' ? cell.getColumn() : r?.startColumn;
-        if (typeof editedRow !== 'number' || typeof editedCol !== 'number') return;
-
+        if (!fWorkbook) return;
+        const edited = opts?.editedCell;
         for (const chart of trackedCharts.values()) {
-            if (!rangeContainsCell(chart.sourceRange, editedRow, editedCol)) continue;
+            if (edited && !rangeContainsCell(chart.sourceRange, edited.row, edited.col)) {
+                continue;
+            }
             // Pass hasHeaderRow so an imported chart (whose sourceRange spans
             // the header row) re-extracts the same way the importer did —
             // skipping row 0 — instead of leaking the header in as a phantom
             // category on edit.
             const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange, {
                 hasHeaderRow: chart.hasHeaderRow === true,
+                firstColumnIsCategory: chart.firstColumnIsCategory !== false,
             });
             pushChartUpdate(chart.id, fresh);
         }
+    } catch (e) {
+        console.warn('[Notesheet] refreshCharts failed', e);
+    }
+}
+
+// SheetEditEnded path: refresh only charts whose source range contains the
+// active (just-edited) cell.
+function refreshChartsForEdit(): void {
+    if (!activeApi || trackedCharts.size === 0) return;
+    try {
+        const fSheet = activeApi.getActiveWorkbook?.()?.getActiveSheet?.();
+        const cell = fSheet?.getActiveRange?.();
+        if (!cell) {
+            // No active range — fall back to refreshing all so we never leave a
+            // chart stale.
+            refreshCharts();
+            return;
+        }
+        const r = cell.getRange?.() ?? cell.getRangeData?.();
+        const editedRow = typeof cell.getRow === 'function' ? cell.getRow() : r?.startRow;
+        const editedCol = typeof cell.getColumn === 'function' ? cell.getColumn() : r?.startColumn;
+        if (typeof editedRow !== 'number' || typeof editedCol !== 'number') {
+            refreshCharts();
+            return;
+        }
+        refreshCharts({ editedCell: { row: editedRow, col: editedCol } });
     } catch (e) {
         console.warn('[Notesheet] refreshChartsForEdit failed', e);
     }
@@ -886,6 +917,20 @@ function bootUniver(snapshot: Record<string, unknown>): void {
             univerAPI.addEvent(univerAPI.Event.CommandExecuted, (event: { id?: string }) => {
                 if (!event?.id) return;
                 if (event.id.includes('drawing') || event.id.includes('Drawing')) {
+                    scheduleSave();
+                }
+                // Chart live-update on ANY value-changing command, not just
+                // SheetEditEnded (which fires only for a direct type-in edit).
+                // undo/redo, paste, fill, and clear all change cell values via
+                // the set-range-values mutation WITHOUT a SheetEditEnded, so the
+                // chart would go stale on revert. Refresh ALL tracked charts
+                // (the active cell isn't a reliable hint for these) + save.
+                if (
+                    event.id === 'sheet.mutation.set-range-values' ||
+                    event.id === 'univer.command.undo' ||
+                    event.id === 'univer.command.redo'
+                ) {
+                    refreshCharts();
                     scheduleSave();
                 }
             });

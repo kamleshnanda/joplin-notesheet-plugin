@@ -43,6 +43,48 @@ describe('extractRangeAsChartData', () => {
         expect(datasets[1].data).toEqual([20, 25]);
     });
 
+    test('firstColumnIsCategory:false → every column is a series, labels are 1..N', () => {
+        // The 11-stacked-bar case: A=Investment, B=Balance, NO category column
+        // (categories are row indices). With the default (column 0 = labels)
+        // this would collapse to "A as labels + one series" and render empty on
+        // refresh — the chart-revert bug. With firstColumnIsCategory:false both
+        // columns are value series.
+        const wb = fakeWorkbook([
+            [5500, 6798],
+            [2084, 12470],
+            [3464, 3506],
+        ]);
+        const { labels, datasets } = extractRangeAsChartData(
+            wb,
+            { startRow: 1, endRow: 3, startColumn: 0, endColumn: 1 },
+            { firstColumnIsCategory: false },
+        );
+        expect(labels).toEqual(['1', '2', '3']);
+        expect(datasets).toHaveLength(2);
+        expect(datasets[0].data).toEqual([5500, 2084, 3464]);
+        expect(datasets[1].data).toEqual([6798, 12470, 3506]);
+    });
+
+    test('formatted display strings (currency/grouped/percent) coerce to numbers', () => {
+        // getValues() returns the DISPLAY string for a formatted cell. The
+        // chart-revert bug: currency-formatted series arrived as "$5,500.00"
+        // and Number() → NaN, collapsing the chart on refresh. toNumber must
+        // strip the formatting.
+        const wb = fakeWorkbook([
+            ['A', '$5,500.00'],
+            ['B', '1,234.56'],
+            ['C', '50%'],
+            ['D', '(1,000.00)'],
+        ]);
+        const { datasets } = extractRangeAsChartData(wb, {
+            startRow: 0,
+            endRow: 3,
+            startColumn: 0,
+            endColumn: 1,
+        });
+        expect(datasets[0].data).toEqual([5500, 1234.56, 0.5, -1000]);
+    });
+
     test('single column → one unlabeled series', () => {
         const wb = fakeWorkbook([[1], [2], [3]]);
         const { labels, datasets } = extractRangeAsChartData(wb, {

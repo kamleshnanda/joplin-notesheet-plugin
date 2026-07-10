@@ -44,7 +44,36 @@ function toNumber(v: unknown): number {
         const t = v.trim();
         if (t === '') return NaN;
         const n = Number(t);
-        return Number.isFinite(n) ? n : NaN;
+        if (Number.isFinite(n)) return n;
+        // The range facade's getValues() returns the DISPLAY string for a
+        // formatted cell, so a currency/grouped/percent value arrives as
+        // "$5,500.00" / "1,234" / "50%" — which Number() can't parse (→ NaN),
+        // collapsing the chart on live-edit / undo refresh (the chart-revert
+        // bug: currency-formatted series vanished on refresh while plain-number
+        // series survived). Strip the formatting decoration and re-parse.
+        //   - trailing % → divide by 100
+        //   - leading/trailing currency symbol or 3-letter code
+        //   - thousands separators, whitespace
+        //   - accounting negatives in parentheses
+        let s = t;
+        let sign = 1;
+        const paren = s.match(/^\((.*)\)$/);
+        if (paren) {
+            sign = -1;
+            s = paren[1].trim();
+        }
+        const isPercent = /%$/.test(s);
+        // Remove currency symbols, 3-letter codes, thousands separators, spaces.
+        s = s
+            .replace(/%$/, '')
+            .replace(/[$€£¥]/g, '')
+            .replace(/\b[A-Za-z]{2,3}\b/g, '')
+            .replace(/,/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+        const parsed = Number(s);
+        if (!Number.isFinite(parsed)) return NaN;
+        return sign * (isPercent ? parsed / 100 : parsed);
     }
     if (typeof v === 'boolean') return v ? 1 : 0;
     return NaN;
@@ -64,14 +93,24 @@ function toLabel(v: unknown): string {
 // re-extract must match the importer, which builds cached labels from the
 // data rows only (e.g. A2:A5, not A1:A5). Defaults to false to preserve the
 // header-less authoring path.
+// `opts.firstColumnIsCategory`: when true (default, matches Excel's "first
+// column = X-axis labels" authoring convention), a multi-column range uses
+// column 0 as labels and columns 1..N as series. When FALSE, EVERY column is a
+// data series and labels are the synthesized row indices 1..N. Imported charts
+// whose Excel source has no category column (both columns are value series,
+// categories are row indices — e.g. the 11-stacked-bar fixture: A=Investment,
+// B=Balance, 2 stacked series) MUST set this false, otherwise the live-edit /
+// undo re-extract collapses the 2-series chart into "column A as labels + one
+// series" and the chart renders empty on refresh (M18 chart-revert bug).
 export function extractRangeAsChartData(
     workbook: unknown,
     range: RangeAddress,
-    opts?: { hasHeaderRow?: boolean },
+    opts?: { hasHeaderRow?: boolean; firstColumnIsCategory?: boolean },
 ): ChartData {
     const empty: ChartData = { labels: [], datasets: [] };
     if (!workbook || !range) return empty;
     const hasHeaderRow = opts?.hasHeaderRow === true;
+    const firstColumnIsCategory = opts?.firstColumnIsCategory !== false; // default true
 
     try {
         const wb = workbook as {
@@ -113,6 +152,23 @@ export function extractRangeAsChartData(
                     },
                 ],
             };
+        }
+
+        // No category column: every column is a data series, labels are 1..N.
+        if (!firstColumnIsCategory) {
+            const datasets: ChartData['datasets'] = [];
+            for (let c = 0; c < cols; c++) {
+                const seriesData = values.map((row) => toNumber(row[c]));
+                const color = CHART_PALETTE[c % CHART_PALETTE.length];
+                const seriesLabel = headerRow ? toLabel(headerRow[c]) : 'Series ' + (c + 1);
+                datasets.push({
+                    label: seriesLabel,
+                    data: seriesData,
+                    backgroundColor: color,
+                    borderColor: color,
+                });
+            }
+            return { labels: values.map((_, i) => String(i + 1)), datasets };
         }
 
         const labels = values.map((row) => toLabel(row[0]));
