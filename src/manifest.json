@@ -10,5 +10,11 @@
     "homepage_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
     "repository_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
     "keywords": ["spreadsheet", "sheet", "table", "formula", "calculation", "xlsx", "excel"],
-    "categories": ["productivity", "editor"]
+    "categories": ["productivity", "editor"],
+    "icons": {
+        "16": "assets/icons/icon16.png",
+        "32": "assets/icons/icon32.png",
+        "48": "assets/icons/icon48.png",
+        "128": "assets/icons/icon128.png"
+    }
 }
