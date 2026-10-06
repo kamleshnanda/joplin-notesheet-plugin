@@ -2,6 +2,12 @@
 
 Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SDK](https://github.com/dream-num/univer), it gives Joplin first-class support for formulas, formatting, sorting, filtering, named tables, conditional formatting, anchored charts, and `.xlsx` import / export — all inside the note editor pane you already use.
 
+![An imported Excel workbook with a bar chart and a pie chart in Notesheet](assets/screenshots/charts-editor.png)
+
+## Installation
+
+In Joplin desktop (3.5 or later): **Tools → Options → Plugins**, search for **Notesheet**, click **Install**, then restart Joplin. Create a sheet with **Tools → New Spreadsheet** (`Cmd/Ctrl+Shift+S`), or bring in an existing workbook with **Tools → Import .xlsx as Notesheet**.
+
 ## Features
 
 ### Spreadsheets in any note
@@ -137,6 +143,7 @@ The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable 
 | ⏳  | M19 — Static-render & import gaps: iconSet / rich-text in HTML export, accounting number formats, multi-table workbooks, theme-tinted borders, Univer keybinding bugs — backlog groups D–E                                                                             | planned                                                                                                                                                                                                                                                                                     |
 | ⏳  | M20 — Codebase health: `uuid` CVE, transitive deprecation cleanup, exceljs watch-item — backlog group F                                                                                                                                                                | planned                                                                                                                                                                                                                                                                                     |
 | ⏳  | M21 — In-cell (rich-value) image `.xlsx` round-trip: import Excel "Place in Cell" images (`richData`/`_localImage`) as native Univer cell images (fixes `#VALUE!` placeholder), and regenerate the `richData`/`metadata` parts on export                               | planned                                                                                                                                                                                                                                                                                     |
+| ⏳  | M22 — Marketplace readiness: `.jpl` 13.7 → 9.3 MB (unused Univer hyphenation dictionaries stubbed), plugin icon / screenshots / promo tile in the manifest, npm package metadata, MIT `LICENSE` file                                                                   | PR_PLACEHOLDER                                                                                                                                                                                                                                                                              |
 
 ### Dependency hygiene
 

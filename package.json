@@ -1,6 +1,16 @@
 {
     "name": "joplin-plugin-notesheet",
     "version": "1.0.0",
+    "description": "Spreadsheets for Joplin. A Joplin note can be a full spreadsheet powered by the Univer SDK — formulas, formatting, sort, filter, charts, and .xlsx import/export.",
+    "author": "Kamlesh Nanda",
+    "homepage": "https://github.com/kamleshnanda/joplin-notesheet-plugin#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kamleshnanda/joplin-notesheet-plugin.git"
+    },
+    "bugs": {
+        "url": "https://github.com/kamleshnanda/joplin-notesheet-plugin/issues"
+    },
     "scripts": {
         "dist": "webpack --env joplin-plugin-config=buildMain && webpack --env joplin-plugin-config=buildExtraScripts && webpack --env joplin-plugin-config=createArchive",
         "prepare": "husky && npm run dist",
@@ -26,7 +36,11 @@
         ]
     },
     "keywords": [
-        "joplin-plugin"
+        "joplin-plugin",
+        "spreadsheet",
+        "xlsx",
+        "excel",
+        "univer"
     ],
     "files": [
         "publish"

@@ -228,6 +228,11 @@ joplin.plugins.register({
                 MenuItemLocation.Tools,
                 { accelerator: 'CmdOrCtrl+Shift+S' },
             );
+            await joplin.views.menuItems.create(
+                'notesheetImportXlsxMenu',
+                'importXlsxAsNotesheet',
+                MenuItemLocation.Tools,
+            );
 
             console.info(LOG, 'plugin loaded');
         } catch (error) {
