@@ -44,7 +44,36 @@ function toNumber(v: unknown): number {
         const t = v.trim();
         if (t === '') return NaN;
         const n = Number(t);
-        return Number.isFinite(n) ? n : NaN;
+        if (Number.isFinite(n)) return n;
+        // The range facade's getValues() returns the DISPLAY string for a
+        // formatted cell, so a currency/grouped/percent value arrives as
+        // "$5,500.00" / "1,234" / "50%" — which Number() can't parse (→ NaN),
+        // collapsing the chart on live-edit / undo refresh (the chart-revert
+        // bug: currency-formatted series vanished on refresh while plain-number
+        // series survived). Strip the formatting decoration and re-parse.
+        //   - trailing % → divide by 100
+        //   - leading/trailing currency symbol or 3-letter code
+        //   - thousands separators, whitespace
+        //   - accounting negatives in parentheses
+        let s = t;
+        let sign = 1;
+        const paren = s.match(/^\((.*)\)$/);
+        if (paren) {
+            sign = -1;
+            s = paren[1].trim();
+        }
+        const isPercent = /%$/.test(s);
+        // Remove currency symbols, 3-letter codes, thousands separators, spaces.
+        s = s
+            .replace(/%$/, '')
+            .replace(/[$€£¥]/g, '')
+            .replace(/\b[A-Za-z]{2,3}\b/g, '')
+            .replace(/,/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+        const parsed = Number(s);
+        if (!Number.isFinite(parsed)) return NaN;
+        return sign * (isPercent ? parsed / 100 : parsed);
     }
     if (typeof v === 'boolean') return v ? 1 : 0;
     return NaN;
@@ -57,9 +86,31 @@ function toLabel(v: unknown): string {
 
 // `workbook` is the FWorkbook facade. We accept `unknown` so callers don't
 // have to import Univer types just to unit-test this.
-export function extractRangeAsChartData(workbook: unknown, range: RangeAddress): ChartData {
+// `opts.hasHeaderRow`: when true, the FIRST row of the range is a header
+// (category-axis title + per-series names), NOT data — drop it from labels
+// and from each series' data. Imported Excel charts whose source has a
+// header row set this (meta.categoryAxisType === 'category'); the live-edit
+// re-extract must match the importer, which builds cached labels from the
+// data rows only (e.g. A2:A5, not A1:A5). Defaults to false to preserve the
+// header-less authoring path.
+// `opts.firstColumnIsCategory`: when true (default, matches Excel's "first
+// column = X-axis labels" authoring convention), a multi-column range uses
+// column 0 as labels and columns 1..N as series. When FALSE, EVERY column is a
+// data series and labels are the synthesized row indices 1..N. Imported charts
+// whose Excel source has no category column (both columns are value series,
+// categories are row indices — e.g. the 11-stacked-bar fixture: A=Investment,
+// B=Balance, 2 stacked series) MUST set this false, otherwise the live-edit /
+// undo re-extract collapses the 2-series chart into "column A as labels + one
+// series" and the chart renders empty on refresh (M18 chart-revert bug).
+export function extractRangeAsChartData(
+    workbook: unknown,
+    range: RangeAddress,
+    opts?: { hasHeaderRow?: boolean; firstColumnIsCategory?: boolean },
+): ChartData {
     const empty: ChartData = { labels: [], datasets: [] };
     if (!workbook || !range) return empty;
+    const hasHeaderRow = opts?.hasHeaderRow === true;
+    const firstColumnIsCategory = opts?.firstColumnIsCategory !== false; // default true
 
     try {
         const wb = workbook as {
@@ -77,17 +128,24 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
         if (!sheet) return empty;
 
         const rangeObj = sheet.getRange?.(range);
-        const values = rangeObj?.getValues?.();
-        if (!Array.isArray(values) || values.length === 0) return empty;
+        const allValues = rangeObj?.getValues?.();
+        if (!Array.isArray(allValues) || allValues.length === 0) return empty;
+
+        // Split off the header row when present: it names the series (per
+        // value column) and the category axis, and must NOT appear as data.
+        const headerRow = hasHeaderRow ? allValues[0] : undefined;
+        const values = hasHeaderRow ? allValues.slice(1) : allValues;
+        if (values.length === 0) return empty;
 
         const cols = values[0].length;
         if (cols === 1) {
             const data = values.map((row) => toNumber(row[0]));
+            const seriesLabel = headerRow ? toLabel(headerRow[0]) : 'Series 1';
             return {
                 labels: data.map((_, i) => String(i + 1)),
                 datasets: [
                     {
-                        label: 'Series 1',
+                        label: seriesLabel,
                         data,
                         backgroundColor: CHART_PALETTE[0],
                         borderColor: CHART_PALETTE[0],
@@ -96,13 +154,32 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
             };
         }
 
+        // No category column: every column is a data series, labels are 1..N.
+        if (!firstColumnIsCategory) {
+            const datasets: ChartData['datasets'] = [];
+            for (let c = 0; c < cols; c++) {
+                const seriesData = values.map((row) => toNumber(row[c]));
+                const color = CHART_PALETTE[c % CHART_PALETTE.length];
+                const seriesLabel = headerRow ? toLabel(headerRow[c]) : 'Series ' + (c + 1);
+                datasets.push({
+                    label: seriesLabel,
+                    data: seriesData,
+                    backgroundColor: color,
+                    borderColor: color,
+                });
+            }
+            return { labels: values.map((_, i) => String(i + 1)), datasets };
+        }
+
         const labels = values.map((row) => toLabel(row[0]));
         const datasets: ChartData['datasets'] = [];
         for (let c = 1; c < cols; c++) {
             const seriesData = values.map((row) => toNumber(row[c]));
             const color = CHART_PALETTE[(c - 1) % CHART_PALETTE.length];
+            // Series name from the header cell of this column when available.
+            const seriesLabel = headerRow ? toLabel(headerRow[c]) : 'Series ' + c;
             datasets.push({
-                label: 'Series ' + c,
+                label: seriesLabel,
                 data: seriesData,
                 backgroundColor: color,
                 borderColor: color,
@@ -111,6 +188,50 @@ export function extractRangeAsChartData(workbook: unknown, range: RangeAddress):
         return { labels, datasets };
     } catch {
         return empty;
+    }
+}
+
+// Detect whether the first row of a selected range is a HEADER row (series
+// names / category-axis title) rather than data — Excel's own heuristic when
+// you insert a chart: row 0 is a header when at least one value column has a
+// TEXT cell in row 0 sitting above NUMERIC data in row 1. Used by insertChart
+// so a user selecting "Region | Q1 | Q2 …" gets series named from the header
+// instead of "Series 1/2/…". Returns false for a single-row range or when the
+// range can't be read (safe default — the header-less authoring path).
+export function detectHeaderRow(workbook: unknown, range: RangeAddress): boolean {
+    if (!workbook || !range) return false;
+    try {
+        const wb = workbook as {
+            getActiveSheet?: () => {
+                getRange?: (r: RangeAddress) => { getValues?: () => unknown[][] } | null;
+            } | null;
+            getSheetBySheetId?: (id: string) => {
+                getRange?: (r: RangeAddress) => { getValues?: () => unknown[][] } | null;
+            } | null;
+        };
+        const sheet =
+            (range.subUnitId && wb.getSheetBySheetId?.(range.subUnitId)) || wb.getActiveSheet?.();
+        const values = sheet?.getRange?.(range)?.getValues?.();
+        if (!Array.isArray(values) || values.length < 2) return false;
+
+        const isBlank = (v: unknown) => v === null || v === undefined || v === '';
+        const isNumeric = (v: unknown) =>
+            typeof v === 'number' ||
+            (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v)));
+
+        const header = values[0];
+        const firstData = values[1];
+        const cols = header.length;
+        // Check value columns only (skip col 0, the category/label column).
+        for (let c = 1; c < cols; c++) {
+            const h = header[c];
+            const d = firstData[c];
+            // Header cell is non-blank text AND the data cell below is numeric.
+            if (!isBlank(h) && !isNumeric(h) && isNumeric(d)) return true;
+        }
+        return false;
+    } catch {
+        return false;
     }
 }
 

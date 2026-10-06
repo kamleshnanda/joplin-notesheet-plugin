@@ -4,6 +4,11 @@ publish/
 build.log
 .DS_Store
 
+# Notesheet local build counter — bumped once per `npm run dist` and stamped
+# into the packaged manifest version (v1.0.0+build.N). Per-user dev state;
+# resets on a fresh clone (commit hash in the build stamp still IDs the build).
+build-number.json
+
 # PGE harness — per-user state (don't commit)
 .claude/settings.local.json
 .claude/.evidence-reads
@@ -17,3 +22,6 @@ AGENT_STOP
 # Excel lock files when a fixture is open in Excel for inspection
 ~$*.xlsx
 ~$*.xls
+
+# Playwright MCP scratch output (browser profile / traces) — not repo content
+.playwright-mcp/

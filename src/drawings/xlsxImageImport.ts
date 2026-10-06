@@ -44,6 +44,20 @@ export interface ImportedImageDrawing {
     // Univer transform width/height (and to synthesize a to-cell for a
     // oneCellAnchor without an <xdr:to>).
     ext?: { width: number; height: number };
+    // Rotation in DEGREES, from the drawing's <a:xfrm rot="..."> (OOXML stores
+    // 60000ths of a degree; we divide by 60000). Absent/0 → axis-aligned.
+    // Univer's IDrawingParam.transform.angle is in degrees (verified against
+    // Univer 0.23 engine-render Transform.rotate + the FImage.setRotate facade),
+    // so this value flows straight through with no radian conversion.
+    rotationDeg?: number;
+    // M18 finding #1: the picture's visual styling that Univer 0.23 can't
+    // render but Excel does — the `<a:effectLst>` (glow / outer shadow / soft
+    // edges) from <xdr:spPr>, and the `<a:srcRect>` crop from <xdr:blipFill>.
+    // Captured verbatim so export can re-emit them and the round-tripped .xlsx
+    // still shows the frame in Excel (preserve-only, like shapes). Absent when
+    // the source picture had none.
+    effectLstXml?: string;
+    srcRectXml?: string;
 }
 
 // Map a media extension to its MIME type. emf/wmf return null — callers skip
@@ -173,6 +187,14 @@ interface RawImageAnchor {
     from: ParsedPoint;
     to: ParsedPoint | null;
     ext: { cx: number; cy: number } | null; // EMU extent (oneCellAnchor)
+    // Rotation in 60000ths of a degree from this <pic>'s <a:xfrm rot="...">.
+    // Per-pic (each picture in a grouped anchor carries its own xfrm), so it is
+    // read from the <pic> body, not the shared anchor geometry. 0 if absent.
+    rotEmuDeg: number;
+    // Verbatim `<a:effectLst>…</a:effectLst>` (from <xdr:spPr>) and
+    // `<a:srcRect …/>` (from <xdr:blipFill>) for finding #1. Empty when absent.
+    effectLstXml: string;
+    srcRectXml: string;
 }
 
 // Walk every anchor block in DOCUMENT order and emit one RawImageAnchor per
@@ -237,7 +259,24 @@ function walkImageAnchors(drawingXml: string): RawImageAnchor[] {
                 picBody.match(/<(?:[A-Za-z_][\w.-]*:)?blip\b[^>]*\sr:embed="([^"]+)"/) ??
                 picBody.match(/<(?:[A-Za-z_][\w.-]*:)?blip\b[^>]*\sembed="([^"]+)"/);
             if (!embedM) continue;
-            out.push({ rEmbed: embedM[1], from, to, ext });
+            // <a:xfrm rot="..."> inside this pic's <spPr>. Namespace-tolerant on
+            // the xfrm element; the rot attribute itself is unprefixed in OOXML.
+            const rotM = picBody.match(new RegExp(`<${NS}xfrm\\b[^>]*\\brot="(-?\\d+)"`));
+            const rotEmuDeg = rotM ? parseInt(rotM[1], 10) : 0;
+            // Finding #1: capture the effect list (glow/shadow) + crop verbatim.
+            // These carry `a:` prefixes in Excel-authored files; we re-emit them
+            // in a drawing doc that declares the `a` namespace, so keep as-is.
+            const effM = picBody.match(/<a:effectLst\b[\s\S]*?<\/a:effectLst>/);
+            const srcRectM = picBody.match(/<a:srcRect\b[^>]*\/>/);
+            out.push({
+                rEmbed: embedM[1],
+                from,
+                to,
+                ext,
+                rotEmuDeg,
+                effectLstXml: effM ? effM[0] : '',
+                srcRectXml: srcRectM ? srcRectM[0] : '',
+            });
         }
     }
     return out;
@@ -359,6 +398,13 @@ export async function readImagesFromXlsxZip(
                     toRowOff,
                 },
                 ...(ext ? { ext } : {}),
+                // OOXML rot is 60000ths of a degree; convert to degrees and
+                // normalise into [0,360) (rot may be negative or ≥ 360°).
+                ...(anchor.rotEmuDeg
+                    ? { rotationDeg: (((anchor.rotEmuDeg / 60000) % 360) + 360) % 360 }
+                    : {}),
+                ...(anchor.effectLstXml ? { effectLstXml: anchor.effectLstXml } : {}),
+                ...(anchor.srcRectXml ? { srcRectXml: anchor.srcRectXml } : {}),
             });
         }
     }

@@ -5,6 +5,107 @@ every feature.
 
 ## Done
 
+- **feature-7 + feature-9 — verified DONE + rows flipped** (2026-06-28) —
+  Both M17-era PGE rows that were still `passes:false` are now resolved.
+  - **feature-7 (B1: chart→SVG in HTML export).** The static-SVG renderer in
+    `src/contentScripts/notesheetRenderer.ts` was already implemented; the
+    18-test `tests/m18ChartHtmlExport.test.ts` covered most of the spec but
+    MISSED two written acceptance criteria, so per the fidelity-test-gap
+    discipline I added them before flipping: (1) **pie sweep angles computed
+    from INPUT within ±3°** (parses each `<path>`'s arc endpoints, compares to
+    `data[i]/sum·360` — not the path COUNT the old test asserted), and (2) the
+    **CF + chart on one sheet** case (cellIs paints B2:B5 pink AND the chart
+    `<svg>` renders, table-before-svg document order, no absolute/z-index
+    overlay). 20/20 pass. **Live preview-pane gate:** wired feature-7 into
+    `eval-screenshot.js` (`previewPane` region, title prefix `PGE M17 chart f7
+    eval `), imported MultiSheet.xlsx, captured
+    `screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png`
+    — 3 sheet tables (Data/Chart/Summary) + the "Data Chart" bar SVG (5 bars,
+    palette blue, axis 0–60). Sidecar: `inlineSvgCount=1`, `rect=5`,
+    `rawJsonLeak=false`, `tableCount=3`.
+  - **EVALUATOR PASS (fresh-context, 2026-06-28).** The PGE evaluator ran
+    independently, captured its OWN preview-pane screenshot
+    (`eval-2026-06-28T11-16-53-565Z.png`), and graded **PASS** — confirmed all
+    5 render cases + palette parity + no viz-lib dep, and that the M13 failure
+    mode (data correct, render flat) does NOT occur (bar heights track the
+    data). Row: `passes:true`, `evaluator_verdict:PASS`.
+  - **HARNESS FIX (load-bearing): `rawJsonLeak` false-positive.** The M16-era
+    heuristic matched `"sheetOrder"`/`"workbook-` on the whole `document.body.
+    innerHTML`. Since the M18 #37 RTE fence-integrity fix, the renderer wraps
+    the ORIGINAL fenced JSON in a HIDDEN `<div class="joplin-source">` (the
+    wrapper is REQUIRED — see [[project_rte_fence_joplin_editable]]), so the
+    raw JSON is in the DOM but NOT visible — `rawJsonLeak` reported `true` on
+    EVERY note. Fixed to strip `.joplin-source` subtrees before checking, so it
+    detects only a TRUE leak (JSON in the visible render path). Confirmed via a
+    DOM probe (`jsonOutsideSource=false`) before changing the heuristic.
+  - **feature-9 (flip m12 pin-downs + test count).** Already satisfied — both
+    pin-downs (`m12ImportRecovery.test.ts:55,89`) are positive imports
+    (MultiSheet → N charts; LargeWorkbook → clean 2-sheet); the test-count gate
+    (267 → ≥290) is far exceeded at 457. The M18 abs-rel-target fix went BEYOND
+    the spec, making FormulasAndStructuredRefs import cleanly too (spec only
+    required it stay an `xlsx-multi-table-unsupported` rejection). Row flipped.
+    **EVALUATOR PASS (fresh-context, 2026-06-28)** — graded as a test-integrity
+    feature (no render dimension) from the test file + git diff + count gate;
+    confirmed the flips reflect REAL importer capability (not regression-hiding
+    weakening — assertions got stronger), the importable-fixtures block is
+    intact, and the count gate is exceeded. Row: `evaluator_verdict:PASS`.
+  - **Verified:** typecheck clean, `npm test` 457/457 (52 suites). New harness
+    util `scripts/pge/capture-image-render.js` (from the A1 gate) committed
+    earlier.
+
+- **M18 adversarial-review fixes** (2026-06-28) — An adversarial code-review
+  workflow over the 8-commit M18 diff surfaced 17 findings; 9 survived
+  independent verification, 8 were false positives (incl. confirming the
+  `m12ImportRecovery` assertion flip was a LEGITIMATE behaviour update, not
+  regression-hiding). Operator chose "fix all confirmed." Test count 445 → 455.
+  - **#1 (HIGH) — rel-target normalizer corrupted `TargetMode="External"`
+    hyperlinks.** `normalizeAbsoluteRelTargets` (`src/xlsx.ts`) keyed only off a
+    leading `/`, so a root-relative (`/folder/page.html`) or protocol-relative
+    (`//host/path`) EXTERNAL hyperlink got relativized to `../../…`, destroying
+    it. Now rewrites per `<Relationship>` element and SKIPS any carrying
+    `TargetMode="External"`. The function-header comment was already claiming
+    this — now true. (Scheme URLs like `https://` always escaped.)
+  - **#2 (HIGH) — live-edit dropped a legitimate first data row.**
+    `trackedCharts.hasHeaderRow` was derived from `categoryAxisType === 'category'`
+    ("had labels"), not "row 0 is a header." A chart whose `<c:cat>` starts at
+    `$A$1` (no header) rendered all N categories initially but lost the FIRST on
+    the first cell edit — the inverse of the `df2bbde` phantom-category bug. Fix:
+    importer now computes a precise `hasHeaderRow` (`labelsRange.startRow >= 1`),
+    threads it through `meta.hasHeaderRow` (round-trips), and `trackedCharts`
+    prefers it (legacy `categoryAxisType` fallback for pre-fix snapshots).
+  - **#3/#4 (MEDIUM) — percentStacked mishandled mixed-sign + cancelling
+    categories.** `NotesheetChart.buildConfig` summed SIGNED values as the
+    denominator and special-cased `total===0` to pass RAW values through (which
+    blew past the 100 axis cap and rendered full-height bars). Now normalises
+    against Σ|v| (sign preserved, absolute shares total 100) and a zero
+    abs-total → 0.
+  - **#5 (LOW) — per-series colour latched onto a nested marker/line fill.**
+    The un-bounded `<c:spPr>…<a:solidFill>` regex skipped across the series
+    spPr close tag into a sibling `<c:marker>` fill (and a series' own `<a:ln>`
+    stroke was read as its fill). Fix: bound to the first `<c:spPr>` block AND
+    strip `<a:ln>` subtrees before reading the fill.
+  - **#6 (MEDIUM, test) — EMU fidelity chart test passed via the px×9525
+    fallback, not the stash path it claimed to verify.** The synthetic snapshot
+    left the stash's cell-index fields undefined (so `anchorUnmoved` returned
+    false) and used 50px/476250 EMU which the fallback reproduces identically.
+    Rewrote the test with a sub-pixel sentinel EMU (478123; round/9525=50 but
+    50×9525=476250≠478123) and a full 8-field stash, so it only passes if the
+    exact stash is emitted. (Import already stashed all 8 fields — pure test
+    gap, no production change.)
+  - **#9 (LOW, test) — nodebuffer regression guard only checked `src/xlsx.ts`.**
+    Broadened to sweep every src file that calls JSZip (chart/image/shape zip
+    rewriters run on the same browser-side path); all already use 'arraybuffer'.
+  - **#7/#8 (LOW) — anchor "unmoved" detection is exact-integer-px + safe px
+    fallback.** Real but BOUNDED (≤½px / 3175 EMU drift; safe degradation, never
+    a crash/mis-anchor). Per "documented shortcoming over unexpected bug,"
+    DOCUMENTED precisely in `sheetIdResolver.ts:resolveAnchorEmu` rather than
+    rewritten — a dirty/moved flag through Univer's drawing service adds
+    regression risk for sub-pixel gain. **Flagged to operator.**
+  - **Verified:** typecheck clean, `npm test` 455/455 (52 suites). New tests:
+    `tests/m18ReviewFixes.test.ts` (#1/#2/#5), additions to
+    `tests/m18ChartPercentStacked.test.ts` (#3/#4) and `m18AbsoluteRelTargets`
+    (#9); `m18AnchorEmuFidelity` chart test rewritten (#6).
+
 - **feature-8-m17-chart-preview-pane-pge-smoke** (2026-06-12) — Closes the
   long-open "does the chart SVG actually reach Joplin's export?" question
   for the M18 B1 work. Wired feature-8 into the eval harness
@@ -309,8 +410,152 @@ every feature.
 
 ## In progress
 
-- **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14, Jest
-  layer DONE; live PGE screenshot gate PENDING). On import, `.xlsx` images
+- **M18 manual-test findings (round 3) — RETEST results (2026-07-09, build #7).**
+  Operator retested build #5 and reported: #4 ✓, #3 convert ✓ but **undo broken**,
+  #5 **still circular-ref in Excel**, #1 still shows plain image, #2 deferred.
+  Root-caused and fixed the two real regressions:
+  - **#5 — took THREE attempts; root cause was the export PATH, not the payload.**
+    Attempt 1 (totalsRowFunction meta): passed a false-confidence test, shipped
+    broken. Attempt 2 (cached `<v>` + calcId): also passed its test, ALSO shipped
+    broken. The reason both tests lied: they ran `xlsxBufferToSnapshot` →
+    `snapshotToXlsxBuffer` DIRECTLY, but the real Joplin export goes through
+    **Univer's editor `save()` first**, and Univer's sheets-table plugin does
+    NOT model a totals row — its save() snapshot returns the table with
+    `showFooter:false` (full range kept). Exporting THAT made exceljs emit
+    `totalsRowShown="1"` (NO `totalsRowCount`) + `autoFilter A1:G10`, so Excel
+    treated row 10 as a data row → `[Status]` spanned G10 → self-reference →
+    circular ref. Attempt 3 (REAL FIX): stamp `notesheetTotalsRowCount` on the
+    table meta at import (Univer round-trips table meta, verified live); on
+    export drive `totalsRow` from that — NOT from `options.showFooter` (Univer
+    zeroes it) and NOT from column `totalsRowLabel` (exceljs defaults it to
+    "Total" on EVERY column → false-fired and wiped the last data row of
+    no-totals tables = M9 regression hit mid-fix). Also kept the cached-`<v>`
+    re-apply + calcId bump from attempt 2 (both still needed). Test now
+    exercises the REAL path via a live Univer save() snapshot fixture
+    (`tests/fixtures/snapshots/FormattingSmorgasboard-univer-save.json`,
+    showFooter:false). LESSON: for round-trip export bugs, the test MUST feed a
+    Univer-save() snapshot, not the direct importer output — the two pipelines
+    diverge on table/CF/drawing resources. See [[feedback_pge_fidelity_test_gap]].
+  - **#3 undo — FIXED.** The handler applied a bare SetRangeValuesMutation, which
+    changes cells but registers nothing on the undo stack. Now mirrors the
+    built-in: build inverse via SetRangeValuesUndoMutationFactory, sequenceExecute
+    the redo, undoRedoService.pushUndoRedo. Live-verified: convert C3:C11 → undo
+    reverts all to original text. (Also earlier this round: repointed the built-in
+    ribbon button at our command + single atomic mutation so percent cells convert
+    via the button — live-verified.)
+  - **#1 — confirmed NOT fixable live; preserve-only is the ceiling.** Operator's
+    NotesheetStyledImage.png shows the image rendering perfectly as a plain rect,
+    no glow/shadow frame. Univer 0.23 `IImageData` has no effectLst field — the
+    editor CANNOT paint image glow/shadow. Our export DOES preserve it (Excel
+    re-renders the frame on the round-tripped file). Documented in README
+    known-shortcomings. Fixing live would require a custom Univer render layer
+    (out of scope).
+  - **#2 — deferred to M21** (in-cell/rich-value images), as planned.
+  - Pre-existing unrelated `m/d/yy`→`mm-dd-yy` date-format test failure still
+    present on clean HEAD; flagged to operator, not part of this work.
+
+- **M18 manual-test findings (round 3) — export-correctness & fidelity fixes**
+  (2026-07-08, on `m18-a3-emu-anchor-offsets`). Operator round-tripped real
+  fixtures through import → export → reopen-in-Excel and reported 6 issues.
+  Tests in `tests/m18ManualTestFixes.test.ts` (anchored to SOURCE fixture XML,
+  not our own emit). Full suite 495 pass (1 pre-existing unrelated failure —
+  see below).
+  - **#4 (DONE) — array (CSE) formula `=A2:A6*2` → `=@A2:A6*2` in Excel.**
+    Source F7 is `<f t="array" ref="F7:F11">A2:A6*2</f>`. exceljs's cell model
+    has NO array-formula representation (FormulaType = None/Master/Shared only),
+    so export wrote a plain `<f>` and Excel reinterpreted it as
+    implicit-intersection. FIX: new `src/formulas/arrayFormulas.ts` — zip-direct
+    reader captures `t="array"`+`ref` at import into a sidecar resource
+    (`SHEET_NOTESHEET_ARRAY_FORMULAS_PLUGIN`); `injectArrayFormulasIntoZip`
+    (export pipeline tail, after shapes) rewrites the exported `<f>` back to
+    `<f t="array" ref="…">`, but ONLY when the exported formula body still
+    matches what we captured (never marks a user-edited formula). Survives a
+    double round-trip. NOTE: `FormulasAndStructuredRefs.xlsx` crashes raw
+    exceljs load (worksheet.js:920 multi-table) — that's WHY the capture must be
+    zip-direct, not via the loaded workbook's cell model.
+  - **#5 (DONE) — table totals row → circular-reference error in Excel.**
+    Source columns carry `totalsRowFunction="sum"/"average"/"count"` +
+    `totalsRowLabel`; our table import captured only column NAMES, so export
+    wrote `totalsRowFunction="none"` everywhere and dropped the totals SUBTOTAL.
+    exceljs's `addTable().store()` then wiped the totals row, and Excel's
+    structured ref `[Status]` no longer excluded the totals cell → self-ref.
+    FIX: `RawTable.columns` is now `RawTableColumn[]` (name + totalsRowFunction +
+    totalsRowLabel); threaded through `parseTableXml` → each `TableColumnJson`'s
+    opaque `meta` (`notesheetTotalsRowFunction`/`notesheetTotalsRowLabel`,
+    round-trips via Univer) → export's `ws.addTable` columns. exceljs then
+    regenerates the correctly-scoped `SUBTOTAL(103,ProjectTracker[Status])`.
+  - **#1 (DONE — preserve-only) — styled-image glow/shadow frame lost.**
+    `Multi-sheet-StlyedImages.xlsx` "Styled Image" carries `<a:effectLst>` (glow
+    accent2 + outerShdw) in `<xdr:spPr>` and an `<a:srcRect>` crop in
+    `<xdr:blipFill>`. VERIFIED against Univer 0.23 source: `IImageData` supports
+    `srcRect`+`prstGeom` but has NO field for `effectLst` — Univer CANNOT render
+    image glow/shadow live. So this is preserve-on-export (like shapes): import
+    captures the verbatim `<a:effectLst>`/`<a:srcRect>` per pic
+    (`xlsxImageImport.ts`), stashes on the drawing entry as `_srcSpPrExtras`
+    (Univer ignores unknown keys), and `buildImagePicXml` re-emits them
+    (effectLst into spPr after prstGeom; srcRect into blipFill before stretch,
+    per CT schema order). The round-tripped .xlsx shows the frame in Excel; the
+    live Univer canvas shows a plain image (documented gap). README note needed.
+  - **#3 (DONE in code; live screenshot proof pending) — Data→Text to Number.**
+    ROOT CAUSE: Univer's built-in `sheet.command.text-to-number` converts a cell
+    only when `isRealNum(cell.v)` — C3 = "0" (parses → works); C10/C11 = literally
+    "0%" (the % is part of the shared string, `quotePrefix="1"`; `Number("0%")`=NaN
+    → no-op). Operator asked for a GENERIC replacement (not percent-only). FIX:
+    `src/formulas/textToNumber.ts` (pure parser: int/float→General; "50%"→0.5+"0%";
+    grouped→"#,##0"; currency→currency pattern; accounting parens→negative; real
+    text/format-codes/dates→null so we never clobber text) + 25 unit tests
+    (`tests/textToNumber.test.ts`). `src/formulas/registerTextToNumber.ts`
+    registers the command + a Data-ribbon menu item on the injector AFTER
+    createUnit (sheet plugins are lazily instantiated then; ribbon rebuilds
+    reactively on menuChanged$). Values via SetRangeValuesMutation, numfmt via
+    the high-level SetNumfmtCommand. Built-in item hidden via the preset `menu`
+    config. All symbols imported from `@univerjs/preset-sheets-core` barrel (not
+    deep transitive pkgs). Command id + `ribbon.data` confirmed in the built
+    editorView.js bundle. STILL TODO: build+install+screenshot in live Joplin to
+    prove the menu appears and C10/C11 convert (needs Joplin restart).
+  - **#6 (DONE — document-only, no code) — iconSet 3Arrows.** Research verified
+    our translation yields the CORRECT value→arrow mapping in Univer 0.23
+    (0/10/20→red-down, 30-60→gold-flat, 70-90→green-up — matches Excel exactly).
+    The descending+catch-all transform (PROGRESS note ~1359) correctly
+    compensates for Univer's internally-reversed icon-map index order. The visible
+    difference is purely Univer's arrow SVG artwork vs Excel's — cosmetic, baked
+    into the preset, not fixable in the importer. Export is byte-correct. Needs a
+    README known-shortcomings note; no code change.
+  - **Pre-existing unrelated failure:** `tests/m12FixtureRoundTrip.test.ts`
+    "row 11 preserves numFmt pattern m/d/yy" expects `m/d/yy` but gets
+    `mm-dd-yy` — fails identically on clean HEAD with all my changes stashed.
+    A date number-format normalization issue, not caused by this work. Flag to
+    operator; don't block the PR on it.
+
+- **Build-identification version scheme** (2026-07-08, on
+  `m18-a3-emu-anchor-offsets`) — every locally built `.jpl` is now uniquely
+  identifiable at a glance, both in the UI and the console, so the operator
+  can tell a fresh build from a stale one without a commit-hash grep.
+  - **How to read it while testing:** Joplin → Settings → Plugins → Notesheet
+    shows `v1.0.0+build.N`. DevTools console still logs
+    `[Notesheet] build #N (<commit><-dirty> @ <UTC time>)` on startup.
+  - **Mechanism** (all in `webpack.config.js`): a monotonic counter in
+    `build-number.json` (gitignored per-user state) bumps ONCE per
+    `npm run dist`. `npm run dist` runs webpack as THREE separate processes
+    (`buildMain && buildExtraScripts && createArchive`); each loads
+    webpack.config.js fresh, so the increment is gated on
+    `IS_BUILD_MAIN_STEP` (argv sniff of `joplin-plugin-config=buildMain`) —
+    the later two steps read the same N. `stampDistManifestVersion()` (called
+    from `onBuildCompleted`, just before the `.jpl` is tarred) rewrites ONLY
+    `dist/manifest.json`'s version to `<base>+build.N` using SemVer build
+    metadata. **The committed `src/manifest.json` and the publish-info
+    `.json` stay clean at `1.0.0`** — build metadata never leaks to a
+    release artifact. The existing `__NOTESHEET_BUILD__` DefinePlugin stamp
+    now carries the number too.
+  - **Verified:** two consecutive `npm run dist` runs produced `+build.1`
+    then `+build.2` (single increment each despite 3 webpack processes);
+    packaged `.jpl` manifest = `1.0.0+build.N`, `src/manifest.json` = `1.0.0`.
+    Confirmed against Joplin's installed source that the Plugins panel renders
+    `v<version>` verbatim with NO semver validation, so `+build.N` displays
+    fine. typecheck + prettier clean.
+
+- **M18 A1 — image drawings round-trip through .xlsx** (2026-06-14 Jest
+  layer; live PGE screenshot gate CLEARED 2026-06-28). On import, `.xlsx` images
   (xl/media/* + their drawing anchors) now emit into the snapshot's
   SHEET_DRAWING_PLUGIN resource as NATIVE Univer image drawings
   (`drawingType: 0`, `imageSourceType: 'BASE64'`, `source: data:<mime>;base64,…`,
@@ -356,10 +601,22 @@ every feature.
     exactly one drawing part holds BOTH chart graphicFrame + `<xdr:pic>` with
     distinct rIds; blip embed rId matches the image rel; re-import yields 1
     chart + 1 image).
-  - **Verified:** `npm test` 407/407, typecheck clean, lint clean, prettier
-    clean, `npm run dist` builds the .jpl. **PENDING: the live Joplin PGE
-    screenshot gate** (import a fixture, confirm the image actually renders in
-    the Univer editor canvas) — not done this session per task scope.
+  - **Verified:** `npm test` now 445/445 (51 suites), typecheck clean, lint
+    clean, prettier clean, `npm run dist` builds the .jpl.
+  - **Live PGE screenshot gate CLEARED (2026-06-28).** After the
+    `nodebuffer`/absolute-rel-target fix-chain (`2b8b746`/`f47b64a`) rebuilt
+    fresh (quit → install → launch), imported `HumanImage-SingleSheet.xlsx`
+    via `import-fixture.sh` (note `bd23e5a6…`) and captured the Univer root
+    via the new `scripts/pge/capture-image-render.js`:
+    `screenshots/m18-a1-image-render/humanimage-20260628T101824.png`. The
+    human-figure image renders as a NATIVE Univer drawing anchored over the
+    cells (matches the fixture's "Over Cell Image" label at A4). Probe sidecar:
+    `univerFrameFound`, main canvas 3008×1396, `imgCount=0` (expected — Univer
+    paints drawings into the canvas pixel buffer, not DOM `<img>`). The C3
+    `#VALUE!` is PRE-EXISTING in the source fixture
+    (`<c r="C3" t="e"><v>#VALUE!</v></c>`), faithfully preserved on import —
+    NOT an import defect. This import (drawings + rels) also re-confirms the
+    fix-chain didn't re-break editor imports.
 
 - **M17 manual-test fidelity fixes (issues 1/2/3/6/7/11)** (2026-06-10) —
   Operator re-ran all 11 chart fixtures through import → export →

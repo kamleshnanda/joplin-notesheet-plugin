@@ -110,6 +110,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-1-m16-snapshot-to-html': 'PGE M16 HTML eval ',
     'feature-1-m17-chart-import-no-crash': 'PGE M17 chart eval ',
     'feature-3-m17-multisheet-import-editor-canvas': 'PGE M17 chart f3 eval ',
+    'feature-7-m17-chart-svg-html-export-jest': 'PGE M17 chart f7 eval ',
     'feature-8-m17-chart-preview-pane-pge-smoke': 'PGE M17 chart f8 eval ',
 };
 
@@ -150,6 +151,12 @@ const REGION_BY_FEATURE = {
     // palette colours that the Chart.js renderer paints into the
     // float-DOM's <canvas> child.
     'feature-3-m17-multisheet-import-editor-canvas': 'floatDomChart',
+    // M17 feature-7 / M18 B1: chart-to-SVG in the static HTML export. This
+    // feature is Jest-gated (tests/m18ChartHtmlExport.test.ts) but its render
+    // dimension is verified live in the same preview pane feature-8 uses —
+    // the inlineSvgCount signal confirms the static-SVG renderer emitted the
+    // <svg class="notesheet-chart"> into the rendered HTML for a real import.
+    'feature-7-m17-chart-svg-html-export-jest': 'previewPane',
     // M17 feature-8 / M18 B1: the same chart, viewed in Joplin's
     // markdown preview pane instead of the editor canvas. Re-uses M16's
     // previewPane region (samplePreviewPaneInk), which now also reports
@@ -1154,12 +1161,26 @@ async function samplePreviewPaneInk(frame, maxColors = 8) {
             const sheetHeadings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'))
                 .map((h) => (h.textContent || '').trim())
                 .filter((s) => !!s);
-            // Did the raw fenced JSON make it to the rendered output? If
-            // the renderer regressed (or didn't run), we'd see a `<pre><code>`
-            // block containing the JSON instead of an HTML table.
-            const rawJsonLeak =
-                document.body.innerHTML.includes('"sheetOrder"') ||
-                document.body.innerHTML.includes('"workbook-');
+            // Did the raw fenced JSON make it to the VISIBLE rendered output?
+            // If the renderer regressed (or didn't run), we'd see a
+            // `<pre><code>` block containing the JSON instead of an HTML table.
+            //
+            // IMPORTANT: exclude Joplin's `.joplin-source` wrapper. Since the
+            // M18 #37 RTE fence-integrity fix, the markdown-it renderer wraps
+            // the ORIGINAL fenced JSON source inside a hidden
+            // `<div class="joplin-source" ...>` alongside the rendered HTML
+            // (the wrapper is REQUIRED — the Rich Text editor destroys the
+            // fence without it, causing data loss). That source div legitimately
+            // contains the JSON but is NOT shown to the user, so matching on
+            // raw `document.body.innerHTML` produced a FALSE rawJsonLeak=true on
+            // every note. Strip `.joplin-source` subtrees, then check what
+            // REMAINS — a true leak is JSON in the visible render path.
+            const rawJsonLeak = (() => {
+                const probe = document.body.cloneNode(true);
+                probe.querySelectorAll('.joplin-source').forEach((n) => n.remove());
+                const h = probe.innerHTML;
+                return h.includes('"sheetOrder"') || h.includes('"workbook-');
+            })();
             // M18 B1 / feature-8: inline chart SVGs in the preview pane.
             // The static-SVG chart renderer emits <svg class="notesheet-chart">
             // after each sheet's table. Count them (≥1 means charts survived

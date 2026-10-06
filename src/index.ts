@@ -7,8 +7,19 @@ import { xlsxBufferToSnapshot } from './xlsx';
 
 const LOG = '[Notesheet]';
 
+// Build stamp injected by webpack's DefinePlugin (see webpack.config.js).
+// Lets the running plugin log exactly which commit is live — the manifest
+// version is hardcoded and can't distinguish a fresh build from a stale one.
+// Declared here (not bundled) and guarded below: under jest (no webpack) the
+// identifier is undefined, so `typeof` keeps tests + non-webpack runs safe.
+declare const __NOTESHEET_BUILD__: string;
+const BUILD_STAMP = typeof __NOTESHEET_BUILD__ === 'string' ? __NOTESHEET_BUILD__ : 'dev';
+
 joplin.plugins.register({
     onStart: async function () {
+        // First line of every session: which build is actually running.
+        // Pair with the grep-the-cache check when verifying a reinstall.
+        console.info(`${LOG} build ${BUILD_STAMP}`);
         try {
             // ── Markdown-It content script: render notesheet fences as
             //    HTML tables in Joplin's preview pane / PDF / HTML export.

@@ -1,0 +1,32 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T11-16-53-565Z.png",
+  "region": "preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)",
+  "regionKind": "previewPane",
+  "dominant": null,
+  "count": 0,
+  "sampled": 0,
+  "top": [],
+  "redInk": 0,
+  "blueInk": 0,
+  "greenInk": 0,
+  "greyInk": 0,
+  "pinkInk": 0,
+  "lightGreenInk": 0,
+  "yellowInk": 0,
+  "tableCount": 3,
+  "sheetHeadings": [
+    "Data",
+    "Chart",
+    "Summary"
+  ],
+  "rawJsonLeak": false,
+  "inlineSvgCount": 1,
+  "chartSvgPrimitives": {
+    "rect": 5,
+    "path": 0,
+    "polyline": 0,
+    "circle": 0
+  },
+  "inkRows": 0,
+  "inkRowSpread": 0
+}

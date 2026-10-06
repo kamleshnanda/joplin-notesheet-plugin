@@ -20,6 +20,20 @@ export interface TrackedChart {
     id: string;
     sourceRange: RangeAddress;
     sourceSheetName?: string;
+    // True when the sourceRange's first row is a header (category-axis title
+    // + series names), so the live-edit re-extract must skip it. Derived from
+    // the chart's meta.categoryAxisType === 'category'. Without this, editing
+    // a cell re-reads the whole range and the header leaks in as a phantom
+    // category (the "Quarter" 5th-bar bug).
+    hasHeaderRow?: boolean;
+    // True when the sourceRange's FIRST COLUMN is the category (X-axis label)
+    // column, false when EVERY column is a value series (categories are row
+    // indices). Derived from meta.categoryAxisType: 'category' → true,
+    // 'index' → false (the source chart had no <c:cat>, e.g. 11-stacked-bar:
+    // A=Investment, B=Balance both series). The live-edit / undo re-extract
+    // MUST honour this — otherwise a no-category chart re-extracts with column
+    // A as labels + one series and renders empty on refresh (chart-revert bug).
+    firstColumnIsCategory?: boolean;
 }
 
 export const trackedCharts = new Map<string, TrackedChart>();
@@ -55,6 +69,10 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                         endColumn?: number;
                     };
                     sourceSheetName?: string;
+                    meta?: {
+                        categoryAxisType?: 'index' | 'category';
+                        hasHeaderRow?: boolean;
+                    };
                 };
             };
             if (d?.componentKey !== 'NotesheetChart') continue;
@@ -82,6 +100,22 @@ export function populateTrackedChartsFromSnapshot(snapshot: Record<string, unkno
                 ...(typeof data?.sourceSheetName === 'string' && data.sourceSheetName
                     ? { sourceSheetName: data.sourceSheetName }
                     : {}),
+                // Whether row 0 of sourceRange is a header to skip on
+                // live-edit re-extract. Prefer the explicit `hasHeaderRow`
+                // signal (set by the importer: true only when the categories
+                // start at sheet row ≥ 2, i.e. a real header sits above them).
+                // Fall back to the legacy categoryAxisType heuristic for
+                // snapshots imported before hasHeaderRow was emitted —
+                // imperfect (it over-skips charts whose <c:cat> starts at row
+                // 0) but matches the prior behaviour for old snapshots.
+                hasHeaderRow:
+                    typeof data?.meta?.hasHeaderRow === 'boolean'
+                        ? data.meta.hasHeaderRow
+                        : data?.meta?.categoryAxisType === 'category',
+                // 'index' → no category column (all columns are series);
+                // 'category' or absent → first column is the category axis
+                // (the header-less authoring path also uses column 0 as labels).
+                firstColumnIsCategory: data?.meta?.categoryAxisType !== 'index',
             });
         }
     }

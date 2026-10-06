@@ -393,4 +393,137 @@ describe('M18 B1 — charts render as static SVG in HTML export', () => {
         const ticks = [...html.matchAll(/<text x="[\d.]+" y="276"/g)];
         expect(ticks.length).toBe(1);
     });
+
+    // ── feature-7 acceptance criterion: pie sweep angles match the INPUT ──
+    // The path-count test above proves "one slice per value"; this proves the
+    // slices are sized to the data. Per the project's "expected from input,
+    // NOT from emit" discipline (M13/E), we independently compute each
+    // expected sweep from the input data and recover the actual sweep by
+    // parsing each <path>'s arc endpoints, asserting agreement within ±3°.
+    test('pie slice sweep angles match the input proportions (±3°)', () => {
+        const data = [40, 30, 20, 10]; // sums to 100
+        const html = renderNotesheetSnapshot(
+            snapshotWithCharts([
+                {
+                    chartId: 'c1',
+                    type: 'pie',
+                    title: 'Share',
+                    labels: ['N', 'S', 'E', 'W'],
+                    datasets: [{ data }],
+                },
+            ]),
+        )!;
+        const total = data.reduce((s, v) => s + v, 0);
+        const expectedDeg = data.map((v) => (v / total) * 360);
+
+        // Recover each slice's sweep from its <path d="M cx cy L x0 y0
+        // A r r 0 large 1 x1 y1 Z">. The wedge angle is the angle between
+        // (x0,y0) and (x1,y1) about the centre (cx,cy).
+        const paths = [
+            ...html.matchAll(
+                /<path d="M ([\d.]+) ([\d.]+) L ([\d.]+) ([\d.]+) A [\d.]+ [\d.]+ 0 (\d) 1 ([\d.]+) ([\d.]+)/g,
+            ),
+        ];
+        expect(paths.length).toBe(4);
+        const actualDeg = paths.map((m) => {
+            const [cx, cy, x0, y0, large, x1, y1] = [
+                +m[1],
+                +m[2],
+                +m[3],
+                +m[4],
+                +m[5],
+                +m[6],
+                +m[7],
+            ];
+            const a0 = Math.atan2(y0 - cy, x0 - cx);
+            const a1 = Math.atan2(y1 - cy, x1 - cx);
+            let sweep = ((a1 - a0) * 180) / Math.PI;
+            // Normalise to (0, 360]; the large-arc flag disambiguates >180.
+            if (sweep < 0) sweep += 360;
+            if (large === 1 && sweep < 180) sweep = 360 - sweep;
+            return sweep;
+        });
+        // Slices are emitted in data order; compare each within ±3°.
+        for (let i = 0; i < expectedDeg.length; i++) {
+            expect(Math.abs(actualDeg[i] - expectedDeg[i])).toBeLessThanOrEqual(3);
+        }
+        // Structural floors: total sweep ≈ 360, no slice is exactly 0.
+        const sum = actualDeg.reduce((s, d) => s + d, 0);
+        expect(Math.abs(sum - 360)).toBeLessThanOrEqual(1);
+        expect(Math.min(...actualDeg)).toBeGreaterThan(0);
+    });
+
+    // ── feature-7 acceptance criterion: CF + chart on the same sheet ──────
+    // A snapshot carrying BOTH a SHEET_CONDITIONAL_FORMATTING_PLUGIN resource
+    // (a cellIs rule painting B2:B5 pink) AND a chart must render the
+    // CF-coloured <td> (via M16's existing CF evaluator) AND the chart <svg>,
+    // in document order: the <table> first, then the <svg> — never overlaid.
+    test('CF + chart on one sheet: pink <td> AND chart <svg>, table before svg', () => {
+        // Sheet with values in B2:B5 (rows 1-4, col 1). B3=80 > 50 → pink.
+        const cellData: Record<number, Record<number, { v: unknown }>> = {
+            0: { 0: { v: 'Item' }, 1: { v: 'Score' } },
+            1: { 0: { v: 'a' }, 1: { v: 10 } },
+            2: { 0: { v: 'b' }, 1: { v: 80 } },
+            3: { 0: { v: 'c' }, 1: { v: 30 } },
+            4: { 0: { v: 'd' }, 1: { v: 90 } },
+        };
+        const drawingData: Record<string, unknown> = {};
+        drawingData['c1'] = {
+            unitId: 'workbook',
+            subUnitId: 'sheet-1',
+            drawingId: 'c1',
+            drawingType: 8,
+            componentKey: 'NotesheetChart',
+            data: {
+                chartId: 'c1',
+                type: 'bar',
+                title: 'Scores',
+                labels: ['a', 'b', 'c', 'd'],
+                datasets: [{ label: 'Score', data: [10, 80, 30, 90] }],
+            },
+        };
+        const snapshot = JSON.stringify({
+            sheetOrder: ['sheet-1'],
+            sheets: {
+                'sheet-1': { id: 'sheet-1', name: 'Sheet1', cellData, rowCount: 5, columnCount: 2 },
+            },
+            styles: {},
+            resources: [
+                {
+                    name: 'SHEET_DRAWING_PLUGIN',
+                    data: JSON.stringify({ 'sheet-1': { data: drawingData, order: ['c1'] } }),
+                },
+                {
+                    name: 'SHEET_CONDITIONAL_FORMATTING_PLUGIN',
+                    data: JSON.stringify({
+                        'sheet-1': [
+                            {
+                                cfId: '1',
+                                ranges: [{ startRow: 1, endRow: 4, startColumn: 1, endColumn: 1 }],
+                                rule: {
+                                    type: 'highlightCell',
+                                    subType: 'number',
+                                    operator: 'greaterThan',
+                                    value: 50,
+                                    style: { bg: { rgb: '#FFC7CE' } },
+                                },
+                            },
+                        ],
+                    }),
+                },
+            ],
+        });
+        const html = renderNotesheetSnapshot(snapshot)!;
+        // CF paint flows through the M16 evaluator: B3 (80) and B5 (90) > 50.
+        expect(html).toMatch(/background-color:\s*#FFC7CE/i);
+        // The chart SVG renders too.
+        expect(html).toContain('<svg');
+        expect(html).toContain('notesheet-chart');
+        // Document order: table block first, then the chart svg — no overlay.
+        expect(html.indexOf('</table>')).toBeLessThan(html.indexOf('<svg'));
+        // No absolute/z-index layering (the chart sits after the table).
+        const svgBlock = html.slice(html.indexOf('<svg'));
+        expect(svgBlock).not.toMatch(/position:\s*absolute/i);
+        expect(svgBlock).not.toMatch(/z-index/i);
+    });
 });

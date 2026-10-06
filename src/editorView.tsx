@@ -55,10 +55,12 @@ import {
     NOTESHEET_SYNTH_STYLES_RESOURCE,
     NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
     NOTESHEET_SHAPES_RESOURCE,
+    NOTESHEET_ARRAY_FORMULAS_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
-import { extractRangeAsChartData, type RangeAddress } from './charts/extractData';
+import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
+import { registerTextToNumberCommand } from './formulas/registerTextToNumber';
 
 declare global {
     interface Window {
@@ -166,6 +168,33 @@ async function handleExport(): Promise<void> {
     }
 }
 
+// Autofit every column to its content width. Univer's built-in
+// header-border double-click only autofits multiple columns when the
+// selection is RANGE_TYPE.COLUMN; a Select-All selection (RANGE_TYPE.ALL)
+// falls through to autofitting just the clicked column. This button gives
+// the whole-sheet "autofit all columns" that Excel does on a select-all +
+// double-click, by calling the same SetWorksheetColAutoWidthCommand across
+// every column via the facade's autoResizeColumns(start, count).
+function handleAutofitColumns(): void {
+    try {
+        if (!activeApi) throw new Error('workbook not ready');
+        const workbook =
+            activeApi.getActiveWorkbook?.() || activeApi.getActiveSheet?.()?.getWorkbook?.();
+        const sheet = workbook?.getActiveSheet?.();
+        if (!sheet) throw new Error('no active sheet');
+        const maxCols = sheet.getMaxColumns?.() ?? 0;
+        if (maxCols <= 0 || typeof sheet.autoResizeColumns !== 'function') {
+            throw new Error('autofit not available');
+        }
+        sheet.autoResizeColumns(0, maxCols);
+        setStatus('Columns autofitted.');
+        scheduleSave();
+    } catch (e) {
+        console.error('[Notesheet] autofit columns failed', e);
+        setStatus('Autofit failed: ' + (e instanceof Error ? e.message : String(e)), true);
+    }
+}
+
 // Disposable returned by fWorkbook.onSelectionChange. Held while the chart
 // panel is open so the Range field tracks the user's live selection on the
 // sheet, then disposed when the panel closes.
@@ -181,28 +210,65 @@ function rangeContainsCell(r: RangeAddress, row: number, col: number): boolean {
     return row >= r.startRow && row <= r.endRow && col >= r.startColumn && col <= r.endColumn;
 }
 
-// Re-extract chart data and push it through the dataBus when an edit lands
-// inside any tracked chart's source range. This never touches Univer's
-// drawing service — the chart's float-dom (position, size, drag state) is
-// untouched. Only the canvas contents update.
-function refreshChartsForEdit(): void {
+// Re-extract chart data and push it through the dataBus. This never touches
+// Univer's drawing service — the chart's float-dom (position, size, drag
+// state) is untouched. Only the canvas contents update.
+//
+// `opts.editedCell` is the ACTIVE-cell hint used by the SheetEditEnded path
+// (a direct type-in edit): only charts whose source range contains that cell
+// refresh. When omitted (undo / redo / paste / fill / any command-driven value
+// change), we can't trust the active cell to indicate what changed, so we
+// refresh EVERY tracked chart by re-extracting its source range. Re-extraction
+// is cheap (a sparse read over a small range) and always yields the current
+// values — this is what makes the chart recover on revert. Without the
+// unconditional path, undo changed the cell but left the chart stale (the bug:
+// increase-then-revert never repainted the bars).
+function refreshCharts(opts?: { editedCell?: { row: number; col: number } }): void {
     if (!activeApi || trackedCharts.size === 0) return;
     try {
         const fWorkbook = activeApi.getActiveWorkbook?.();
-        const fSheet = fWorkbook?.getActiveSheet?.();
-        if (!fSheet) return;
-        const cell = fSheet.getActiveRange?.();
-        if (!cell) return;
+        if (!fWorkbook) return;
+        const edited = opts?.editedCell;
+        for (const chart of trackedCharts.values()) {
+            if (edited && !rangeContainsCell(chart.sourceRange, edited.row, edited.col)) {
+                continue;
+            }
+            // Pass hasHeaderRow so an imported chart (whose sourceRange spans
+            // the header row) re-extracts the same way the importer did —
+            // skipping row 0 — instead of leaking the header in as a phantom
+            // category on edit.
+            const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange, {
+                hasHeaderRow: chart.hasHeaderRow === true,
+                firstColumnIsCategory: chart.firstColumnIsCategory !== false,
+            });
+            pushChartUpdate(chart.id, fresh);
+        }
+    } catch (e) {
+        console.warn('[Notesheet] refreshCharts failed', e);
+    }
+}
+
+// SheetEditEnded path: refresh only charts whose source range contains the
+// active (just-edited) cell.
+function refreshChartsForEdit(): void {
+    if (!activeApi || trackedCharts.size === 0) return;
+    try {
+        const fSheet = activeApi.getActiveWorkbook?.()?.getActiveSheet?.();
+        const cell = fSheet?.getActiveRange?.();
+        if (!cell) {
+            // No active range — fall back to refreshing all so we never leave a
+            // chart stale.
+            refreshCharts();
+            return;
+        }
         const r = cell.getRange?.() ?? cell.getRangeData?.();
         const editedRow = typeof cell.getRow === 'function' ? cell.getRow() : r?.startRow;
         const editedCol = typeof cell.getColumn === 'function' ? cell.getColumn() : r?.startColumn;
-        if (typeof editedRow !== 'number' || typeof editedCol !== 'number') return;
-
-        for (const chart of trackedCharts.values()) {
-            if (!rangeContainsCell(chart.sourceRange, editedRow, editedCol)) continue;
-            const fresh = extractRangeAsChartData(fWorkbook, chart.sourceRange);
-            pushChartUpdate(chart.id, fresh);
+        if (typeof editedRow !== 'number' || typeof editedCol !== 'number') {
+            refreshCharts();
+            return;
         }
+        refreshCharts({ editedCell: { row: editedRow, col: editedCol } });
     } catch (e) {
         console.warn('[Notesheet] refreshChartsForEdit failed', e);
     }
@@ -247,7 +313,14 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             subUnitId: fSheet.getSheetId?.(),
         };
 
-        const chartData = extractRangeAsChartData(fWorkbook, sourceRange);
+        // Detect whether row 0 of the selection is a header (text names above
+        // numeric data). When it is, series get their names from the header
+        // cells ("Region", "Q1", …) instead of the "Series N" fallback — the
+        // behaviour Excel gives when the selection includes column headers.
+        // Persisted as meta.hasHeaderRow so live-edit re-extract and export
+        // keep the names (see trackedCharts + readChartsFromSnapshot).
+        const hasHeaderRow = detectHeaderRow(fWorkbook, sourceRange);
+        const chartData = extractRangeAsChartData(fWorkbook, sourceRange, { hasHeaderRow });
         const chartId = 'chart-' + Date.now().toString(36);
 
         // CRITICAL: use addFloatDomToPosition, NOT addFloatDomToRange.
@@ -275,7 +348,16 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             {
                 componentKey: CHART_COMPONENT_KEY,
                 // chartId opens a live-update channel — see refreshChartsForEdit.
-                data: { chartId, type, sourceRange, title, ...chartData },
+                // meta.hasHeaderRow persists the header decision so live-edit
+                // re-extract and .xlsx export both keep the series names.
+                data: {
+                    chartId,
+                    type,
+                    sourceRange,
+                    title,
+                    ...chartData,
+                    meta: { hasHeaderRow },
+                },
                 allowTransform: true,
                 // Forward pointer events through the chart canvas so Univer's
                 // transformer (under the canvas) sees clicks and can attach
@@ -292,7 +374,7 @@ function insertChart(type: NotesheetChartType, rangeA1: string, title: string): 
             chartId,
         );
         if (!handle) throw new Error('addFloatDomToPosition returned no handle');
-        trackedCharts.set(chartId, { id: chartId, sourceRange });
+        trackedCharts.set(chartId, { id: chartId, sourceRange, hasHeaderRow });
         setStatus('Chart inserted.');
         scheduleSave();
     } catch (e) {
@@ -504,6 +586,12 @@ function ensureActionBar(): void {
     exportBtn.textContent = 'Export .xlsx';
     Object.assign(exportBtn.style, buttonStyle);
 
+    const autofitBtn = document.createElement('button');
+    autofitBtn.type = 'button';
+    autofitBtn.textContent = 'Autofit columns';
+    autofitBtn.title = 'Resize every column to fit its content';
+    Object.assign(autofitBtn.style, buttonStyle);
+
     const status = document.createElement('span');
     status.id = STATUS_ID;
     Object.assign(status.style, {
@@ -527,9 +615,11 @@ function ensureActionBar(): void {
 
     importBtn.addEventListener('click', () => fileInput.click());
     exportBtn.addEventListener('click', () => void handleExport());
+    autofitBtn.addEventListener('click', () => handleAutofitColumns());
 
     bar.appendChild(importBtn);
     bar.appendChild(exportBtn);
+    bar.appendChild(autofitBtn);
     bar.appendChild(status);
     bar.appendChild(fileInput);
     document.body.appendChild(bar);
@@ -576,6 +666,14 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                             'sort-custom': 'Sort...',
                         },
                     },
+                    // Finding #3: labels for the generic Text-to-Number menu item.
+                    notesheet: {
+                        textToNumber: {
+                            title: 'Text to Number',
+                            tooltip:
+                                'Convert numbers stored as text (incl. %, currency, grouped) to real numbers',
+                        },
+                    },
                 },
             ),
         },
@@ -597,6 +695,10 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                     'sheet.command.sort-range-desc-ctx': { hidden: true },
                     'sheet.command.sort-range-asc-ext-ctx': { hidden: true },
                     'sheet.command.sort-range-desc-ext-ctx': { hidden: true },
+                    // Finding #3: the built-in "Text to Number" ribbon button is
+                    // KEPT visible, but registerTextToNumberCommand repoints its
+                    // menuItemFactory at our generic command (percent / currency
+                    // / grouped / float), replacing Univer's numeral-only one.
                 },
             }),
             UniverSheetsSortPreset(),
@@ -675,6 +777,11 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                 // (without it, Univer drops the unregistered resource on save
                 // and shapes vanish the moment the user edits the note).
                 NOTESHEET_SHAPES_RESOURCE,
+                // Finding #4: array-formula sidecar (t="array" ref markers).
+                // Same passthrough reasoning — Univer doesn't model array
+                // formulas, so without this hook the sidecar is dropped on the
+                // first editor save and the markers are lost on re-export.
+                NOTESHEET_ARRAY_FORMULAS_RESOURCE,
             ]) {
                 const stash = new Map<string, string>();
                 resourceManager.registerPluginResource({
@@ -702,6 +809,21 @@ function bootUniver(snapshot: Record<string, unknown>): void {
     univer.createUnit(UniverInstanceType.UNIVER_SHEET, snapshot);
     activeUniver = univer;
     activeApi = univerAPI;
+
+    // Finding #3: register the generic "Text to Number" command + Data-ribbon
+    // menu item. MUST run AFTER createUnit — the UNIVER_SHEET plugins (sheets,
+    // sheets-ui, sheets-numfmt) are only instantiated on createUnit, so the
+    // selection/numfmt services and the ribbon menu schema don't exist before
+    // it. The ribbon rebuilds reactively on menuChanged$, so this late merge
+    // still appears. Fail-soft inside the helper.
+    try {
+        const cmdInjector = (univer as { __getInjector?: () => unknown }).__getInjector?.();
+        if (cmdInjector) {
+            registerTextToNumberCommand(cmdInjector as { get: (id: unknown) => unknown });
+        }
+    } catch (e) {
+        console.warn('[Notesheet] Text-to-Number registration failed', e);
+    }
 
     // M17: hydrate the editor's chart-tracking map from the snapshot's
     // SHEET_DRAWING_PLUGIN resource. Charts that arrived via
@@ -797,6 +919,20 @@ function bootUniver(snapshot: Record<string, unknown>): void {
                 if (event.id.includes('drawing') || event.id.includes('Drawing')) {
                     scheduleSave();
                 }
+                // Chart live-update on ANY value-changing command, not just
+                // SheetEditEnded (which fires only for a direct type-in edit).
+                // undo/redo, paste, fill, and clear all change cell values via
+                // the set-range-values mutation WITHOUT a SheetEditEnded, so the
+                // chart would go stale on revert. Refresh ALL tracked charts
+                // (the active cell isn't a reliable hint for these) + save.
+                if (
+                    event.id === 'sheet.mutation.set-range-values' ||
+                    event.id === 'univer.command.undo' ||
+                    event.id === 'univer.command.redo'
+                ) {
+                    refreshCharts();
+                    scheduleSave();
+                }
             });
         } catch (e) {
             console.warn('[Notesheet] could not subscribe to CommandExecuted', e);
@@ -828,12 +964,68 @@ function saveNow(): void {
     }
 }
 
+// UX shortcut for Univer's "All functions" (More Functions) dialog.
+//
+// Univer's dialog is a two-step flow: clicking a function name only shows its
+// help/params; you must then click the "Confirm" button to insert
+// `=FUNCTION(` into the active cell. Users reasonably expect double-clicking
+// the name to insert it (Excel-like). We add exactly that, WITHOUT
+// reimplementing insertion: on a double-click of a function-list <li>, we let
+// Univer's own selection fire (the native click already ran), then
+// programmatically click Univer's Confirm button — reusing Univer's real
+// insert logic. Fully defensive: it only acts when it can positively identify
+// both a function-list item and an enabled Confirm button in the same dialog,
+// and never throws into the user's session.
+//
+// A document-level delegated listener installed once; it survives the dialog
+// opening/closing because the dialog mounts/unmounts under document.body.
+function installFunctionListDblClickShortcut(): void {
+    document.addEventListener(
+        'dblclick',
+        (ev) => {
+            try {
+                const target = ev.target as HTMLElement | null;
+                if (!target) return;
+                // The list item is an <li class="...cursor-pointer...">; the
+                // text node clicked may be a child <span>. Walk up to the <li>.
+                const li = target.closest('li');
+                if (!li) return;
+                // Guard: must look like a Univer function-list row (Univer's
+                // utility classes) sitting inside a <ul>. Avoids firing on any
+                // other <li> in the app.
+                const cls = String(li.className);
+                if (!/cursor-pointer/.test(cls)) return;
+                const ul = li.closest('ul');
+                if (!ul) return;
+                // The row text is the function name (e.g. "SUM"); sanity-check
+                // shape so we don't act on unrelated lists.
+                const name = (li.textContent ?? '').trim();
+                if (!/^[A-Z][A-Z0-9._]{1,30}$/.test(name)) return;
+
+                // Find the dialog's Confirm button and click it. Univer's own
+                // click handler (fired by this same double-click's first click)
+                // has already selected the function and enabled Confirm.
+                const confirmBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+                    /^confirm$/i.test((b.textContent ?? '').trim()),
+                ) as HTMLButtonElement | undefined;
+                if (!confirmBtn || confirmBtn.disabled) return;
+                confirmBtn.click();
+            } catch (e) {
+                // Never let a UX shortcut break the editor.
+                console.warn('[Notesheet] function-list double-click shortcut failed', e);
+            }
+        },
+        true, // capture: run before the dialog can steal/stop the event
+    );
+}
+
 function init(): void {
     if (!window.webviewApi) {
         console.error('[Notesheet] webviewApi not available; cannot communicate with Joplin host');
         return;
     }
     ensureActionBar();
+    installFunctionListDblClickShortcut();
     window.webviewApi.onMessage((event) => {
         const m = event?.message as LoadMessage | undefined;
         if (m && m.type === 'load' && m.snapshot) {

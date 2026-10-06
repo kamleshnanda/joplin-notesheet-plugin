@@ -1,0 +1,27 @@
+{
+  "univerFrameFound": true,
+  "canvasCount": 3,
+  "canvases": [
+    {
+      "id": "",
+      "w": 2592,
+      "h": 54
+    },
+    {
+      "id": "",
+      "w": 0,
+      "h": 0
+    },
+    {
+      "id": "univer-sheet-main-canvas_workbook-1782641855247",
+      "w": 3008,
+      "h": 1396
+    }
+  ],
+  "imgCount": 0,
+  "imgs": [],
+  "rootBox": {
+    "w": 1504,
+    "h": 839
+  }
+}

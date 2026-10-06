@@ -215,9 +215,13 @@ function buildCellInlineStyle(base: ResolvedStyle, cfFill: string | null): strin
     const parts: string[] = [];
     // Background: CF fill (if any) wins over the base style. CF rules
     // explicitly override per-cell formatting in Excel's render order;
-    // the M16 renderer mirrors that.
+    // the M16 renderer mirrors that. `cfFill` is either a solid hex colour
+    // (cellIs / top-N / colorScale) or a `linear-gradient(...)` for a dataBar.
+    // Solid fills keep the precise `background-color` property (existing
+    // pin-downs assert it); a gradient must use the `background` shorthand.
     if (cfFill) {
-        parts.push(`background-color: ${cfFill}`);
+        const prop = cfFill.startsWith('linear-gradient') ? 'background' : 'background-color';
+        parts.push(`${prop}: ${cfFill}`);
     } else if (base.bg && base.bg.rgb) {
         parts.push(`background-color: ${base.bg.rgb}`);
     }
@@ -972,9 +976,55 @@ function evaluateCfFor(sheet: SnapshotSheet, rules: CfRule[]): Map<string, strin
                 }
                 break;
             }
-            // dataBar + iconSet: out of scope per M16. Documented in
-            // BUILD_PLAN.md `Out of scope`. The cell value still renders;
-            // only the visualisation glyph / bar is dropped.
+            case 'dataBar': {
+                // Render the data bar as a horizontal CSS linear-gradient
+                // background, matching Univer's on-canvas look: within the
+                // filled portion the bar is a left-to-right GRADIENT from the
+                // saturated bar colour to a lightened tint (Univer fades the
+                // bar toward its tip), then transparent beyond the value's
+                // fraction of [min,max]. Survives PDF export
+                // (print-color-adjust: exact is set on the table). iconSet
+                // still falls through to the default skip.
+                const cfg = (r.config ?? {}) as {
+                    min?: { type?: string; value?: number | string };
+                    max?: { type?: string; value?: number | string };
+                    positiveColor?: string;
+                    nativeColor?: string;
+                };
+                const barColor = cfg.positiveColor || cfg.nativeColor;
+                if (!barColor) break;
+                // Lightened tint for the tip of the bar (75% toward white),
+                // matching Univer's gradient falloff.
+                const barTip = lerpRgb(barColor, '#FFFFFF', 0.75);
+                const { byRC, sorted } = collectRangeValues(sheet, rule);
+                if (sorted.length === 0) break;
+                const lo = cfg.min ? resolveCfvo(cfg.min, sorted) : sorted[0];
+                const hi = cfg.max ? resolveCfvo(cfg.max, sorted) : sorted[sorted.length - 1];
+                const min = lo ?? sorted[0];
+                const max = hi ?? sorted[sorted.length - 1];
+                const span = max - min;
+                for (const [key, v] of byRC) {
+                    // Fraction of the bar filled (clamped to 0..100%).
+                    const frac = span <= 0 ? (v >= max ? 1 : 0) : (v - min) / span;
+                    const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
+                    // Match Univer: a value at the minimum (0% bar) gets NO bar
+                    // fill at all — the cell keeps its normal background —
+                    // rather than an invisible 0%-width gradient. (Univer's
+                    // dataBar calc returns nothing when the computed length is
+                    // 0.)
+                    if (pct === 0) continue;
+                    // Gradient from saturated (left) to lightened tint at the
+                    // bar's tip, then transparent. The number still shows on
+                    // top (cell text is rendered separately).
+                    fills.set(
+                        key,
+                        `linear-gradient(to right, ${barColor} 0%, ${barTip} ${pct}%, transparent ${pct}%, transparent 100%)`,
+                    );
+                }
+                break;
+            }
+            // iconSet: out of scope (no static-HTML glyph equivalent). The
+            // cell value still renders; only the icon is dropped.
             default:
                 break;
         }
@@ -1455,7 +1505,16 @@ function renderSheet(
     if (sheetName) {
         out.push(`<h3 class="notesheet-sheet-name">${escapeHtml(sheetName)}</h3>`);
     }
-    out.push('<table class="notesheet-table" style="border-collapse: collapse;">');
+    // print-color-adjust: exact forces Chromium (Joplin's Electron PDF/print
+    // engine) to KEEP cell background-colors when exporting to PDF. Without
+    // it, Chromium strips backgrounds by default, so cell fills and
+    // colorScale/cellIs conditional-formatting colours render on screen but
+    // vanish in the exported PDF. Both the -webkit- prefix and the standard
+    // property are set for the widest engine coverage.
+    out.push(
+        '<table class="notesheet-table" style="border-collapse: collapse; ' +
+            '-webkit-print-color-adjust: exact; print-color-adjust: exact;">',
+    );
 
     if (rows === 0 || cols === 0) {
         out.push('<tbody><tr><td></td></tr></tbody>');

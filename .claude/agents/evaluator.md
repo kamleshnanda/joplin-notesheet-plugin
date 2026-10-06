@@ -54,12 +54,31 @@ confident about" is exactly how regressions ship.
    too small, blank, error overlay), that's NEEDS_WORK with a
    harness-bug bullet.
 
-5. **Run `git diff` against the baseline** to see exactly what code
+5. **Verify the EXPORTED artifact (export / round-trip features
+   only).** If the feature's acceptance criteria include any export /
+   round-trip / save-to-`.xlsx` outcome, run:
+
+   ```
+   bash scripts/pge/eval-export.sh <feature-id>
+   ```
+
+   (or `node scripts/pge/eval-export.js <feature-id>`) — this drives
+   the real "Export .xlsx" button in the live webview, captures the
+   emitted blob, unzips it, and writes a sidecar
+   `<out>.manifest.txt`. Then **OPEN the emitted `<out>.manifest.txt`
+   via the Read tool** and confirm the expected parts are present —
+   e.g. `xl/media/` non-empty for an image feature,
+   `xl/charts/chartN.xml` for a chart feature. **A green render
+   screenshot is NOT sufficient for an export criterion**; the bug
+   this catches is a cell/image that renders fine but exports empty
+   (Buffer undefined in the webview).
+
+6. **Run `git diff` against the baseline** to see exactly what code
    changed. Cross-check that the changes in src/ plausibly produce
    the user-observable outcome the spec demands. A diff that
    touches an unrelated file is a yellow flag.
 
-6. **Decide.** Two possible outputs only.
+7. **Decide.** Two possible outputs only.
 
 ## Decision rules
 
@@ -81,6 +100,9 @@ Return `NEEDS_WORK` if ANY of the following:
   doesn't justify.
 - The generator updated PROGRESS.md or test-results.json without
   also producing a screenshot you can verify.
+- The feature claims an export/round-trip outcome but no export
+  manifest was captured, or the manifest shows the expected part is
+  EMPTY/absent.
 
 **Plausibility is not correctness.** A diff that looks reasonable
 plus a screenshot that shows a broken layout is NEEDS_WORK. *If you
@@ -113,9 +135,10 @@ verdict by `head -1`. Then:
 ## Tool usage
 
 - **Bash**: only `git diff`, `git log`, `git status`, `ls`, `cat`,
-  and the harness scripts under `scripts/pge/`. Do NOT run `npm run
-  dist`, `npm test`, or any source-mutating command. You are not the
-  builder.
+  the harness scripts under `scripts/pge/` (including `bash
+  scripts/pge/eval-export.sh` / `node scripts/pge/eval-export.js`).
+  Do NOT run `npm run dist`, `npm test`, or any source-mutating
+  command. You are not the builder.
 - **Read**: open spec, screenshots, source files. Open every
   screenshot under `screenshots/<feature-id>/` — including ones the
   generator dropped, but YOUR own screenshot from step 3 is the

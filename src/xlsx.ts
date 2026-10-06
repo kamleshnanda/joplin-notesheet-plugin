@@ -31,10 +31,16 @@ import {
     type ImportedChartDrawing,
 } from './charts/xlsxChartImport';
 import { readImagesFromXlsxZip, type ImportedImageDrawing } from './drawings/xlsxImageImport';
-import { injectImagesIntoZip } from './drawings/xlsxImage';
+import { injectImagesIntoZip, bytesToBase64 } from './drawings/xlsxImage';
 import { readShapesFromXlsxZip, type ImportedShapeDrawing } from './drawings/xlsxShapeImport';
 import { injectShapesIntoZip } from './drawings/xlsxShape';
 import { NOTESHEET_SHAPES_RESOURCE } from './drawings/sheetIdResolver';
+import {
+    readArrayFormulasFromXlsxZip,
+    injectArrayFormulasIntoZip,
+    NOTESHEET_ARRAY_FORMULAS_RESOURCE,
+    type ArrayFormulaMap,
+} from './formulas/arrayFormulas';
 import { EXCEL_TABLE_STYLE_BY_NAME, type ExcelTableStyle } from './charts/excelTableStyles';
 import {
     EXCEL_TABLE_STYLE_RECIPE_BY_NAME,
@@ -122,6 +128,10 @@ export const NOTESHEET_THEME_CLR_SCHEME_RESOURCE = 'SHEET_NOTESHEET_THEME_CLR_SC
 // it's imported above and re-exported here for callers that reach it via the
 // xlsx module.
 export { NOTESHEET_SHAPES_RESOURCE };
+// Re-export so editorView can register the array-formula sidecar in the
+// resource round-trip hook (finding #4) — without it, Univer drops the
+// unregistered resource on editor save and array markers vanish on export.
+export { NOTESHEET_ARRAY_FORMULAS_RESOURCE };
 
 // Univer's Conditional Formatting plugin reads / writes its rules
 // through this resource entry name (M15). Confirmed in
@@ -204,6 +214,13 @@ interface TableColumnJson {
 interface NotesheetTableMeta {
     notesheetExcelStyleName?: string;
     notesheetShowRowStripes?: boolean;
+    // Whether the SOURCE table had a totals row (from <table totalsRowCount>).
+    // The authoritative totals-row signal on export: Univer's sheets-table
+    // plugin doesn't model a totals row and returns showFooter:false, so we
+    // can't trust options.showFooter. We must NOT infer from column
+    // totalsRowLabel either — exceljs writes a default totalsRowLabel="Total"
+    // on EVERY column even for tables with no totals row (M9 round-trip).
+    notesheetTotalsRowCount?: number;
 }
 interface TableJson {
     id: string;
@@ -656,12 +673,24 @@ function parseA1Range(
 // (1) defaults missing headerRowCount to false (OOXML spec says 1), and
 // (2) drops every column after one whose <tableColumn> has nested
 // children like <calculatedColumnFormula>. Both problems break round-trip.
+// One <tableColumn> as parsed from xl/tables/*.xml. `totalsRowFunction` /
+// `totalsRowLabel` are what a table's totals row is built from — Excel
+// regenerates the SUBTOTAL(...) from the function and scopes the structured
+// ref to the data body (excluding the totals cell). Dropping them makes the
+// exported totals row a self-referencing formula → circular-reference error
+// on open (M18 manual-test finding #5).
+interface RawTableColumn {
+    name: string;
+    totalsRowFunction?: string;
+    totalsRowLabel?: string;
+}
+
 interface RawTable {
     name: string;
     ref: string;
     headerRowCount: number;
     totalsRowCount: number;
-    columns: string[];
+    columns: RawTableColumn[];
     styleName?: string;
     showRowStripes?: boolean;
 }
@@ -705,14 +734,23 @@ function parseTableXml(xml: string): RawTable | null {
     const totalsRowCount = totalsRowCountStr === null ? 0 : parseInt(totalsRowCountStr, 10);
 
     // Pull every <tableColumn ... name="..." ... /> or <tableColumn ...>...</tableColumn>.
-    // The opening tag is what carries the name attribute; nested children
+    // The opening tag carries name + the totals-row attributes; nested children
     // (<calculatedColumnFormula>, <xmlColumnPr>, etc.) don't matter to us.
-    const columns: string[] = [];
+    // totalsRowFunction / totalsRowLabel MUST round-trip (finding #5): they're
+    // what Excel builds the totals-row SUBTOTAL from, correctly scoped to the
+    // data body. Dropping them yields a self-referencing formula (circular ref).
+    const columns: RawTableColumn[] = [];
     const colRe = /<tableColumn\b[^>]*?(?:\/>|>)/g;
     let m: RegExpExecArray | null;
     while ((m = colRe.exec(xml)) !== null) {
         const cname = getAttr(m[0], 'name');
-        if (cname) columns.push(cname);
+        if (!cname) continue;
+        const col: RawTableColumn = { name: cname };
+        const fn = getAttr(m[0], 'totalsRowFunction');
+        if (fn) col.totalsRowFunction = fn;
+        const label = getAttr(m[0], 'totalsRowLabel');
+        if (label !== null) col.totalsRowLabel = label;
+        columns.push(col);
     }
 
     const styleTagMatch = /<tableStyleInfo\b[^>]*\/?>/.exec(xml);
@@ -732,6 +770,84 @@ function parseTableXml(xml: string): RawTable | null {
 // default font here (under <a:fontScheme><a:minorFont><a:latin typeface="..."/>)
 // rather than on individual cells, so cells with no explicit font.name
 // inherit from this. exceljs doesn't expose the theme XML, hence direct
+// Rewrite ABSOLUTE relationship Targets to package-relative ones across every
+// *.rels part. A Target like "/xl/tables/table1.xml" is absolute from the
+// package root; exceljs's reconcile only resolves RELATIVE targets, so an
+// absolute one leaves the part unlinked and crashes the worksheet table-reduce
+// ("reading 'name'"). We recompute each absolute target as a path relative to
+// the .rels file's OWNER directory (the dir containing the part the .rels
+// describes — i.e. the .rels file's parent minus the trailing `_rels`).
+//   e.g.  xl/worksheets/_rels/sheet1.xml.rels  → owner dir  xl/worksheets
+//         Target "/xl/tables/table1.xml"        → "../tables/table1.xml"
+// Only `Target="/..."` values are touched; already-relative targets and
+// external (TargetMode="External") URLs are left untouched. Returns a new
+// buffer; if nothing changed, returns the input unchanged.
+async function normalizeAbsoluteRelTargets(
+    buffer: ArrayBuffer | Uint8Array | Buffer,
+): Promise<ArrayBuffer | Uint8Array | Buffer> {
+    const zip = await JSZip.loadAsync(buffer as ArrayBuffer);
+    let changed = false;
+
+    // Compute a relative path from `fromDir` to `toPath` (both package-root
+    // absolute, no leading slash). Pure POSIX-style segment math.
+    const relativizePath = (fromDir: string, toPath: string): string => {
+        const from = fromDir.split('/').filter(Boolean);
+        const to = toPath.split('/').filter(Boolean);
+        let i = 0;
+        while (i < from.length && i < to.length && from[i] === to[i]) i++;
+        const up = from.slice(i).map(() => '..');
+        return [...up, ...to.slice(i)].join('/');
+    };
+
+    for (const relsPath of Object.keys(zip.files)) {
+        if (!/(^|\/)_rels\/[^/]+\.rels$/i.test(relsPath)) continue;
+        // Owner directory: the dir that CONTAINS the part this .rels describes.
+        // `a/b/_rels/x.rels` describes `a/b/x`, so the owner dir is `a/b`.
+        const ownerDir = relsPath.replace(/\/?_rels\/[^/]+\.rels$/i, '');
+        const xml = await zip.files[relsPath].async('string');
+        let fileChanged = false;
+        // Rewrite per <Relationship> ELEMENT, not per Target attribute: an
+        // external relationship (TargetMode="External") whose Target begins
+        // with "/" (root-relative, e.g. "/folder/page.html") or "//"
+        // (protocol-relative) is a real hyperlink/external reference and MUST
+        // be left verbatim — relativizing it ("../../folder/page.html") would
+        // destroy the link. Only PACKAGE-INTERNAL absolute targets (the
+        // openpyxl `/xl/...` case this normalizer exists for) get rewritten.
+        // Scheme-prefixed URLs (http://, mailto:) carry no leading slash and
+        // never matched the inner regex anyway; this guard additionally covers
+        // the root-relative / protocol-relative external shapes.
+        const rewritten = xml.replace(/<Relationship\b[^>]*?\/>/g, (rel) => {
+            if (/\bTargetMode="External"/i.test(rel)) return rel;
+            return rel.replace(
+                /(\bTarget=")(\/[^"]*)(")/g,
+                (_full, pre: string, target: string, post: string) => {
+                    // target starts with "/" → absolute from package root.
+                    const abs = target.replace(/^\//, '');
+                    const relPath = ownerDir ? relativizePath(ownerDir, abs) : abs;
+                    if (relPath && relPath !== target) {
+                        fileChanged = true;
+                        return `${pre}${relPath}${post}`;
+                    }
+                    return `${pre}${target}${post}`;
+                },
+            );
+        });
+        if (fileChanged) {
+            zip.file(relsPath, rewritten);
+            changed = true;
+        }
+    }
+
+    if (!changed) return buffer;
+    // MUST be 'arraybuffer', not 'nodebuffer': this runs in the Joplin editor
+    // renderer (browser-like) where Node's `Buffer` is undefined — 'nodebuffer'
+    // throws "Buffer is not defined", which surfaced as "Import failed: buffer
+    // not defined" on every workbook. Every sibling pre-load transform
+    // (stripChartPartsFromZip, the image/shape readers) uses 'arraybuffer' for
+    // exactly this reason.
+    return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
+}
+
 // zip access. Returns null if the file or attribute is absent.
 async function readThemeFont(
     buffer: ArrayBuffer | Uint8Array | Buffer,
@@ -1958,23 +2074,34 @@ function buildTableJsonForSheet(ws: ExcelJS.Worksheet, rawTables: RawTable[]): T
         const dataStartRow = range.startRow + headerRows;
         const dataEndRow = range.endRow - totalRows;
 
-        const columns: TableColumnJson[] = t.columns.map((cname, idx) => ({
-            id: `tblcol-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-            displayName: cname,
-            dataType: inferColumnDataType(
-                ws,
-                range.startColumn + idx + 1,
-                dataStartRow + 1,
-                dataEndRow + 1,
-            ),
-            formula: '',
-            meta: {},
-            style: {},
-        }));
+        const columns: TableColumnJson[] = t.columns.map((rawCol, idx) => {
+            // Stash the totals-row function/label in the column's opaque meta
+            // so export can reconstruct the totals row (finding #5). Univer's
+            // sheets-table plugin round-trips `meta` verbatim through reloads.
+            const colMeta: Record<string, unknown> = {};
+            if (rawCol.totalsRowFunction)
+                colMeta.notesheetTotalsRowFunction = rawCol.totalsRowFunction;
+            if (rawCol.totalsRowLabel !== undefined)
+                colMeta.notesheetTotalsRowLabel = rawCol.totalsRowLabel;
+            return {
+                id: `tblcol-${idx}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                displayName: rawCol.name,
+                dataType: inferColumnDataType(
+                    ws,
+                    range.startColumn + idx + 1,
+                    dataStartRow + 1,
+                    dataEndRow + 1,
+                ),
+                formula: '',
+                meta: colMeta,
+                style: {},
+            };
+        });
 
         const meta: NotesheetTableMeta = {};
         if (t.styleName) meta.notesheetExcelStyleName = t.styleName;
         if (t.showRowStripes) meta.notesheetShowRowStripes = true;
+        if (t.totalsRowCount > 0) meta.notesheetTotalsRowCount = t.totalsRowCount;
 
         out.push({
             id: `tbl-${t.name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2040,6 +2167,16 @@ export async function xlsxBufferToSnapshot(
         console.warn('[Notesheet] M18: readShapesFromXlsxZip threw; continuing without shapes', e);
         importedShapes = [];
     }
+    // M18 finding #4: array (CSE) formulas. exceljs can't represent the
+    // t="array"+ref marker, so read it zip-direct from the ORIGINAL buffer and
+    // stash it on a sidecar; export re-injects the marker. Fail-soft.
+    let arrayFormulas: ArrayFormulaMap = {};
+    try {
+        arrayFormulas = await readArrayFormulasFromXlsxZip(buffer);
+    } catch (e) {
+        console.warn('[Notesheet] readArrayFormulasFromXlsxZip threw; array markers dropped', e);
+        arrayFormulas = {};
+    }
     // Build a chart-stripped buffer iff there's at least one chart drawing
     // present. For chart-less workbooks we pass the original buffer through
     // unchanged so the existing error-classification path stays intact for
@@ -2055,6 +2192,23 @@ export async function xlsxBufferToSnapshot(
             );
             bufferForLoad = buffer;
         }
+    }
+
+    // Normalize ABSOLUTE relationship Targets ("/xl/tables/table1.xml") to
+    // package-relative ("../tables/table1.xml"). Both are valid OOXML, but
+    // exceljs can't resolve an absolute target back to its loaded part, so
+    // its worksheet reconcile builds `tables[table.name]` over an undefined
+    // table and crashes ("Cannot read properties of undefined (reading
+    // 'name')"). openpyxl-authored files (e.g. FormulasAndStructuredRefs.xlsx)
+    // emit absolute targets; Excel emits relative. Fail-soft: a rewrite
+    // failure falls back to the un-normalized buffer.
+    try {
+        bufferForLoad = await normalizeAbsoluteRelTargets(bufferForLoad);
+    } catch (e) {
+        console.warn(
+            '[Notesheet] normalizeAbsoluteRelTargets failed; loading un-normalized buffer',
+            e,
+        );
     }
 
     // The try/catch around load() catches three reproducible exceljs reconcile
@@ -2393,6 +2547,14 @@ export async function xlsxBufferToSnapshot(
             data: JSON.stringify(synthStyleSidecar),
         });
     }
+    if (Object.keys(arrayFormulas).length > 0) {
+        // Finding #4: array-formula markers exceljs can't represent. Export's
+        // injectArrayFormulasIntoZip re-applies them to the written worksheet XML.
+        resources.push({
+            name: NOTESHEET_ARRAY_FORMULAS_RESOURCE,
+            data: JSON.stringify(arrayFormulas),
+        });
+    }
     if (themeClrScheme) {
         resources.push({
             name: NOTESHEET_THEME_CLR_SCHEME_RESOURCE,
@@ -2545,6 +2707,7 @@ export async function xlsxBufferToSnapshot(
                     chartId: chart.chartId,
                     type: chart.type,
                     title: chart.title,
+                    ...(chart.titleRuns ? { titleRuns: chart.titleRuns } : {}),
                     sourceRange: chart.sourceRange,
                     ...(chart.sourceSheetName ? { sourceSheetName: chart.sourceSheetName } : {}),
                     labels: chartLabels,
@@ -2603,6 +2766,20 @@ export async function xlsxBufferToSnapshot(
                         rowOffset: Math.round(chart.anchor.toRowOff / 9525),
                     },
                 },
+                // A3: exact source EMU offsets (see the image path for the
+                // rationale + the editor-move fallback). Also fixes a latent
+                // unit bug: chart export previously read columnOffset (PIXELS)
+                // as if it were EMU, mis-scaling any sub-cell offset to ~0.
+                _srcAnchorEmu: {
+                    fromCol: chart.anchor.fromCol,
+                    fromColOff: chart.anchor.fromColOff,
+                    fromRow: chart.anchor.fromRow,
+                    fromRowOff: chart.anchor.fromRowOff,
+                    toCol: chart.anchor.toCol,
+                    toColOff: chart.anchor.toColOff,
+                    toRow: chart.anchor.toRow,
+                    toRowOff: chart.anchor.toRowOff,
+                },
             };
             drawingResource[subUnitId].order.push(drawingId);
         }
@@ -2628,7 +2805,7 @@ export async function xlsxBufferToSnapshot(
                 drawingResource[subUnitId] = { data: {}, order: [] };
             }
             const drawingId = `image-imported-${image.sheetIndex}-${image.imageId}`;
-            const source = `data:${image.mime};base64,${Buffer.from(image.buffer).toString('base64')}`;
+            const source = `data:${image.mime};base64,${bytesToBase64(image.buffer)}`;
 
             const fromColOffPx = Math.round(image.anchor.fromColOff / 9525);
             const fromRowOffPx = Math.round(image.anchor.fromRowOff / 9525);
@@ -2657,7 +2834,10 @@ export async function xlsxBufferToSnapshot(
                 transform: {
                     flipY: false,
                     flipX: false,
-                    angle: 0,
+                    // Univer's transform.angle is in DEGREES (verified against
+                    // Univer 0.23 engine-render + the FImage.setRotate facade),
+                    // so the imported rot/60000 degrees flows straight through.
+                    angle: image.rotationDeg ?? 0,
                     skewX: 0,
                     skewY: 0,
                     left,
@@ -2665,7 +2845,16 @@ export async function xlsxBufferToSnapshot(
                     width,
                     height,
                 },
+                // NOTE: Univer recomputes the live `transform` from
+                // `sheetTransform` on load (drawingPositionToTransform reads
+                // `angle` off sheetTransform, defaulting to 0), so the angle
+                // MUST live here too — setting it only on `transform` above is
+                // silently overwritten back to 0 at render time. Both the
+                // rotated and the axis-aligned sheet transforms carry it (for a
+                // sub-45° tilt Univer's own transformToAxisAlignPosition keeps
+                // the angle on the axis-aligned bound).
                 sheetTransform: {
+                    angle: image.rotationDeg ?? 0,
                     from: {
                         column: image.anchor.fromCol,
                         columnOffset: fromColOffPx,
@@ -2680,6 +2869,7 @@ export async function xlsxBufferToSnapshot(
                     },
                 },
                 axisAlignSheetTransform: {
+                    angle: image.rotationDeg ?? 0,
                     from: {
                         column: image.anchor.fromCol,
                         columnOffset: fromColOffPx,
@@ -2693,6 +2883,36 @@ export async function xlsxBufferToSnapshot(
                         rowOffset: toRowOffPx,
                     },
                 },
+                // A3: the EXACT source EMU offsets, stashed so export can
+                // reproduce them losslessly instead of reconstructing from the
+                // rounded pixel sheetTransform (which drifts ~⅓px per round).
+                // Univer ignores unknown keys on a drawing entry; if the user
+                // moves the drawing in the editor, export falls back to
+                // px×9525 (the editor only updates the px sheetTransform, so a
+                // stale _srcAnchorEmu would be wrong — see readImagesFromSnapshot).
+                _srcAnchorEmu: {
+                    fromCol: image.anchor.fromCol,
+                    fromColOff: image.anchor.fromColOff,
+                    fromRow: image.anchor.fromRow,
+                    fromRowOff: image.anchor.fromRowOff,
+                    toCol: image.anchor.toCol,
+                    toColOff: image.anchor.toColOff,
+                    toRow: image.anchor.toRow,
+                    toRowOff: image.anchor.toRowOff,
+                },
+                // Finding #1: the source picture's <a:effectLst> (glow/shadow)
+                // and <a:srcRect> crop. Univer 0.23 can't render the effects,
+                // but we re-emit them on export so the round-tripped .xlsx still
+                // shows the frame in Excel (preserve-only). Univer ignores
+                // unknown keys on a drawing entry, so this survives reloads.
+                ...(image.effectLstXml || image.srcRectXml
+                    ? {
+                          _srcSpPrExtras: {
+                              ...(image.effectLstXml ? { effectLst: image.effectLstXml } : {}),
+                              ...(image.srcRectXml ? { srcRect: image.srcRectXml } : {}),
+                          },
+                      }
+                    : {}),
             };
             drawingResource[subUnitId].order.push(drawingId);
         }
@@ -2951,11 +3171,17 @@ function readTableResource(snapshot: UniverSnapshot): Record<string, { tables: T
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === TABLE_PLUGIN_NAME);
     if (!entry || typeof entry.data !== 'string') return {};
+    if (entry.data.trim() === '') return {}; // registered-but-empty → no tables
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, { tables: TableJson[] }>;
-    } catch {
+    } catch (e) {
+        // Self-produced JSON: a parse fault here means the note body was
+        // corrupted/truncated, and silently returning {} drops EVERY table
+        // from the export. Warn so the loss isn't invisible (matches the
+        // inject* paths' logging convention).
+        console.warn('[Notesheet] table resource JSON parse failed; tables dropped from export', e);
         return {};
     }
 }
@@ -2972,11 +3198,17 @@ function readSynthStylesSidecar(
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === NOTESHEET_SYNTH_STYLES_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
+    if (entry.data.trim() === '') return {}; // registered-but-empty → nothing to skip
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, Record<string, string[]>>;
-    } catch {
+    } catch (e) {
+        // A parse fault here means the exporter loses its record of which
+        // styles were synthesized on import, so it re-emits them on top of
+        // Excel's own TableStyle -> doubled paint. Warn instead of silently
+        // corrupting fidelity.
+        console.warn('[Notesheet] synth-styles sidecar JSON parse failed; style dedup skipped', e);
         return {};
     }
 }
@@ -2992,11 +3224,21 @@ function readCfResource(snapshot: UniverSnapshot): Record<string, UniverCfRuleEn
     if (!Array.isArray(resources)) return {};
     const entry = resources.find((r) => r?.name === CONDITIONAL_FORMATTING_RESOURCE);
     if (!entry || typeof entry.data !== 'string') return {};
+    // Univer emits an EMPTY-STRING `data` for a registered-but-empty resource
+    // (no CF rules on this workbook). That's "nothing to read", not corruption —
+    // don't JSON.parse('') (throws) and don't warn.
+    if (entry.data.trim() === '') return {};
     try {
         const parsed = JSON.parse(entry.data);
         if (!parsed || typeof parsed !== 'object') return {};
         return parsed as Record<string, UniverCfRuleEntry[]>;
-    } catch {
+    } catch (e) {
+        // A non-empty but unparseable payload IS a real loss (drops ALL CF
+        // rules). Warn so it's visible.
+        console.warn(
+            '[Notesheet] CF resource JSON parse failed; conditional formatting dropped from export',
+            e,
+        );
         return {};
     }
 }
@@ -3153,8 +3395,27 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
             try {
                 if (!t.range || !Array.isArray(t.columns) || t.columns.length === 0) continue;
                 const headerRow = t.options?.showHeader !== false;
-                const totalsRow = !!t.options?.showFooter;
-                const totalHeight = t.range.endRow - t.range.startRow + 1;
+                // Detect a totals row from the TABLE meta (notesheetTotalsRowCount,
+                // stamped at import from <table totalsRowCount>), NOT from
+                // options.showFooter and NOT from column totalsRowLabel. Two
+                // traps this avoids:
+                //   1. Univer's sheets-table plugin doesn't model a totals row —
+                //      the editor save() snapshot returns showFooter:false even
+                //      when the source had one. So showFooter can't be trusted.
+                //   2. exceljs writes a DEFAULT totalsRowLabel="Total" on every
+                //      column even for tables with NO totals row, so inferring
+                //      "has totals" from column labels false-fires and wipes the
+                //      last data row (M9 round-trip regression).
+                // The source's totalsRowCount is the only authoritative signal.
+                const metaEarly = (t.meta ?? {}) as NotesheetTableMeta;
+                const totalsRow =
+                    !!t.options?.showFooter || (metaEarly.notesheetTotalsRowCount ?? 0) > 0;
+                // Univer keeps the FULL range (startRow..endRow still spans the
+                // totals row) but drops showFooter — it just doesn't flag the
+                // last row as totals. So we flip totalsRow on WITHOUT changing
+                // the range; the totals row is the existing range's last row.
+                const rangeEndRow = t.range.endRow;
+                const totalHeight = rangeEndRow - t.range.startRow + 1;
                 const dataRowCount = Math.max(
                     0,
                     totalHeight - (headerRow ? 1 : 0) - (totalsRow ? 1 : 0),
@@ -3173,11 +3434,89 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
                     headerRow,
                     totalsRow,
                     ...(Object.keys(tableStyle).length > 0 ? { style: tableStyle } : {}),
-                    columns: t.columns.map((c) => ({ name: c.displayName })),
+                    // Re-attach each column's totals-row function/label (finding
+                    // #5). exceljs regenerates the correctly-scoped
+                    // SUBTOTAL(...) from totalsRowFunction; without it the
+                    // totals row is wiped and the structured ref self-refers.
+                    columns: t.columns.map((c) => {
+                        const cm = (c.meta ?? {}) as {
+                            notesheetTotalsRowFunction?: string;
+                            notesheetTotalsRowLabel?: string;
+                        };
+                        const col: ExcelJS.TableColumnProperties = { name: c.displayName };
+                        if (cm.notesheetTotalsRowFunction)
+                            col.totalsRowFunction =
+                                cm.notesheetTotalsRowFunction as ExcelJS.TableColumnProperties['totalsRowFunction'];
+                        if (cm.notesheetTotalsRowLabel !== undefined)
+                            col.totalsRowLabel = cm.notesheetTotalsRowLabel;
+                        return col;
+                    }),
                     // Sized empty rows so exceljs derives the right tableRef
                     // without writing into our already-populated data cells.
                     rows: Array.from({ length: dataRowCount }, () => []),
                 });
+
+                // exceljs's addTable().store() overwrites every header-row
+                // cell with a PLAIN STRING (column.name), clobbering the
+                // { text, hyperlink } / { richText } values we wrote from
+                // cellData above. A header cell that carried a hyperlink or
+                // per-run formatting therefore loses it silently. Re-apply
+                // those rich values to the header cells after the table is
+                // stored. (Data-row cells are untouched — rows are empty.)
+                if (headerRow) {
+                    const headerR = t.range.startRow; // 0-based snapshot row
+                    const headerCells = cellData[headerR];
+                    if (headerCells) {
+                        for (let ci = 0; ci < t.columns.length; ci++) {
+                            const colIdx = t.range.startColumn + ci;
+                            const hd = headerCells[colIdx];
+                            if (!hd) continue;
+                            const hUrl = extractHyperlinkFromCellP(hd.p);
+                            if (hUrl && hd.v !== undefined && hd.v !== null) {
+                                ws.getCell(headerR + 1, colIdx + 1).value = {
+                                    text: String(hd.v),
+                                    hyperlink: hUrl,
+                                };
+                                continue;
+                            }
+                            const hRuns = extractRichTextRunsFromCellP(hd.p);
+                            if (hRuns) {
+                                ws.getCell(headerR + 1, colIdx + 1).value = {
+                                    richText: hRuns,
+                                } as unknown as ExcelJS.CellValue;
+                            }
+                        }
+                    }
+                }
+
+                // Finding #5: re-apply the TOTALS-ROW cells after store(), with
+                // their CACHED VALUE. exceljs's Table.store() overwrites each
+                // totals cell with { formula: <generated SUBTOTAL>, result:
+                // column.totalsRowResult } — and since exceljs has no cached
+                // result, it emits <f>…</f> with NO <v>. A value-less totals
+                // formula forces Excel to recalc it on open, and during load-
+                // time evaluation the structured ref (ProjectTracker[Status])
+                // transiently spans the whole column INCLUDING the totals cell
+                // itself → "circular reference" error. Writing back our imported
+                // formula + cached value (from cellData) makes exceljs emit
+                // <f>SUBTOTAL(103,ProjectTracker[Status])</f><v>8</v>, matching
+                // what native Excel stores, so no load-time recalc fires.
+                if (totalsRow) {
+                    const totalsR = rangeEndRow; // 0-based snapshot totals row
+                    const totalsCells = cellData[totalsR];
+                    if (totalsCells) {
+                        for (let ci = 0; ci < t.columns.length; ci++) {
+                            const colIdx = t.range.startColumn + ci;
+                            const td = totalsCells[colIdx];
+                            if (!td || !td.f) continue; // only re-apply formula cells
+                            const formula = td.f.startsWith('=') ? td.f.slice(1) : td.f;
+                            ws.getCell(totalsR + 1, colIdx + 1).value = {
+                                formula,
+                                result: td.v as ExcelJS.CellFormulaValue['result'],
+                            };
+                        }
+                    }
+                }
             } catch (e) {
                 console.warn('[Notesheet] could not export table', t?.name, e);
             }
@@ -3246,6 +3585,14 @@ export async function snapshotToXlsxBuffer(snapshot: UniverSnapshot): Promise<Ar
     // AFTER charts + images so shapes merge into a sheet's existing drawing
     // part rather than create a colliding second one.
     out = await injectShapesIntoZip(out, snapshot);
+    // Finding #4: re-apply array-formula markers (t="array" ref="...") that
+    // exceljs stripped. Order-independent of the drawing injectors — it only
+    // rewrites <f> elements in the worksheet XML.
+    out = await injectArrayFormulasIntoZip(out, snapshot);
+    // Finding #5 (supporting): bump exceljs's hard-coded older calcId so Excel
+    // trusts the cached results and doesn't force a recalc-on-open (which is
+    // what surfaces the totals-row structured-ref self-reference).
+    out = await patchCalcId(out);
     return out;
 }
 
@@ -3315,6 +3662,43 @@ async function patchThemeFont(buffer: ArrayBuffer, fontName: string): Promise<Ar
 // cells inherit) with the size captured on import. Only the first <font>
 // in <fonts> is touched — explicit per-cell font sizes are left alone.
 // Fails soft (returns the input) so a parse miss never corrupts the file.
+// Finding #5 (supporting fix): exceljs hard-codes `<calcPr calcId="171027"/>`
+// in its workbook serializer, ignoring the source workbook. 171027 is an OLDER
+// calc-engine stamp than modern Excel writes (e.g. 191029/196...), and Excel
+// treats a file whose calcId predates its own engine as "recalculate on load".
+// A forced load-time recalc is what exposes the totals-row structured-ref
+// self-reference (see the totals-row re-apply above). Bumping the emitted
+// calcId to a current value tells Excel the cached results are trustworthy, so
+// it doesn't recalc on open. Fidelity-neutral: calcId only influences whether a
+// recalc is forced, not any cell content. Fail-soft.
+const NOTESHEET_CALC_ID = 191029;
+async function patchCalcId(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+    try {
+        const zip = await JSZip.loadAsync(buffer);
+        const wbPath = Object.keys(zip.files).find((p) => /^xl\/workbook\.xml$/i.test(p));
+        if (!wbPath) return buffer;
+        const xml = await zip.files[wbPath].async('string');
+        let patched: string;
+        if (/<calcPr\b[^>]*\bcalcId="\d+"/.test(xml)) {
+            patched = xml.replace(/(<calcPr\b[^>]*\bcalcId=")\d+(")/, `$1${NOTESHEET_CALC_ID}$2`);
+        } else if (/<calcPr\b/.test(xml)) {
+            patched = xml.replace(/<calcPr\b/, `<calcPr calcId="${NOTESHEET_CALC_ID}"`);
+        } else {
+            // No <calcPr> at all — insert one before </workbook>.
+            patched = xml.replace(
+                /<\/workbook>/,
+                `<calcPr calcId="${NOTESHEET_CALC_ID}"/></workbook>`,
+            );
+        }
+        if (patched === xml) return buffer;
+        zip.file(wbPath, patched);
+        return (await zip.generateAsync({ type: 'arraybuffer' })) as ArrayBuffer;
+    } catch (e) {
+        console.warn('[Notesheet] patchCalcId failed; keeping exceljs default calcId', e);
+        return buffer;
+    }
+}
+
 async function patchDefaultFontSize(buffer: ArrayBuffer, sizePts: number): Promise<ArrayBuffer> {
     try {
         const zip = await JSZip.loadAsync(buffer);

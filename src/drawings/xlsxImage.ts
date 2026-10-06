@@ -28,9 +28,7 @@ import JSZip from 'jszip';
 
 import type { UniverSnapshot } from '../snapshot';
 import { escapeXml, maxExistingRId, upsertRelationship } from '../charts/xlsxChart';
-
-// EMU per pixel at 96 DPI (mirrors the import path).
-const EMU_PER_PX = 9525;
+import { resolveAnchorEmu, type SrcAnchorEmu } from './sheetIdResolver';
 
 export type ImageExtension = 'png' | 'jpeg' | 'gif' | 'bmp' | 'webp';
 
@@ -52,6 +50,15 @@ export interface ImageDrawing {
         toRow: number;
         toRowOff: number; // EMU
     };
+    // Rotation in DEGREES (Univer transform.angle). Re-emitted as <a:xfrm rot>
+    // in 60000ths of a degree. Absent/0 → no <a:xfrm> written (axis-aligned).
+    rotationDeg?: number;
+    // Finding #1: verbatim source `<a:effectLst>` (glow/shadow) re-emitted into
+    // <xdr:spPr>, and `<a:srcRect>` crop re-emitted into <xdr:blipFill>, so a
+    // styled image round-trips its frame into the exported .xlsx even though
+    // Univer 0.23 can't render the effects live. Empty when the source had none.
+    effectLstXml?: string;
+    srcRectXml?: string;
 }
 
 // --- MIME / extension helpers ---
@@ -89,14 +96,54 @@ function extensionToContentType(ext: ImageExtension): string {
     }
 }
 
+// Decode a base64 string into raw bytes. Works in BOTH the Joplin webview
+// (where Node's global `Buffer` is undefined but `atob` exists) and Node/Jest
+// (where `atob` exists on modern Node, with `Buffer` as a fallback). The
+// previous `Buffer.from(...)`-only path silently threw in the webview, so
+// every exported image was dropped there (Jest passed because Node has
+// Buffer). Prefer atob — it is present in every runtime we target.
+function base64ToBytes(base64: string): Uint8Array {
+    if (typeof atob === 'function') {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+    }
+    // Node-only fallback, guarded by the atob check above and unreachable in
+    // the Joplin webview (atob is always present there).
+    return new Uint8Array(Buffer.from(base64, 'base64')); // webview-buffer-ok
+}
+
+// Encode raw bytes into a base64 string. The mirror of base64ToBytes: works
+// in the Joplin webview (uses `btoa`, present; `Buffer` is not) and in Node.
+// Used by the IMPORT path to build a data: URI for each embedded image —
+// which previously used `Buffer.from(...).toString('base64')` and would have
+// thrown in the webview the same way the export path did.
+export function bytesToBase64(bytes: Uint8Array): string {
+    if (typeof btoa === 'function') {
+        let binary = '';
+        // Chunk to avoid "Maximum call stack size exceeded" on large images
+        // when spreading into String.fromCharCode.
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+        }
+        return btoa(binary);
+    }
+    // Node-only fallback, guarded by the btoa check above and unreachable in
+    // the Joplin webview (btoa is always present there).
+    return Buffer.from(bytes).toString('base64'); // webview-buffer-ok
+}
+
 // Decode a data:<mime>;base64,<payload> URI into mime + raw bytes.
 function decodeDataUri(source: string): { mime: string; bytes: Uint8Array } | null {
     const m = source.match(/^data:([^;,]+);base64,([\s\S]*)$/);
     if (!m) return null;
     const mime = m[1];
     try {
-        const buf = Buffer.from(m[2], 'base64');
-        return { mime, bytes: new Uint8Array(buf) };
+        return { mime, bytes: base64ToBytes(m[2]) };
     } catch {
         return null;
     }
@@ -136,7 +183,10 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                 drawingType?: number;
                 imageSourceType?: string;
                 source?: string;
+                _srcAnchorEmu?: SrcAnchorEmu;
+                transform?: { angle?: number };
                 sheetTransform?: {
+                    angle?: number;
                     from?: {
                         column?: number;
                         columnOffset?: number;
@@ -151,6 +201,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                     };
                 };
                 axisAlignSheetTransform?: {
+                    angle?: number;
                     from?: {
                         column?: number;
                         columnOffset?: number;
@@ -164,6 +215,7 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
                         rowOffset?: number;
                     };
                 };
+                _srcSpPrExtras?: { effectLst?: string; srcRect?: string };
             };
 
             // Charts are drawingType 8 + componentKey; never treat as image.
@@ -172,30 +224,50 @@ export function readImagesFromSnapshot(snapshot: UniverSnapshot): ImageDrawing[]
             if (!d.imageSourceType || typeof d.source !== 'string') continue;
 
             const decoded = decodeDataUri(d.source);
-            if (!decoded) continue;
+            if (!decoded) {
+                // A malformed data URI or a base64 body atob can't decode
+                // would otherwise vanish one image from the export with no
+                // trace. Warn (the fixed Buffer bug was this class, silent).
+                console.warn(
+                    `[Notesheet] M18: could not decode image drawing "${drawingId}"; skipped from export`,
+                );
+                continue;
+            }
             const ext = mimeToExtension(decoded.mime);
-            if (!ext) continue;
+            if (!ext) {
+                console.warn(
+                    `[Notesheet] M18: unsupported image MIME "${decoded.mime}" for drawing "${drawingId}"; skipped from export`,
+                );
+                continue;
+            }
 
             const tx = d.axisAlignSheetTransform ?? d.sheetTransform;
             if (!tx?.from || !tx?.to) continue;
 
-            // sheetTransform offsets are PIXELS in Univer; OOXML anchor offsets
-            // are EMUs. Convert px -> EMU here (inverse of the import path).
+            // A3: reproduce the EXACT source EMU anchor when present + unmoved;
+            // otherwise px × 9525 (editor-authored or user-moved drawing).
+            // Rotation. Univer keeps the authoritative angle on sheetTransform
+            // (it recomputes `transform` from there on load), so read it from
+            // sheetTransform first, then axisAlignSheetTransform, then the live
+            // `transform` as a last resort. Normalise into [0,360); 0 → omit.
+            const angle =
+                d.sheetTransform?.angle ?? d.axisAlignSheetTransform?.angle ?? d.transform?.angle;
+            const rotationDeg =
+                typeof angle === 'number' && Number.isFinite(angle)
+                    ? ((angle % 360) + 360) % 360
+                    : 0;
+
             out.push({
                 drawingId,
                 sheetId: subUnitId,
                 extension: ext,
                 bytes: decoded.bytes,
-                anchor: {
-                    fromCol: tx.from.column ?? 0,
-                    fromColOff: Math.round((tx.from.columnOffset ?? 0) * EMU_PER_PX),
-                    fromRow: tx.from.row ?? 0,
-                    fromRowOff: Math.round((tx.from.rowOffset ?? 0) * EMU_PER_PX),
-                    toCol: tx.to.column ?? 0,
-                    toColOff: Math.round((tx.to.columnOffset ?? 0) * EMU_PER_PX),
-                    toRow: tx.to.row ?? 0,
-                    toRowOff: Math.round((tx.to.rowOffset ?? 0) * EMU_PER_PX),
-                },
+                anchor: resolveAnchorEmu(d._srcAnchorEmu, tx.from, tx.to),
+                ...(rotationDeg ? { rotationDeg } : {}),
+                ...(d._srcSpPrExtras?.effectLst
+                    ? { effectLstXml: d._srcSpPrExtras.effectLst }
+                    : {}),
+                ...(d._srcSpPrExtras?.srcRect ? { srcRectXml: d._srcSpPrExtras.srcRect } : {}),
             });
         }
     }
@@ -215,6 +287,23 @@ export function buildImagePicXml(
     name: string,
 ): string {
     const a = image.anchor;
+    // Rotation → <a:xfrm rot="..."> in 60000ths of a degree. For a
+    // twoCellAnchor, Excel derives the shape's position/size from the from/to
+    // cells, and <a:off>/<a:ext> inside <a:xfrm> are optional (ECMA-376
+    // CT_Transform2D minOccurs=0), so we emit rot alone — no fabricated
+    // geometry. Omit the whole <a:xfrm> when unrotated to keep byte-identical
+    // output for the common axis-aligned case.
+    let xfrmXml = '';
+    if (image.rotationDeg) {
+        const rot = Math.round((((image.rotationDeg % 360) + 360) % 360) * 60000);
+        if (rot !== 0) xfrmXml = `<a:xfrm rot="${rot}"/>`;
+    }
+    // Finding #1: re-emit the preserved crop + effect frame. srcRect belongs in
+    // <xdr:blipFill> (before <a:stretch>); effectLst belongs in <xdr:spPr>
+    // (after <a:prstGeom>, per CT_ShapeProperties order). Empty strings when the
+    // source picture carried none — keeps axis-aligned output byte-identical.
+    const srcRectXml = image.srcRectXml ?? '';
+    const effectLstXml = image.effectLstXml ?? '';
     return (
         `<xdr:twoCellAnchor editAs="oneCell">` +
         `<xdr:from><xdr:col>${a.fromCol}</xdr:col><xdr:colOff>${a.fromColOff}</xdr:colOff><xdr:row>${a.fromRow}</xdr:row><xdr:rowOff>${a.fromRowOff}</xdr:rowOff></xdr:from>` +
@@ -226,10 +315,13 @@ export function buildImagePicXml(
         `</xdr:nvPicPr>` +
         `<xdr:blipFill>` +
         `<a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId${rId}"/>` +
+        srcRectXml +
         `<a:stretch><a:fillRect/></a:stretch>` +
         `</xdr:blipFill>` +
         `<xdr:spPr>` +
+        xfrmXml +
         `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+        effectLstXml +
         `</xdr:spPr>` +
         `</xdr:pic>` +
         `<xdr:clientData/>` +

@@ -6,6 +6,6 @@
 log="${VERIFY_READ_LOG:-./.claude/.evidence-reads}"
 path=$(cat | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))' 2>/dev/null)
 case "$path" in
-  *screenshots/*|*-console.txt|*-result.txt|*.png) [ -f "$path" ] && echo "$path" >> "$log" ;;
+  *screenshots/*|*-console.txt|*-result.txt|*.png|*.manifest.txt|*-manifest.txt|*export*.xlsx) [ -f "$path" ] && echo "$path" >> "$log" ;;
 esac
 exit 0
