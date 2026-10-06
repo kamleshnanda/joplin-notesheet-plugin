@@ -10,5 +10,29 @@
     "homepage_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
     "repository_url": "https://github.com/kamleshnanda/joplin-notesheet-plugin",
     "keywords": ["spreadsheet", "sheet", "table", "formula", "calculation", "xlsx", "excel"],
-    "categories": ["productivity", "editor"]
+    "categories": ["productivity", "editor"],
+    "icons": {
+        "16": "assets/icons/icon16.png",
+        "32": "assets/icons/icon32.png",
+        "48": "assets/icons/icon48.png",
+        "128": "assets/icons/icon128.png"
+    },
+    "screenshots": [
+        {
+            "src": "assets/screenshots/charts-editor.png",
+            "label": "An imported Excel workbook with a bar chart and a pie chart, anchored to the grid and updating live"
+        },
+        {
+            "src": "assets/screenshots/formatting-editor.png",
+            "label": "A named table with banded rows, hyperlinks, number formats and a totals row"
+        },
+        {
+            "src": "assets/screenshots/cf-editor.png",
+            "label": "Conditional formatting: color scales, data bars, highlight rules, top-N and icon sets"
+        }
+    ],
+    "promo_tile": {
+        "src": "assets/promo_tile.png",
+        "label": "Notesheet: real spreadsheets inside Joplin notes"
+    }
 }
