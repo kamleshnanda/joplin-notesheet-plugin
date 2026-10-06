@@ -415,6 +415,34 @@ const browserExtraScripts = new Set(['editorView.tsx']);
 
 const webpack = require('webpack');
 
+// Univer's engine-render ships ~70 hyphenation dictionaries (~5.8 MB of
+// pattern data) as lazy import() chunks. LimitChunkCountPlugin below folds
+// every one of them into editorView.js, even though hyphenation only runs
+// when a Docs section sets autoHyphenation (sheets never do).
+// Verified against @univerjs/engine-render@0.23.0 lib/es/index.js
+// (PATTERN_LOADERS + Hyphen.loadPattern + the hasPattern() guard).
+const ENGINE_RENDER_ES = path.join('@univerjs', 'engine-render', 'lib', 'es');
+const PATTERN_CHUNK = /^\.\/([a-z]+(?:-[a-z0-9]+)*)-[A-Za-z0-9_-]{8}\.js$/;
+
+// en-us MUST stay: engine-render also imports it statically (`import { t as
+// EnUs } from "./en-us-…js"`), and this plugin matches that request too —
+// stubbing it would hand engine-render an undefined binding. en-gb is kept
+// as the other English variant; add a key here if sheets ever hyphenate.
+const KEPT_HYPHENATION_PATTERNS = new Set(['en-us', 'en-gb']);
+
+function shouldKeepHyphenationPattern(lang) {
+    return KEPT_HYPHENATION_PATTERNS.has(lang);
+}
+
+function hyphenationPatternStub() {
+    const stub = path.resolve(__dirname, 'src', 'stubs', 'emptyHyphenationPattern.js');
+    return new webpack.NormalModuleReplacementPlugin(PATTERN_CHUNK, (resource) => {
+        if (!resource.context.endsWith(ENGINE_RENDER_ES)) return;
+        const lang = resource.request.match(PATTERN_CHUNK)[1];
+        if (!shouldKeepHyphenationPattern(lang)) resource.request = stub;
+    });
+}
+
 function browserOverrides() {
     return {
         target: 'web',
@@ -440,7 +468,10 @@ function browserOverrides() {
                 },
             ],
         },
-        plugins: [new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })],
+        plugins: [
+            new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+            hyphenationPatternStub(),
+        ],
     };
 }
 
