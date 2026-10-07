@@ -6,7 +6,7 @@ Notesheet turns a Joplin note into a real spreadsheet. Powered by the [Univer SD
 
 ## Installation
 
-In Joplin desktop (3.5 or later): **Tools → Options → Plugins**, search for **Notesheet**, click **Install**, then restart Joplin. Create a sheet with **Tools → New Spreadsheet** (`Cmd/Ctrl+Shift+S`), or bring in an existing workbook with **Tools → Import .xlsx as Notesheet**.
+In Joplin desktop (3.5 or later), open **Tools → Options** (Windows / Linux) or **Joplin → Preferences…** (macOS), go to **Plugins**, search for **Notesheet**, click **Install**, then restart Joplin. Create a sheet with **Tools → New Spreadsheet** (`Cmd/Ctrl+Shift+S`), or bring in an existing workbook with **Tools → Import .xlsx as Notesheet**.
 
 ## Features
 
@@ -111,7 +111,7 @@ npm run dist     # builds the .jpl into publish/
 npm test         # runs Jest unit tests
 ```
 
-The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable in Joplin via **Tools → Options → Plugins → ⚙ → Install from file**.
+The build produces `publish/com.kamleshnanda.joplin-notesheet.jpl`, installable in Joplin via **Plugins → ⚙ → Install from file** in **Tools → Options** (Windows / Linux) or **Joplin → Preferences…** (macOS).
 
 ### Milestones
 
