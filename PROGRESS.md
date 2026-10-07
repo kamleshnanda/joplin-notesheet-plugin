@@ -5,410 +5,20 @@ every feature.
 
 ## Done
 
-- **feature-7 + feature-9 — verified DONE + rows flipped** (2026-06-28) —
-  Both M17-era PGE rows that were still `passes:false` are now resolved.
-  - **feature-7 (B1: chart→SVG in HTML export).** The static-SVG renderer in
-    `src/contentScripts/notesheetRenderer.ts` was already implemented; the
-    18-test `tests/m18ChartHtmlExport.test.ts` covered most of the spec but
-    MISSED two written acceptance criteria, so per the fidelity-test-gap
-    discipline I added them before flipping: (1) **pie sweep angles computed
-    from INPUT within ±3°** (parses each `<path>`'s arc endpoints, compares to
-    `data[i]/sum·360` — not the path COUNT the old test asserted), and (2) the
-    **CF + chart on one sheet** case (cellIs paints B2:B5 pink AND the chart
-    `<svg>` renders, table-before-svg document order, no absolute/z-index
-    overlay). 20/20 pass. **Live preview-pane gate:** wired feature-7 into
-    `eval-screenshot.js` (`previewPane` region, title prefix `PGE M17 chart f7
-    eval `), imported MultiSheet.xlsx, captured
-    `screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png`
-    — 3 sheet tables (Data/Chart/Summary) + the "Data Chart" bar SVG (5 bars,
-    palette blue, axis 0–60). Sidecar: `inlineSvgCount=1`, `rect=5`,
-    `rawJsonLeak=false`, `tableCount=3`.
-  - **EVALUATOR PASS (fresh-context, 2026-06-28).** The PGE evaluator ran
-    independently, captured its OWN preview-pane screenshot
-    (`eval-2026-06-28T11-16-53-565Z.png`), and graded **PASS** — confirmed all
-    5 render cases + palette parity + no viz-lib dep, and that the M13 failure
-    mode (data correct, render flat) does NOT occur (bar heights track the
-    data). Row: `passes:true`, `evaluator_verdict:PASS`.
-  - **HARNESS FIX (load-bearing): `rawJsonLeak` false-positive.** The M16-era
-    heuristic matched `"sheetOrder"`/`"workbook-` on the whole `document.body.
-    innerHTML`. Since the M18 #37 RTE fence-integrity fix, the renderer wraps
-    the ORIGINAL fenced JSON in a HIDDEN `<div class="joplin-source">` (the
-    wrapper is REQUIRED — see [[project_rte_fence_joplin_editable]]), so the
-    raw JSON is in the DOM but NOT visible — `rawJsonLeak` reported `true` on
-    EVERY note. Fixed to strip `.joplin-source` subtrees before checking, so it
-    detects only a TRUE leak (JSON in the visible render path). Confirmed via a
-    DOM probe (`jsonOutsideSource=false`) before changing the heuristic.
-  - **feature-9 (flip m12 pin-downs + test count).** Already satisfied — both
-    pin-downs (`m12ImportRecovery.test.ts:55,89`) are positive imports
-    (MultiSheet → N charts; LargeWorkbook → clean 2-sheet); the test-count gate
-    (267 → ≥290) is far exceeded at 457. The M18 abs-rel-target fix went BEYOND
-    the spec, making FormulasAndStructuredRefs import cleanly too (spec only
-    required it stay an `xlsx-multi-table-unsupported` rejection). Row flipped.
-    **EVALUATOR PASS (fresh-context, 2026-06-28)** — graded as a test-integrity
-    feature (no render dimension) from the test file + git diff + count gate;
-    confirmed the flips reflect REAL importer capability (not regression-hiding
-    weakening — assertions got stronger), the importable-fixtures block is
-    intact, and the count gate is exceeded. Row: `evaluator_verdict:PASS`.
-  - **Verified:** typecheck clean, `npm test` 457/457 (52 suites). New harness
-    util `scripts/pge/capture-image-render.js` (from the A1 gate) committed
-    earlier.
+- **M22 — Marketplace readiness** (2026-10-06, PR #41; milestone marked
+  ✅ in PR #42) — `.jpl` cut 13.7 → 9.3 MB by stubbing the 76 unused
+  Univer hyphenation dictionaries (`src/stubs/emptyHyphenationPattern.js`,
+  wired in `webpack.config.js`); plugin icon (16/32/48/128) + screenshots +
+  promo tile declared in `src/manifest.json`; npm package metadata in
+  `package.json`; MIT `LICENSE`; `CHANGELOG.md` 1.0.0 entry. Verified on
+  `main` @ `dfe5f2f`: typecheck + lint clean, 60 suites / 528 tests green.
 
-- **M18 adversarial-review fixes** (2026-06-28) — An adversarial code-review
-  workflow over the 8-commit M18 diff surfaced 17 findings; 9 survived
-  independent verification, 8 were false positives (incl. confirming the
-  `m12ImportRecovery` assertion flip was a LEGITIMATE behaviour update, not
-  regression-hiding). Operator chose "fix all confirmed." Test count 445 → 455.
-  - **#1 (HIGH) — rel-target normalizer corrupted `TargetMode="External"`
-    hyperlinks.** `normalizeAbsoluteRelTargets` (`src/xlsx.ts`) keyed only off a
-    leading `/`, so a root-relative (`/folder/page.html`) or protocol-relative
-    (`//host/path`) EXTERNAL hyperlink got relativized to `../../…`, destroying
-    it. Now rewrites per `<Relationship>` element and SKIPS any carrying
-    `TargetMode="External"`. The function-header comment was already claiming
-    this — now true. (Scheme URLs like `https://` always escaped.)
-  - **#2 (HIGH) — live-edit dropped a legitimate first data row.**
-    `trackedCharts.hasHeaderRow` was derived from `categoryAxisType === 'category'`
-    ("had labels"), not "row 0 is a header." A chart whose `<c:cat>` starts at
-    `$A$1` (no header) rendered all N categories initially but lost the FIRST on
-    the first cell edit — the inverse of the `df2bbde` phantom-category bug. Fix:
-    importer now computes a precise `hasHeaderRow` (`labelsRange.startRow >= 1`),
-    threads it through `meta.hasHeaderRow` (round-trips), and `trackedCharts`
-    prefers it (legacy `categoryAxisType` fallback for pre-fix snapshots).
-  - **#3/#4 (MEDIUM) — percentStacked mishandled mixed-sign + cancelling
-    categories.** `NotesheetChart.buildConfig` summed SIGNED values as the
-    denominator and special-cased `total===0` to pass RAW values through (which
-    blew past the 100 axis cap and rendered full-height bars). Now normalises
-    against Σ|v| (sign preserved, absolute shares total 100) and a zero
-    abs-total → 0.
-  - **#5 (LOW) — per-series colour latched onto a nested marker/line fill.**
-    The un-bounded `<c:spPr>…<a:solidFill>` regex skipped across the series
-    spPr close tag into a sibling `<c:marker>` fill (and a series' own `<a:ln>`
-    stroke was read as its fill). Fix: bound to the first `<c:spPr>` block AND
-    strip `<a:ln>` subtrees before reading the fill.
-  - **#6 (MEDIUM, test) — EMU fidelity chart test passed via the px×9525
-    fallback, not the stash path it claimed to verify.** The synthetic snapshot
-    left the stash's cell-index fields undefined (so `anchorUnmoved` returned
-    false) and used 50px/476250 EMU which the fallback reproduces identically.
-    Rewrote the test with a sub-pixel sentinel EMU (478123; round/9525=50 but
-    50×9525=476250≠478123) and a full 8-field stash, so it only passes if the
-    exact stash is emitted. (Import already stashed all 8 fields — pure test
-    gap, no production change.)
-  - **#9 (LOW, test) — nodebuffer regression guard only checked `src/xlsx.ts`.**
-    Broadened to sweep every src file that calls JSZip (chart/image/shape zip
-    rewriters run on the same browser-side path); all already use 'arraybuffer'.
-  - **#7/#8 (LOW) — anchor "unmoved" detection is exact-integer-px + safe px
-    fallback.** Real but BOUNDED (≤½px / 3175 EMU drift; safe degradation, never
-    a crash/mis-anchor). Per "documented shortcoming over unexpected bug,"
-    DOCUMENTED precisely in `sheetIdResolver.ts:resolveAnchorEmu` rather than
-    rewritten — a dirty/moved flag through Univer's drawing service adds
-    regression risk for sub-pixel gain. **Flagged to operator.**
-  - **Verified:** typecheck clean, `npm test` 455/455 (52 suites). New tests:
-    `tests/m18ReviewFixes.test.ts` (#1/#2/#5), additions to
-    `tests/m18ChartPercentStacked.test.ts` (#3/#4) and `m18AbsoluteRelTargets`
-    (#9); `m18AnchorEmuFidelity` chart test rewritten (#6).
-
-- **feature-8-m17-chart-preview-pane-pge-smoke** (2026-06-12) — Closes the
-  long-open "does the chart SVG actually reach Joplin's export?" question
-  for the M18 B1 work. Wired feature-8 into the eval harness
-  (`scripts/pge/eval-screenshot.js`): added it to `TITLE_PREFIX_BY_FEATURE`
-  (`PGE M17 chart f8 eval `) + `REGION_BY_FEATURE` (`previewPane`, reusing
-  M16's path), and extended `samplePreviewPaneInk()` with the
-  `inlineSvgCount` + `chartSvgPrimitives` signals (counts
-  `svg.notesheet-chart` and its rect/path/polyline/circle children in the
-  preview iframe DOM). Imported `MultiSheet.xlsx` as the f8 note; the
-  harness drove Joplin into preview-visible state and captured the
-  markdown-rendered preview pane. Sidecar: `inlineSvgCount=1`,
-  `rect=5` (the 5 bars), `tableCount=3`, `sheetHeadings=[Data,Chart,Summary]`,
-  `rawJsonLeak=false`. Fresh-process evaluator graded **PASS** off its own
-  screenshot (`eval-2026-06-13T03-35-58-158Z.png`) — chart renders as
-  inline SVG with title "Data Chart", 5 labelled bars, axis ticks 0/60,
-  palette blue. This is the runtime proof the source-level fan-out and the
-  standalone-HTML render could only approximate.
-  the smoke seed in `src/snapshot.ts:emptySnapshot()`. A1 = "harness-smoke-OK"
-  styled via `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`,
-  cell carries `s: 'pge-smoke-red'` reference. Built .jpl, installed in
-  dev profile, captured generator-evidence screenshot showing red text
-  rendered in Univer at A1. Fresh-context evaluator subprocess graded
-  PASS (cd8bf51).
-- **harness-hardening** (2026-06-02) — `eval-screenshot.js` now drops
-  into the `UserWebviewIndex.html` frame inside the editor page (where
-  Univer actually mounts) and waits on the real Univer canvas selector
-  `canvas[id^="univer-sheet-main-canvas"]` instead of a 5s sleep.
-  Emits a `<screenshot>.pixels.json` sidecar with the top non-background
-  colours sampled from the row-0 canvas slab — gives evaluators a
-  machine-checkable signal alongside the visual screenshot. Confirmed
-  on the smoke note: dominant `rgb(234,237,249)` (header band),
-  `rgb(255,0,0)` appears in top-3 with 353 hits, proving the red is
-  real pixels not just snapshot data.
-- **feature-1-m13-rotated-text-renders** (2026-06-03) — Cherry-picked
-  the reverted PR #16 (`415b4a4`) rotation import/export in
-  `src/xlsx.ts`, plus `tests/m13RotatedText.test.ts` and the
-  `m12FixtureRoundTrip.test.ts` flips. README docs edit explicitly
-  out-of-scope. Built .jpl, installed in dev profile, imported
-  `MergedCellsAndAlignment.xlsx` headlessly via the new
-  `scripts/pge/import-fixture.{ts,sh}`, captured canvas-targeted
-  screenshot showing A6 up-right diagonal, B6 vertical, C6 down-right
-  diagonal. Pixel sidecar over the rotated row band reports
-  `inkRowSpread=1.000` (text ink occupies every sampled y-row in the
-  slab) — strong non-horizontal signal independent of colour. Jest
-  187/187 (was 181 baseline + 6 new rotation tests). The reverted
-  code worked first try in Univer 0.23 — earlier visual failure was
-  almost certainly a stale-build issue, not a rendering gap. Evaluator
-  graded PASS (PR #19, dc80505).
-- **feature-1-m13-rich-text-renders** (2026-06-03) — Cherry-picked PR
-  #16 commit `6f33f3a` rich-text import/export in `src/xlsx.ts`
-  (4 new helpers: `buildTextStyleFromExceljsFont`,
-  `buildRichTextCellP`, `buildExceljsFontFromTextStyle`,
-  `extractRichTextRunsFromCellP`), plus `tests/m13RichText.test.ts`
-  (8 new tests) and the two flipped `m12FixtureRoundTrip.test.ts`
-  pin-downs. README docs drop explicitly out-of-scope. Imported
-  `RichTextInOneCell.xlsx` headlessly via
-  `scripts/pge/import-fixture.sh`. Canvas screenshot shows
-  A1 = bold "**Hello**" + plain " world", A2 = "Red"(red) + " and "
-  + "Blue"(blue) + " text" with three distinct foreground colours,
-  A3 = blue underlined "Visit example.com for more info" hyperlink
-  (Pattern A). Pixel sidecar over the A2-only band reports
-  `redInk=67`, `blueInk=76` — both well above the spec's ≥30
-  threshold; dominant histogram bucket `rgb(0,0,255)` 76 hits
-  followed by `rgb(255,0,0)` 67 hits. Jest 195/195 (was 187 baseline
-  + 8 new rich-text tests). Reverted code worked first try in Univer
-  0.23 — same hypothesis as M13/C confirmed: the original revert
-  was almost certainly a build/cache issue, not a renderer gap.
-  Evaluator graded PASS (PR #20). README cleanup followed in PR #21
-  (5aaf690).
-- **feature-1-m13-theme-aware-banding** (2026-06-03 → 2026-06-04,
-  three-rework cycle) — Routed `synthesizeTableStyleAssignments`
-  through a new `EXCEL_TABLE_STYLE_RECIPE_BY_NAME` parallel table
-  (`src/charts/excelTableStyleRecipes.ts`) that names each TableStyle
-  slot's accent index + tint. The synthesizer reads the source
-  workbook's `<a:clrScheme>` (already captured by
-  `readThemeClrScheme`) and resolves the recipe via the ECMA-376
-  HSL-L tint formula. Aptos fixture (`FormattingSmorgasboard.xlsx`)
-  paints green; Classic fixture
-  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
-  paints grey instead of green — same `EXCEL_TABLE_STYLE_BY_NAME[Medium4]`
-  lookup, two distinct rendered outputs driven by source clrScheme.
-  Achromatic styles (Light1/8/15, Medium1/8/15/22, Dark1/8) keep
-  their literal greys.
-
-  **First multi-screenshot cycle.** Added `:variant` suffix support
-  to `eval-screenshot.js` (`feature-1-m13-theme-aware-banding:aptos` +
-  `:classic`), `tableHeaderRowRegion` helper sampling cols B+ to dodge
-  A1 active-cell selection blue, `greyInk` aggregate (R,G,B∈[140,180]
-  AND `abs(R-G)≤10` AND `abs(G-B)≤10`), and broadened the existing
-  `greenInk` aggregate so it catches dark Aptos green `#196B24` (G=107)
-  too.
-
-  **Rework #2 (canvas fidelity, PR #22).** Operator caught a
-  render-side bug the snapshot-fidelity test couldn't see: the
-  `totalsTopBorder` slot was emitting `bd.t.s = 7` (DOUBLE) on the
-  totals row. Univer 0.23's `_renderDoubleBorder` paints DOUBLE as
-  two 1px strips with a 1-px white gap, which reads as anti-aliased
-  `#89CE74` rather than the pure `#72D068` Excel paints. AND Excel's
-  render is actually a single 2px strip, not a true double-line — so
-  DOUBLE was the wrong style code in the first place. Phase 1 added
-  `tests/excelCanvasFidelity.test.ts` (361 lines, pure-stdlib via
-  `tests/util/pngSampler.ts`) — region-finding heuristics align Joplin
-  canvas screenshot with Excel reference at structural regions
-  (header / banded / totals-top), asserts dominant-colour parity for
-  tall regions (Δ ≤ 8) and looser for 1-2px strips (Δ ≤ 32). Phase 2
-  switched `BORDER_STYLE_TO_UNIVER.medium` (style 8, lineWidth=2)
-  instead of `.double` (style 7) for the totals-top slot. Phase 3
-  re-captured eval screenshots; Phase 4 raised counts 204 → 206.
-
-  **Rework #3 (totals-row BOTTOM border).** Operator's eyeball +
-  side-by-side pixel-probe revealed Excel paints TWO accent strips
-  framing top AND bottom of the totals body. Recipe extended with
-  `totalsBottomBorder` slot, parallel to `totalsTopBorder`. Empirical
-  overrides set both Aptos (`#72D068`) and Classic (`#C9C9C9`) to
-  the lighter accent. `synthesizeTableStyleAssignments` emits `bd.b`
-  on every totals cell, REPLACING the table outline's thin frame.
-  Diagnostic asset:
-  `tests/fixtures/formatting-testdata/border-isolation.xlsx`
-  (operator-built fixture with explicit border combinations,
-  pixel-probed against Excel to establish ground truth).
-
-  **RESOLVED 2026-06-07 — was a known gap during the M13/E rework
-  but no longer reproduces on current main.** PR #22 shipped with
-  a documented gap: the snapshot's `bd.b.cl.rgb === '#72D068'` was
-  correct (verified via direct `xlsxBufferToSnapshot` introspection
-  on every totals cell), but the canvas pixel-probe at y=436 showed
-  `rgb(52,106,46) = #34692E` — the header's dark green — rather
-  than the lighter accent. During M16 prep (2026-06-07), a fresh
-  re-capture of the Aptos eval at
-  `screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-07T05-20-38-627Z.png`
-  showed BOTH totals strips rendering at y=398 and y=436 in
-  `rgb(137,206,116)` (anti-aliased of `#72D068`). Bug appears to
-  have resolved itself through snapshot-shape changes between M13/E
-  (PR #22) and M16 — most likely cause is the M15 CF rework's
-  changes to `synthesizeTableStyleAssignments`. Univer version
-  unchanged (`@univerjs/engine-render@0.23.0` locked).
-  Bonus finding from the investigation (informs future work): an
-  isolation probe (cell with `bd.b = #72D068` above + cell with
-  `bd.t = #34692E` below) showed Univer paints the LOWER cell's
-  `bd.t` colour at the shared edge — i.e., when both `bd.b` (upper)
-  and `bd.t` (lower) are declared at a shared edge, the lower
-  wins. This is the right rule to follow for any future inter-row
-  strip work.
-
-  Final test totals: 209 (was 197 pre-cycle). Three new pin-downs in
-  `tests/m12FixturePinDowns.test.ts` (M13/E describe block), 6 new
-  tests in `tests/excelReferenceFidelity.test.ts` (snapshot fidelity),
-  4 new tests in `tests/excelCanvasFidelity.test.ts` (canvas
-  fidelity, includes bottom-border tests added in rework #3), 4 leak
-  pin-downs in `tests/m13RedoSmokeRedCell.test.ts` (smoke seed leak
-  fix). Generator-evidence:
-  `screenshots/feature-1-m13-theme-aware-banding/generator-evidence-{aptos,classic}.png`.
-  Operator-captured Excel references:
-  `screenshots/excel-reference/FormattingSmorgasboard-{Aptos,Classic}.png`.
-  Evaluator graded PASS across all reworks. Shipped via PR #22 (commit
-  `fca1cbc`); README cleanup PR #23 marked M13/E shipped.
-- **M14 NO-GO** (2026-06-04) — `xlsx-js-style` (the SheetJS-style
-  parser explored as an `exceljs` replacement) ALSO has `!cf`
-  undefined on indexed-cellXf import. The "wait for SheetJS to make
-  CF cheaper" rationale evaporates; M15 ships on `exceljs`. Decision
-  document preserved at `docs/m14-sheetjs-spike.md` and merged via
-  PR #25 (commit `f423d5a`). Roadmap renumbered: M15 is now the next
-  active milestone (was already so before but the README marker was
-  off-by-one).
-- **feature-1-m16-snapshot-to-html** (2026-06-06) — Ships the
-  snapshot → HTML renderer as a Joplin
-  `ContentScriptType.MarkdownItPlugin` content script. New entry at
-  `src/contentScripts/notesheetRenderer.ts`; registered in
-  `src/index.ts` alongside the existing editor; bundled via the
-  existing `buildExtraScripts` webpack target (commonjs2 — see
-  `plugin.config.json` extraScripts list). The renderer overrides
-  markdown-it's fence handler: when the fence info is `notesheet v=1`
-  it parses the JSON snapshot, walks `sheetOrder` / `sheets[id]` /
-  `styles` / `mergeData`, and emits `<table>` per sheet with inline-
-  styled `<td>`s (bg / fg / bold / italic / underline / horizontal +
-  vertical alignment / per-side borders). Non-notesheet fences fall
-  through to markdown-it's default — verified with a Jest test that
-  feeds `javascript` / `python` / empty info. CF rules are evaluated
-  inside the renderer itself (Univer's CF preset only paints at
-  canvas-render time): cellIs, top10, colorScale all work; dataBar +
-  iconSet are punted with documentation in OPERATOR_ASK and
-  BUILD_PLAN's Out-of-scope list. Merged cells emit colspan/rowspan
-  on the anchor and skip the interior cells (verified by counting
-  tds in the merge-row).
-
-  **13 new Jest tests** in `tests/m16NotesheetMarkdownRender.test.ts`
-  (criterion 1 base shape × 7, criterion 2 multi-sheet × 1,
-  criterion 3 FormattingSmorgasboard × 1, criterion 4 CF × 1, plus 3
-  edge cases — non-notesheet fence falls through, malformed JSON
-  returns null, unsupported version returns null, HTML-escapes
-  cell values to defang `<script>` injection). Multi-sheet test
-  builds a 3-sheet workbook in-memory via exceljs because the
-  shipped `MultiSheet.xlsx` fixture has chart drawings that crash
-  exceljs's reconcile (a pre-existing M12 known shortcoming). Test
-  total: 220 → 233 (13 new, none regressed).
-
-  **Harness extension: `previewPane` regionKind.** New code path
-  in `scripts/pge/eval-screenshot.js`. Drives Joplin into preview-
-  visible state via three menu clicks (View > Toggle editor plugin
-  if Custom Editor active, View > Toggle editors if TinyMCE active,
-  View > Toggle editor layout up to 3× until preview iframe is
-  visible). Identifies the preview frame by `document.title ===
-  'Note viewer'` (Playwright's `frame.url()` returns empty for
-  Joplin's `joplin-content://note-viewer/` protocol). Samples the
-  preview iframe's DOM via `samplePreviewPaneInk()`: parses
-  CSS-computed `background-color` of every `<td>`, runs them
-  through the same threshold expressions the canvas sampler uses
-  (greenInk / pinkInk / lightGreenInk / etc.), and adds three
-  preview-pane-specific signals to the sidecar: `tableCount`,
-  `sheetHeadings`, `rawJsonLeak`. The latter is the M13-style gate
-  — if `rawJsonLeak: true`, the renderer didn't run and the user
-  saw a JSON blob in their export.
-
-  AppleScript invocation hardened: switched from
-  `execSync('osascript -e ${JSON.stringify(script)}')` to
-  `execFileSync('osascript', ['-e', script])` because nested-quote
-  escaping in the shell-arg form intermittently produced syntax
-  errors (`Expected "given", "in", "of", expression...` at line
-  37:38). The argv form passes the script verbatim and is
-  syntactically reliable.
-
-  Generator-evidence:
-  `screenshots/feature-1-m16-snapshot-to-html/eval-*.png`
-  (FormattingSmorgasboard fixture rendered: green table header,
-  CAEFCB banded rows, no raw JSON, all column headers visible) +
-  `.pixels.json` sidecar (`dominant=rgb(202,239,203)` =
-  `#CAEFCB`, `greenInk=35`, `lightGreenInk=28`, `tableCount=1`,
-  `rawJsonLeak=false`). Read via the Read tool.
-
-- **feature-1-m15-conditional-formatting** (2026-06-05) — Full
-  round-trip on the 5 CF rule types in
-  `ConditionalFormatting-Variants.xlsx`: colorScale, dataBar,
-  cellIs/highlightCell.number, top10/highlightCell.rank, iconSet.
-  Phase 1 wired `UniverSheetsConditionalFormattingPreset` into
-  `src/editorView.tsx` (the single-point-of-failure step — Phase 1
-  build smoke confirmed canvas renders). Phase 2 added 6 fidelity
-  tests in `excelReferenceFidelity.test.ts` anchored to the source
-  XML (parsed via JSZip + regex), authored failing first per the
-  fidelity-test-gap discipline; per-type translators in `src/xlsx.ts`
-  (`translateExceljsCfRuleToUniver`) flipped them green. Phase 3
-  extended `eval-screenshot.js` with `cfAllColumns` regionKind +
-  `cfColumnRegion(col)` per-column samplers + new
-  `pinkInk`/`lightGreenInk`/`yellowInk` aggregates plus broadened
-  `redInk` (g/b ≤ 80 → ≤ 140 to catch #F8696B colorScale red end)
-  and `blueInk` (b clearly dominant + ≥ 150, catches #638EC6 dataBar
-  blue). Captured generator-evidence screenshot showing all 5 CF
-  columns rendering correctly: A red→yellow→green gradient, C
-  proportional blue bars, E pink fills on >50, G light-green on top-3
-  cells, I red-down/yellow-flat/green-up arrows. Phase 4 added
-  `excelCanvasFidelity.test.ts` describe block (1 test + 4 todos)
-  gated `describe.skip` when the operator-captured Excel reference is
-  absent at `screenshots/excel-reference/ConditionalFormatting-Variants.png`.
-  Phase 5 added `translateUniverCfRuleToExceljs` + assigns
-  `worksheet.conditionalFormattings` in `snapshotToXlsxBuffer`;
-  flipped the KNOWN SHORTCOMING test at
-  `tests/m12FixtureRoundTrip.test.ts:206` to a positive 'round-trip:
-  5 conditional-formatting rules survive export → re-import' pin-down
-  asserting all 5 source rules carry through structurally. Test
-  total: 209 → 215 passed (6 new fidelity tests + 1 flipped, 6
-  skipped including the canvas-fidelity todos). Generator-evidence:
-  `screenshots/feature-1-m15-conditional-formatting/generator-evidence.png`
-  (+ `.pixels.json` sidecar). Excel reference screenshot at
-  `screenshots/excel-reference/ConditionalFormatting-Variants.png`
-  delivered by operator; evaluator graded PASS. Shipped via PR #26
-  (commit `88297a1`); README cleanup PR #27 (commit `19b0a6c`)
-  marked M15 shipped.
-
-- **m16-gap-3-formula-recalc-doc-only** (2026-06-07) — Closed M16's
-  formula re-evaluation gap with documentation, NOT a renderer-side
-  evaluator. Empirical investigation showed Univer is the de facto
-  source of truth for cell.v on every save path; building a second
-  evaluator inside the M16 HTML renderer would be ~30-50 functions
-  / ~10KB / two-engine drift. README "Known shortcomings" entry
-  rewritten to explain the Univer-as-source-of-truth contract; 4
-  pin-down tests added in `tests/m16FormulaSourceOfTruth.test.ts`
-  (formula cells carry both f and v at import; stale results flow
-  through unchanged; synthesizeTableStyleAssignments doesn't touch
-  f/v; renderCellValue reads cell.v not cell.f). Detail under
-  ## Notes "M16 Gap #3 closure rationale". Test count 263 → 267.
-  Shipped on `m16/document-formula-recalc` branch.
-
-- **m13-e-followup-totals-and-inter-row-strips** (2026-06-07) —
-  Re-probed the wide Aptos reference at 7 x positions and Classic
-  at 10 x positions. Two definitive findings: (1) totals-top is the
-  HEADER colour DOUBLE-line (not the lighter accent MEDIUM) — Aptos
-  `#34692E` and Classic `#A5A5A5`; (2) inter-row strips DO exist at
-  every banded-row boundary in the lighter accent (`#72D068` Aptos /
-  `#C9C9C9` Classic). Recipe `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES.TableStyleMedium4`
-  updated; synthesizeTableStyleAssignments now emits totals-top as
-  DOUBLE (s=7), totals-bottom as MEDIUM (s=8), inter-row strips as
-  MEDIUM bd.t (s=8) on every data row using `totalsBottomBorder`
-  slot. New canvas-fidelity test shape: structural sentinels for
-  "double-line at totals-top" + "9 inter-row strips ±3" with
-  gridline-tail trim heuristic. Bidirectional round-trip test
-  added (3 tests in `tests/roundTripBidirectional.test.ts`)
-  verifying content + style edits flow through both Joplin → export
-  → Excel-edit → re-import correctly, and that synth fields don't
-  bleed into the exported xlsx or accumulate. Test count 256 → 263.
-  Univer canvas anti-aliases recipe colours by Δ14-23 RGB units —
-  documented as a Univer renderer characteristic (snapshot data and
-  exported `.xlsx` are unaffected).
-
-## In progress
+- **M18 — shipped in PR #40** (squash-merged 2026-10-06 from
+  `m18-a3-emu-anchor-offsets`). Every entry below that was previously under
+  `## In progress` (manual-test rounds 1–3, build-identification scheme, A1
+  image round-trip) landed with it. Residuals from the round-3 retest:
+  #1 styled-image effects are preserve-only (documented in README known
+  gaps); #2 in-cell images deferred to M21.
 
 - **M18 manual-test findings (round 3) — RETEST results (2026-07-09, build #7).**
   Operator retested build #5 and reported: #4 ✓, #3 convert ✓ but **undo broken**,
@@ -868,76 +478,432 @@ every feature.
   TITLE_PREFIX_BY_FEATURE + REGION_BY_FEATURE entries added for the
   feature.
 
+- **feature-7 + feature-9 — verified DONE + rows flipped** (2026-06-28) —
+  Both M17-era PGE rows that were still `passes:false` are now resolved.
+  - **feature-7 (B1: chart→SVG in HTML export).** The static-SVG renderer in
+    `src/contentScripts/notesheetRenderer.ts` was already implemented; the
+    18-test `tests/m18ChartHtmlExport.test.ts` covered most of the spec but
+    MISSED two written acceptance criteria, so per the fidelity-test-gap
+    discipline I added them before flipping: (1) **pie sweep angles computed
+    from INPUT within ±3°** (parses each `<path>`'s arc endpoints, compares to
+    `data[i]/sum·360` — not the path COUNT the old test asserted), and (2) the
+    **CF + chart on one sheet** case (cellIs paints B2:B5 pink AND the chart
+    `<svg>` renders, table-before-svg document order, no absolute/z-index
+    overlay). 20/20 pass. **Live preview-pane gate:** wired feature-7 into
+    `eval-screenshot.js` (`previewPane` region, title prefix `PGE M17 chart f7
+    eval `), imported MultiSheet.xlsx, captured
+    `screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T10-57-04-530Z.png`
+    — 3 sheet tables (Data/Chart/Summary) + the "Data Chart" bar SVG (5 bars,
+    palette blue, axis 0–60). Sidecar: `inlineSvgCount=1`, `rect=5`,
+    `rawJsonLeak=false`, `tableCount=3`.
+  - **EVALUATOR PASS (fresh-context, 2026-06-28).** The PGE evaluator ran
+    independently, captured its OWN preview-pane screenshot
+    (`eval-2026-06-28T11-16-53-565Z.png`), and graded **PASS** — confirmed all
+    5 render cases + palette parity + no viz-lib dep, and that the M13 failure
+    mode (data correct, render flat) does NOT occur (bar heights track the
+    data). Row: `passes:true`, `evaluator_verdict:PASS`.
+  - **HARNESS FIX (load-bearing): `rawJsonLeak` false-positive.** The M16-era
+    heuristic matched `"sheetOrder"`/`"workbook-` on the whole `document.body.
+    innerHTML`. Since the M18 #37 RTE fence-integrity fix, the renderer wraps
+    the ORIGINAL fenced JSON in a HIDDEN `<div class="joplin-source">` (the
+    wrapper is REQUIRED — see [[project_rte_fence_joplin_editable]]), so the
+    raw JSON is in the DOM but NOT visible — `rawJsonLeak` reported `true` on
+    EVERY note. Fixed to strip `.joplin-source` subtrees before checking, so it
+    detects only a TRUE leak (JSON in the visible render path). Confirmed via a
+    DOM probe (`jsonOutsideSource=false`) before changing the heuristic.
+  - **feature-9 (flip m12 pin-downs + test count).** Already satisfied — both
+    pin-downs (`m12ImportRecovery.test.ts:55,89`) are positive imports
+    (MultiSheet → N charts; LargeWorkbook → clean 2-sheet); the test-count gate
+    (267 → ≥290) is far exceeded at 457. The M18 abs-rel-target fix went BEYOND
+    the spec, making FormulasAndStructuredRefs import cleanly too (spec only
+    required it stay an `xlsx-multi-table-unsupported` rejection). Row flipped.
+    **EVALUATOR PASS (fresh-context, 2026-06-28)** — graded as a test-integrity
+    feature (no render dimension) from the test file + git diff + count gate;
+    confirmed the flips reflect REAL importer capability (not regression-hiding
+    weakening — assertions got stronger), the importable-fixtures block is
+    intact, and the count gate is exceeded. Row: `evaluator_verdict:PASS`.
+  - **Verified:** typecheck clean, `npm test` 457/457 (52 suites). New harness
+    util `scripts/pge/capture-image-render.js` (from the A1 gate) committed
+    earlier.
+
+- **M18 adversarial-review fixes** (2026-06-28) — An adversarial code-review
+  workflow over the 8-commit M18 diff surfaced 17 findings; 9 survived
+  independent verification, 8 were false positives (incl. confirming the
+  `m12ImportRecovery` assertion flip was a LEGITIMATE behaviour update, not
+  regression-hiding). Operator chose "fix all confirmed." Test count 445 → 455.
+  - **#1 (HIGH) — rel-target normalizer corrupted `TargetMode="External"`
+    hyperlinks.** `normalizeAbsoluteRelTargets` (`src/xlsx.ts`) keyed only off a
+    leading `/`, so a root-relative (`/folder/page.html`) or protocol-relative
+    (`//host/path`) EXTERNAL hyperlink got relativized to `../../…`, destroying
+    it. Now rewrites per `<Relationship>` element and SKIPS any carrying
+    `TargetMode="External"`. The function-header comment was already claiming
+    this — now true. (Scheme URLs like `https://` always escaped.)
+  - **#2 (HIGH) — live-edit dropped a legitimate first data row.**
+    `trackedCharts.hasHeaderRow` was derived from `categoryAxisType === 'category'`
+    ("had labels"), not "row 0 is a header." A chart whose `<c:cat>` starts at
+    `$A$1` (no header) rendered all N categories initially but lost the FIRST on
+    the first cell edit — the inverse of the `df2bbde` phantom-category bug. Fix:
+    importer now computes a precise `hasHeaderRow` (`labelsRange.startRow >= 1`),
+    threads it through `meta.hasHeaderRow` (round-trips), and `trackedCharts`
+    prefers it (legacy `categoryAxisType` fallback for pre-fix snapshots).
+  - **#3/#4 (MEDIUM) — percentStacked mishandled mixed-sign + cancelling
+    categories.** `NotesheetChart.buildConfig` summed SIGNED values as the
+    denominator and special-cased `total===0` to pass RAW values through (which
+    blew past the 100 axis cap and rendered full-height bars). Now normalises
+    against Σ|v| (sign preserved, absolute shares total 100) and a zero
+    abs-total → 0.
+  - **#5 (LOW) — per-series colour latched onto a nested marker/line fill.**
+    The un-bounded `<c:spPr>…<a:solidFill>` regex skipped across the series
+    spPr close tag into a sibling `<c:marker>` fill (and a series' own `<a:ln>`
+    stroke was read as its fill). Fix: bound to the first `<c:spPr>` block AND
+    strip `<a:ln>` subtrees before reading the fill.
+  - **#6 (MEDIUM, test) — EMU fidelity chart test passed via the px×9525
+    fallback, not the stash path it claimed to verify.** The synthetic snapshot
+    left the stash's cell-index fields undefined (so `anchorUnmoved` returned
+    false) and used 50px/476250 EMU which the fallback reproduces identically.
+    Rewrote the test with a sub-pixel sentinel EMU (478123; round/9525=50 but
+    50×9525=476250≠478123) and a full 8-field stash, so it only passes if the
+    exact stash is emitted. (Import already stashed all 8 fields — pure test
+    gap, no production change.)
+  - **#9 (LOW, test) — nodebuffer regression guard only checked `src/xlsx.ts`.**
+    Broadened to sweep every src file that calls JSZip (chart/image/shape zip
+    rewriters run on the same browser-side path); all already use 'arraybuffer'.
+  - **#7/#8 (LOW) — anchor "unmoved" detection is exact-integer-px + safe px
+    fallback.** Real but BOUNDED (≤½px / 3175 EMU drift; safe degradation, never
+    a crash/mis-anchor). Per "documented shortcoming over unexpected bug,"
+    DOCUMENTED precisely in `sheetIdResolver.ts:resolveAnchorEmu` rather than
+    rewritten — a dirty/moved flag through Univer's drawing service adds
+    regression risk for sub-pixel gain. **Flagged to operator.**
+  - **Verified:** typecheck clean, `npm test` 455/455 (52 suites). New tests:
+    `tests/m18ReviewFixes.test.ts` (#1/#2/#5), additions to
+    `tests/m18ChartPercentStacked.test.ts` (#3/#4) and `m18AbsoluteRelTargets`
+    (#9); `m18AnchorEmuFidelity` chart test rewritten (#6).
+
+- **feature-8-m17-chart-preview-pane-pge-smoke** (2026-06-12) — Closes the
+  long-open "does the chart SVG actually reach Joplin's export?" question
+  for the M18 B1 work. Wired feature-8 into the eval harness
+  (`scripts/pge/eval-screenshot.js`): added it to `TITLE_PREFIX_BY_FEATURE`
+  (`PGE M17 chart f8 eval `) + `REGION_BY_FEATURE` (`previewPane`, reusing
+  M16's path), and extended `samplePreviewPaneInk()` with the
+  `inlineSvgCount` + `chartSvgPrimitives` signals (counts
+  `svg.notesheet-chart` and its rect/path/polyline/circle children in the
+  preview iframe DOM). Imported `MultiSheet.xlsx` as the f8 note; the
+  harness drove Joplin into preview-visible state and captured the
+  markdown-rendered preview pane. Sidecar: `inlineSvgCount=1`,
+  `rect=5` (the 5 bars), `tableCount=3`, `sheetHeadings=[Data,Chart,Summary]`,
+  `rawJsonLeak=false`. Fresh-process evaluator graded **PASS** off its own
+  screenshot (`eval-2026-06-13T03-35-58-158Z.png`) — chart renders as
+  inline SVG with title "Data Chart", 5 labelled bars, axis ticks 0/60,
+  palette blue. This is the runtime proof the source-level fan-out and the
+  standalone-HTML render could only approximate.
+  the smoke seed in `src/snapshot.ts:emptySnapshot()`. A1 = "harness-smoke-OK"
+  styled via `styles['pge-smoke-red'] = { cl: { rgb: '#FF0000' } }`,
+  cell carries `s: 'pge-smoke-red'` reference. Built .jpl, installed in
+  dev profile, captured generator-evidence screenshot showing red text
+  rendered in Univer at A1. Fresh-context evaluator subprocess graded
+  PASS (cd8bf51).
+- **harness-hardening** (2026-06-02) — `eval-screenshot.js` now drops
+  into the `UserWebviewIndex.html` frame inside the editor page (where
+  Univer actually mounts) and waits on the real Univer canvas selector
+  `canvas[id^="univer-sheet-main-canvas"]` instead of a 5s sleep.
+  Emits a `<screenshot>.pixels.json` sidecar with the top non-background
+  colours sampled from the row-0 canvas slab — gives evaluators a
+  machine-checkable signal alongside the visual screenshot. Confirmed
+  on the smoke note: dominant `rgb(234,237,249)` (header band),
+  `rgb(255,0,0)` appears in top-3 with 353 hits, proving the red is
+  real pixels not just snapshot data.
+- **feature-1-m13-rotated-text-renders** (2026-06-03) — Cherry-picked
+  the reverted PR #16 (`415b4a4`) rotation import/export in
+  `src/xlsx.ts`, plus `tests/m13RotatedText.test.ts` and the
+  `m12FixtureRoundTrip.test.ts` flips. README docs edit explicitly
+  out-of-scope. Built .jpl, installed in dev profile, imported
+  `MergedCellsAndAlignment.xlsx` headlessly via the new
+  `scripts/pge/import-fixture.{ts,sh}`, captured canvas-targeted
+  screenshot showing A6 up-right diagonal, B6 vertical, C6 down-right
+  diagonal. Pixel sidecar over the rotated row band reports
+  `inkRowSpread=1.000` (text ink occupies every sampled y-row in the
+  slab) — strong non-horizontal signal independent of colour. Jest
+  187/187 (was 181 baseline + 6 new rotation tests). The reverted
+  code worked first try in Univer 0.23 — earlier visual failure was
+  almost certainly a stale-build issue, not a rendering gap. Evaluator
+  graded PASS (PR #19, dc80505).
+- **feature-1-m13-rich-text-renders** (2026-06-03) — Cherry-picked PR
+  #16 commit `6f33f3a` rich-text import/export in `src/xlsx.ts`
+  (4 new helpers: `buildTextStyleFromExceljsFont`,
+  `buildRichTextCellP`, `buildExceljsFontFromTextStyle`,
+  `extractRichTextRunsFromCellP`), plus `tests/m13RichText.test.ts`
+  (8 new tests) and the two flipped `m12FixtureRoundTrip.test.ts`
+  pin-downs. README docs drop explicitly out-of-scope. Imported
+  `RichTextInOneCell.xlsx` headlessly via
+  `scripts/pge/import-fixture.sh`. Canvas screenshot shows
+  A1 = bold "**Hello**" + plain " world", A2 = "Red"(red) + " and "
+  + "Blue"(blue) + " text" with three distinct foreground colours,
+  A3 = blue underlined "Visit example.com for more info" hyperlink
+  (Pattern A). Pixel sidecar over the A2-only band reports
+  `redInk=67`, `blueInk=76` — both well above the spec's ≥30
+  threshold; dominant histogram bucket `rgb(0,0,255)` 76 hits
+  followed by `rgb(255,0,0)` 67 hits. Jest 195/195 (was 187 baseline
+  + 8 new rich-text tests). Reverted code worked first try in Univer
+  0.23 — same hypothesis as M13/C confirmed: the original revert
+  was almost certainly a build/cache issue, not a renderer gap.
+  Evaluator graded PASS (PR #20). README cleanup followed in PR #21
+  (5aaf690).
+- **feature-1-m13-theme-aware-banding** (2026-06-03 → 2026-06-04,
+  three-rework cycle) — Routed `synthesizeTableStyleAssignments`
+  through a new `EXCEL_TABLE_STYLE_RECIPE_BY_NAME` parallel table
+  (`src/charts/excelTableStyleRecipes.ts`) that names each TableStyle
+  slot's accent index + tint. The synthesizer reads the source
+  workbook's `<a:clrScheme>` (already captured by
+  `readThemeClrScheme`) and resolves the recipe via the ECMA-376
+  HSL-L tint formula. Aptos fixture (`FormattingSmorgasboard.xlsx`)
+  paints green; Classic fixture
+  (`FormattingSmorgasboard-NonAptosClassicThemeWithConditionalFormatting.xlsx`)
+  paints grey instead of green — same `EXCEL_TABLE_STYLE_BY_NAME[Medium4]`
+  lookup, two distinct rendered outputs driven by source clrScheme.
+  Achromatic styles (Light1/8/15, Medium1/8/15/22, Dark1/8) keep
+  their literal greys.
+
+  **First multi-screenshot cycle.** Added `:variant` suffix support
+  to `eval-screenshot.js` (`feature-1-m13-theme-aware-banding:aptos` +
+  `:classic`), `tableHeaderRowRegion` helper sampling cols B+ to dodge
+  A1 active-cell selection blue, `greyInk` aggregate (R,G,B∈[140,180]
+  AND `abs(R-G)≤10` AND `abs(G-B)≤10`), and broadened the existing
+  `greenInk` aggregate so it catches dark Aptos green `#196B24` (G=107)
+  too.
+
+  **Rework #2 (canvas fidelity, PR #22).** Operator caught a
+  render-side bug the snapshot-fidelity test couldn't see: the
+  `totalsTopBorder` slot was emitting `bd.t.s = 7` (DOUBLE) on the
+  totals row. Univer 0.23's `_renderDoubleBorder` paints DOUBLE as
+  two 1px strips with a 1-px white gap, which reads as anti-aliased
+  `#89CE74` rather than the pure `#72D068` Excel paints. AND Excel's
+  render is actually a single 2px strip, not a true double-line — so
+  DOUBLE was the wrong style code in the first place. Phase 1 added
+  `tests/excelCanvasFidelity.test.ts` (361 lines, pure-stdlib via
+  `tests/util/pngSampler.ts`) — region-finding heuristics align Joplin
+  canvas screenshot with Excel reference at structural regions
+  (header / banded / totals-top), asserts dominant-colour parity for
+  tall regions (Δ ≤ 8) and looser for 1-2px strips (Δ ≤ 32). Phase 2
+  switched `BORDER_STYLE_TO_UNIVER.medium` (style 8, lineWidth=2)
+  instead of `.double` (style 7) for the totals-top slot. Phase 3
+  re-captured eval screenshots; Phase 4 raised counts 204 → 206.
+
+  **Rework #3 (totals-row BOTTOM border).** Operator's eyeball +
+  side-by-side pixel-probe revealed Excel paints TWO accent strips
+  framing top AND bottom of the totals body. Recipe extended with
+  `totalsBottomBorder` slot, parallel to `totalsTopBorder`. Empirical
+  overrides set both Aptos (`#72D068`) and Classic (`#C9C9C9`) to
+  the lighter accent. `synthesizeTableStyleAssignments` emits `bd.b`
+  on every totals cell, REPLACING the table outline's thin frame.
+  Diagnostic asset:
+  `tests/fixtures/formatting-testdata/border-isolation.xlsx`
+  (operator-built fixture with explicit border combinations,
+  pixel-probed against Excel to establish ground truth).
+
+  **RESOLVED 2026-06-07 — was a known gap during the M13/E rework
+  but no longer reproduces on current main.** PR #22 shipped with
+  a documented gap: the snapshot's `bd.b.cl.rgb === '#72D068'` was
+  correct (verified via direct `xlsxBufferToSnapshot` introspection
+  on every totals cell), but the canvas pixel-probe at y=436 showed
+  `rgb(52,106,46) = #34692E` — the header's dark green — rather
+  than the lighter accent. During M16 prep (2026-06-07), a fresh
+  re-capture of the Aptos eval at
+  `screenshots/feature-1-m13-theme-aware-banding/eval-aptos-2026-06-07T05-20-38-627Z.png`
+  showed BOTH totals strips rendering at y=398 and y=436 in
+  `rgb(137,206,116)` (anti-aliased of `#72D068`). Bug appears to
+  have resolved itself through snapshot-shape changes between M13/E
+  (PR #22) and M16 — most likely cause is the M15 CF rework's
+  changes to `synthesizeTableStyleAssignments`. Univer version
+  unchanged (`@univerjs/engine-render@0.23.0` locked).
+  Bonus finding from the investigation (informs future work): an
+  isolation probe (cell with `bd.b = #72D068` above + cell with
+  `bd.t = #34692E` below) showed Univer paints the LOWER cell's
+  `bd.t` colour at the shared edge — i.e., when both `bd.b` (upper)
+  and `bd.t` (lower) are declared at a shared edge, the lower
+  wins. This is the right rule to follow for any future inter-row
+  strip work.
+
+  Final test totals: 209 (was 197 pre-cycle). Three new pin-downs in
+  `tests/m12FixturePinDowns.test.ts` (M13/E describe block), 6 new
+  tests in `tests/excelReferenceFidelity.test.ts` (snapshot fidelity),
+  4 new tests in `tests/excelCanvasFidelity.test.ts` (canvas
+  fidelity, includes bottom-border tests added in rework #3), 4 leak
+  pin-downs in `tests/m13RedoSmokeRedCell.test.ts` (smoke seed leak
+  fix). Generator-evidence:
+  `screenshots/feature-1-m13-theme-aware-banding/generator-evidence-{aptos,classic}.png`.
+  Operator-captured Excel references:
+  `screenshots/excel-reference/FormattingSmorgasboard-{Aptos,Classic}.png`.
+  Evaluator graded PASS across all reworks. Shipped via PR #22 (commit
+  `fca1cbc`); README cleanup PR #23 marked M13/E shipped.
+- **M14 NO-GO** (2026-06-04) — `xlsx-js-style` (the SheetJS-style
+  parser explored as an `exceljs` replacement) ALSO has `!cf`
+  undefined on indexed-cellXf import. The "wait for SheetJS to make
+  CF cheaper" rationale evaporates; M15 ships on `exceljs`. Decision
+  document preserved at `docs/m14-sheetjs-spike.md` and merged via
+  PR #25 (commit `f423d5a`). Roadmap renumbered: M15 is now the next
+  active milestone (was already so before but the README marker was
+  off-by-one).
+- **feature-1-m16-snapshot-to-html** (2026-06-06) — Ships the
+  snapshot → HTML renderer as a Joplin
+  `ContentScriptType.MarkdownItPlugin` content script. New entry at
+  `src/contentScripts/notesheetRenderer.ts`; registered in
+  `src/index.ts` alongside the existing editor; bundled via the
+  existing `buildExtraScripts` webpack target (commonjs2 — see
+  `plugin.config.json` extraScripts list). The renderer overrides
+  markdown-it's fence handler: when the fence info is `notesheet v=1`
+  it parses the JSON snapshot, walks `sheetOrder` / `sheets[id]` /
+  `styles` / `mergeData`, and emits `<table>` per sheet with inline-
+  styled `<td>`s (bg / fg / bold / italic / underline / horizontal +
+  vertical alignment / per-side borders). Non-notesheet fences fall
+  through to markdown-it's default — verified with a Jest test that
+  feeds `javascript` / `python` / empty info. CF rules are evaluated
+  inside the renderer itself (Univer's CF preset only paints at
+  canvas-render time): cellIs, top10, colorScale all work; dataBar +
+  iconSet are punted with documentation in OPERATOR_ASK and
+  BUILD_PLAN's Out-of-scope list. Merged cells emit colspan/rowspan
+  on the anchor and skip the interior cells (verified by counting
+  tds in the merge-row).
+
+  **13 new Jest tests** in `tests/m16NotesheetMarkdownRender.test.ts`
+  (criterion 1 base shape × 7, criterion 2 multi-sheet × 1,
+  criterion 3 FormattingSmorgasboard × 1, criterion 4 CF × 1, plus 3
+  edge cases — non-notesheet fence falls through, malformed JSON
+  returns null, unsupported version returns null, HTML-escapes
+  cell values to defang `<script>` injection). Multi-sheet test
+  builds a 3-sheet workbook in-memory via exceljs because the
+  shipped `MultiSheet.xlsx` fixture has chart drawings that crash
+  exceljs's reconcile (a pre-existing M12 known shortcoming). Test
+  total: 220 → 233 (13 new, none regressed).
+
+  **Harness extension: `previewPane` regionKind.** New code path
+  in `scripts/pge/eval-screenshot.js`. Drives Joplin into preview-
+  visible state via three menu clicks (View > Toggle editor plugin
+  if Custom Editor active, View > Toggle editors if TinyMCE active,
+  View > Toggle editor layout up to 3× until preview iframe is
+  visible). Identifies the preview frame by `document.title ===
+  'Note viewer'` (Playwright's `frame.url()` returns empty for
+  Joplin's `joplin-content://note-viewer/` protocol). Samples the
+  preview iframe's DOM via `samplePreviewPaneInk()`: parses
+  CSS-computed `background-color` of every `<td>`, runs them
+  through the same threshold expressions the canvas sampler uses
+  (greenInk / pinkInk / lightGreenInk / etc.), and adds three
+  preview-pane-specific signals to the sidecar: `tableCount`,
+  `sheetHeadings`, `rawJsonLeak`. The latter is the M13-style gate
+  — if `rawJsonLeak: true`, the renderer didn't run and the user
+  saw a JSON blob in their export.
+
+  AppleScript invocation hardened: switched from
+  `execSync('osascript -e ${JSON.stringify(script)}')` to
+  `execFileSync('osascript', ['-e', script])` because nested-quote
+  escaping in the shell-arg form intermittently produced syntax
+  errors (`Expected "given", "in", "of", expression...` at line
+  37:38). The argv form passes the script verbatim and is
+  syntactically reliable.
+
+  Generator-evidence:
+  `screenshots/feature-1-m16-snapshot-to-html/eval-*.png`
+  (FormattingSmorgasboard fixture rendered: green table header,
+  CAEFCB banded rows, no raw JSON, all column headers visible) +
+  `.pixels.json` sidecar (`dominant=rgb(202,239,203)` =
+  `#CAEFCB`, `greenInk=35`, `lightGreenInk=28`, `tableCount=1`,
+  `rawJsonLeak=false`). Read via the Read tool.
+
+- **feature-1-m15-conditional-formatting** (2026-06-05) — Full
+  round-trip on the 5 CF rule types in
+  `ConditionalFormatting-Variants.xlsx`: colorScale, dataBar,
+  cellIs/highlightCell.number, top10/highlightCell.rank, iconSet.
+  Phase 1 wired `UniverSheetsConditionalFormattingPreset` into
+  `src/editorView.tsx` (the single-point-of-failure step — Phase 1
+  build smoke confirmed canvas renders). Phase 2 added 6 fidelity
+  tests in `excelReferenceFidelity.test.ts` anchored to the source
+  XML (parsed via JSZip + regex), authored failing first per the
+  fidelity-test-gap discipline; per-type translators in `src/xlsx.ts`
+  (`translateExceljsCfRuleToUniver`) flipped them green. Phase 3
+  extended `eval-screenshot.js` with `cfAllColumns` regionKind +
+  `cfColumnRegion(col)` per-column samplers + new
+  `pinkInk`/`lightGreenInk`/`yellowInk` aggregates plus broadened
+  `redInk` (g/b ≤ 80 → ≤ 140 to catch #F8696B colorScale red end)
+  and `blueInk` (b clearly dominant + ≥ 150, catches #638EC6 dataBar
+  blue). Captured generator-evidence screenshot showing all 5 CF
+  columns rendering correctly: A red→yellow→green gradient, C
+  proportional blue bars, E pink fills on >50, G light-green on top-3
+  cells, I red-down/yellow-flat/green-up arrows. Phase 4 added
+  `excelCanvasFidelity.test.ts` describe block (1 test + 4 todos)
+  gated `describe.skip` when the operator-captured Excel reference is
+  absent at `screenshots/excel-reference/ConditionalFormatting-Variants.png`.
+  Phase 5 added `translateUniverCfRuleToExceljs` + assigns
+  `worksheet.conditionalFormattings` in `snapshotToXlsxBuffer`;
+  flipped the KNOWN SHORTCOMING test at
+  `tests/m12FixtureRoundTrip.test.ts:206` to a positive 'round-trip:
+  5 conditional-formatting rules survive export → re-import' pin-down
+  asserting all 5 source rules carry through structurally. Test
+  total: 209 → 215 passed (6 new fidelity tests + 1 flipped, 6
+  skipped including the canvas-fidelity todos). Generator-evidence:
+  `screenshots/feature-1-m15-conditional-formatting/generator-evidence.png`
+  (+ `.pixels.json` sidecar). Excel reference screenshot at
+  `screenshots/excel-reference/ConditionalFormatting-Variants.png`
+  delivered by operator; evaluator graded PASS. Shipped via PR #26
+  (commit `88297a1`); README cleanup PR #27 (commit `19b0a6c`)
+  marked M15 shipped.
+
+- **m16-gap-3-formula-recalc-doc-only** (2026-06-07) — Closed M16's
+  formula re-evaluation gap with documentation, NOT a renderer-side
+  evaluator. Empirical investigation showed Univer is the de facto
+  source of truth for cell.v on every save path; building a second
+  evaluator inside the M16 HTML renderer would be ~30-50 functions
+  / ~10KB / two-engine drift. README "Known shortcomings" entry
+  rewritten to explain the Univer-as-source-of-truth contract; 4
+  pin-down tests added in `tests/m16FormulaSourceOfTruth.test.ts`
+  (formula cells carry both f and v at import; stale results flow
+  through unchanged; synthesizeTableStyleAssignments doesn't touch
+  f/v; renderCellValue reads cell.v not cell.f). Detail under
+  ## Notes "M16 Gap #3 closure rationale". Test count 263 → 267.
+  Shipped on `m16/document-formula-recalc` branch.
+
+- **m13-e-followup-totals-and-inter-row-strips** (2026-06-07) —
+  Re-probed the wide Aptos reference at 7 x positions and Classic
+  at 10 x positions. Two definitive findings: (1) totals-top is the
+  HEADER colour DOUBLE-line (not the lighter accent MEDIUM) — Aptos
+  `#34692E` and Classic `#A5A5A5`; (2) inter-row strips DO exist at
+  every banded-row boundary in the lighter accent (`#72D068` Aptos /
+  `#C9C9C9` Classic). Recipe `EXCEL_TABLE_STYLE_EMPIRICAL_OVERRIDES.TableStyleMedium4`
+  updated; synthesizeTableStyleAssignments now emits totals-top as
+  DOUBLE (s=7), totals-bottom as MEDIUM (s=8), inter-row strips as
+  MEDIUM bd.t (s=8) on every data row using `totalsBottomBorder`
+  slot. New canvas-fidelity test shape: structural sentinels for
+  "double-line at totals-top" + "9 inter-row strips ±3" with
+  gridline-tail trim heuristic. Bidirectional round-trip test
+  added (3 tests in `tests/roundTripBidirectional.test.ts`)
+  verifying content + style edits flow through both Joplin → export
+  → Excel-edit → re-import correctly, and that synth fields don't
+  bleed into the exported xlsx or accumulate. Test count 256 → 263.
+  Univer canvas anti-aliases recipe colours by Δ14-23 RGB units —
+  documented as a Univer renderer characteristic (snapshot data and
+  exported `.xlsx` are unaffected).
+
+## In progress
+
+_Nothing in flight._
+
 ## Next
 
-M17 ships chart import from `.xlsx` (drawings + bar/line/pie/doughnut
-chart definitions) plus the M16 follow-up gap "charts don't render in
-HTML / preview-pane / PDF export" rolled into the same cycle. See
-`BUILD_PLAN.md` for the full per-feature decomposition; see
-`OPERATOR_ASK.md` for the operator brief (12 acceptance criteria,
-Out-of-scope list, three suggested fixture sets, detailed
-Related-risks notes). Approach choice: **B — extend pre-load
-zip-direct readers** (mirrors `readTablesFromXlsxZip` /
-`readThemeFont` / `readNamedHyperlinkCells` / `readThemeClrScheme`
-existing pattern); the chart parts are read first, then a drawing-
-stripped buffer is passed to exceljs.
+1. **Release 1.0.0.** Nothing is tagged or published yet (no git tags, no
+   GitHub release, `npm view joplin-plugin-notesheet` → 404). Tag `v1.0.0`
+   on `main`, cut a GitHub release with the `.jpl` from `publish/`, then
+   `npm publish` — the Joplin plugin marketplace indexes npm packages with
+   the `joplin-plugin` keyword (already set in `package.json`).
+2. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
+   D2 iconSet glyphs, D3 per-run rich text in HTML, D4/D5 accounting
+   formats, E1 multi-table workbooks (`xlsx-multi-table-unsupported`),
+   E2 theme-tinted borders, E3/E4 keybinding bugs (E3 is upstream Univer
+   #6988). D1 dataBar already shipped in M18 — drop it from `BACKLOG.md`
+   when M19 is planned.
+3. **M20 — codebase health** (`BACKLOG.md` group F): `uuid` CVE via
+   exceljs, transitive deprecation noise, exceljs watch-item.
+4. **M21 — in-cell (rich-value) image round-trip** (`richData` /
+   `_localImage`; fixes the `#VALUE!` placeholder; M18 round-3 item #2).
 
-- **feature-1-m17-chart-import-no-crash** — all 10 hand-crafted
-  fixtures (`tests/fixtures/charts/01-bar-simple.xlsx` through
-  `10-bar-with-trendline.xlsx`) import without throwing
-  `xlsx-charts-unsupported`; snapshot has `SHEET_DRAWING_PLUGIN`
-  resource with chart drawings. Tests anchor to source XML, NOT to
-  our own emit. Error class stays defined for future drawing-related
-  crash classes.
-- **feature-2-m17-chart-type-fidelity** — bar / line / pie / doughnut
-  fixtures import with the matching `ChartType` literal; unsupported
-  source types (radar, scatter) fall back to `'bar'` with
-  `meta.unsupportedSourceType` populated and a `console.warn`.
-  Programmatic radar-chart zip exercises the fallback in-test (not
-  a checked-in fixture).
-- **feature-3-m17-multisheet-import-editor-canvas** — PGE smoke
-  against `MultiSheet.xlsx` (the original "this crashes import"
-  fixture) imported via `import-fixture.sh`, opened in Joplin's
-  Custom Editor; screenshot of the Univer outer container shows
-  cells + chart float-DOM + chart title + bars/lines/slices. New
-  `floatDomChart` regionKind in `eval-screenshot.js`. Harness
-  fixture-path expansion accepts `tests/fixtures/charts/` too.
-- **feature-4-m17-live-update-data-bus** — Jest test confirms the
-  imported chart's `chartId` is what `subscribeChartUpdate` keys off;
-  `extractData(snapshot, sourceRange)` returns labels/values matching
-  the source XML; no second renderer code path in `editorView.tsx`
-  (static-analysis sentinel).
-- **feature-5-m17-bidirectional-roundtrip-excel-fixtures** —
-  Excel-authored fixture → snapshot → M10 export → re-import yields
-  same chart-drawing fields (type, sourceRange, labels, datasets).
-  Anchored to ORIGINAL snapshot, not a hardcoded literal.
-  Cross-sheet (`07-chart-cross-sheet.xlsx`) survives.
-- **feature-6-m17-programmatic-roundtrip-pack** — 5–7 in-memory
-  snapshots (negative values, single-data-point, long labels, empty
-  series, special chars, cross-sheet, two-charts-on-one-sheet) round-
-  trip through M10 export + M17 import. NO `new ExcelJS.Workbook()`
-  in the test (per operator's "Notesheet emit ↔ Notesheet import"
-  framing).
-- **feature-7-m17-chart-svg-html-export-jest** — M16 content script
-  extended with chart-to-SVG renderer (hand-authored `<rect>` /
-  `<polyline>` / `<path>` primitives — NO Chart.js / D3 in the
-  bundle). Bar `<rect>` count == data length; line `<polyline>`/
-  `<path>` count per dataset; pie sweep angles ±3° of expected.
-  Bundle stays under ~20 KB. M16's existing tests stay green.
-  CHART_PALETTE duplicated in the content script with a comment
-  pointing at `src/charts/extractData.ts` (verified at test time).
-- **feature-8-m17-chart-preview-pane-pge-smoke** — second PGE smoke
-  against `MultiSheet.xlsx` re-using M16's `previewPane` regionKind;
-  preview iframe screenshot shows table + inline `<svg>` chart at
-  anchor; sidecar's new `inlineSvgCount ≥ 1` signal gates this.
-- **feature-9-m17-flip-pin-downs-and-test-count** — flip
-  `tests/m12ImportRecovery.test.ts:59,84` from "MultiSheet → throws"
-  / "LargeWorkbook → throws" to "MultiSheet → snapshot with N
-  charts" / "LargeWorkbook → snapshot with M charts" (counts read
-  from source XML). Test count moves 267 → ≥ 290. `git diff tests/`
-  shows ONLY new `tests/m17*.test.ts` files AND the two flipped
-  lines — no other content edit to any existing test file (operator
-  criterion #10 is load-bearing structural-integrity gate).
+Order and per-item scope are the operator's call at planning time.
 
 ## Notes
 
