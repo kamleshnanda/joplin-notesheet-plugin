@@ -13,8 +13,9 @@
 // This file has three layers:
 //   1. Unit: readImagesFromSnapshot (decode) + bytesToBase64 (encode) run
 //      correctly with global.Buffer deleted — reproduces the webview for OUR
-//      code, isolated from JSZip/exceljs (whose Node builds call Buffer
-//      internally and are webpack-swapped for browser builds in production).
+//      code, isolated from JSZip/exceljs (which call Buffer internally; since
+//      M20 the webview bundles exceljs from lib/ with a webpack-provided
+//      `buffer` polyfill — see webpack.config.js exceljsFromSourceGlobals).
 //   2. Node smoke: injectImagesIntoZip end-to-end emits xl/media.
 //   3. CLASS GUARD: a static scan of every webview-reachable module for an
 //      unguarded bare-global `Buffer` — so the NEXT such bug (in charts,
