@@ -1,0 +1,18 @@
+# Notesheet export manifest
+feature: m20-exceljs-from-source
+artifact: screenshots/m20-exceljs-from-source/export-cf.xlsx
+generated: 2026-10-13T19:35:03.017Z
+total-entries: 10
+workbook: PRESENT (xl/workbook.xml)
+
+MEDIA: EMPTY
+CHARTS: EMPTY
+DRAWINGS: EMPTY
+
+## media parts
+  (none)
+## chart parts
+  (none)
+## drawing parts
+  (none)
+

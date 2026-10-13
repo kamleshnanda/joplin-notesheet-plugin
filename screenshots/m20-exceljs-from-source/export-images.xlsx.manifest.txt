@@ -1,0 +1,22 @@
+# Notesheet export manifest
+feature: m20-exceljs-from-source
+artifact: screenshots/m20-exceljs-from-source/export-images.xlsx
+generated: 2026-10-13T19:39:09.059Z
+total-entries: 18
+workbook: PRESENT (xl/workbook.xml)
+
+MEDIA: 2 part(s)
+CHARTS: EMPTY
+DRAWINGS: 4 part(s)
+
+## media parts
+  xl/media/image1.png  559085 bytes
+  xl/media/image2.png  628823 bytes
+## chart parts
+  (none)
+## drawing parts
+  xl/drawings/_rels/drawing1.xml.rels  291 bytes
+  xl/drawings/_rels/drawing2.xml.rels  291 bytes
+  xl/drawings/drawing1.xml  905 bytes
+  xl/drawings/drawing2.xml  904 bytes
+

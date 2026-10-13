@@ -3,7 +3,23 @@
 This file is the generator's session-to-session handoff. Update after
 every feature.
 
+**Last verified against the repo: 2026-10-13** (`main` @ `0221d59`).
+
+> **Staleness rule for agents.** If the "Last verified" date above is more
+> than one day old, do NOT trust `## In progress` / `## Next` as-is. First
+> refresh from the real state — `git log --oneline -15`, `git branch -a`,
+> `git tag`, `gh pr list --state all --limit 10`, `gh release list`,
+> `npm view joplin-plugin-notesheet version`, and the README "Milestones"
+> table — then correct this file (move finished items to `## Done`, drop
+> stale `## Next` items) and bump the date before starting work. The repo
+> wins over this file whenever they disagree.
+
 ## Done
+
+- **1.0.0 released** (2026-10-07) — tag `v1.0.0` on `main`, GitHub release
+  "Notesheet 1.0.0" with the `.jpl`, and `joplin-plugin-notesheet@1.0.0`
+  published to npm (marketplace indexes it via the `joplin-plugin`
+  keyword). Followed by README macOS plugin-settings path fix (PR #43).
 
 - **M22 — Marketplace readiness** (2026-10-06, PR #41; milestone marked
   ✅ in PR #42) — `.jpl` cut 13.7 → 9.3 MB by stubbing the 76 unused
@@ -883,29 +899,78 @@ every feature.
 
 ## In progress
 
-_Nothing in flight._
+- **M20 — codebase health** (`BACKLOG.md` group F), branch
+  `m20-codebase-health`, started 2026-10-13. Operator chose M20 next.
+  Implementation + live proof DONE; PR #44 open, README row marked ✅.
+  On merge: move this entry to `## Done`.
+  `npm audit`: 113 → 20 (prod 98 → **0**). Commits, in order:
+  1. `npm audit fix`: only in-range patch/minor moves (tar, handlebars,
+     grpc-js, protobufjs, postcss, …).
+  2. Scoped override `@univerjs/core → nanoid 5.1.16`. Clears 94 of the 98
+     prod findings. Univer pins nanoid 5.1.11 exactly.
+  3. `lint-staged 15.5.2 → 16.4.0`. Operator first picked 17, but research
+     showed 16.4.0 already drops micromatch, while 17 needs Node ≥22.22.1,
+     which would drop CI's Node 20. Operator switched to 16.4.0.
+  4. Scoped override `exceljs → uuid 11.1.1`, plus a **webview bundle that
+     compiles exceljs from `lib/exceljs.bare.js`**
+     (`webpack.config.js` → `exceljsFromSourceResolve()` /
+     `exceljsFromSourceGlobals()`). The operator chose this over
+     "override + document the gap", because the prebuilt
+     `dist/exceljs.min.js` has uuid 8 baked in. New exact devDeps:
+     `buffer 6.0.3`, `process 0.11.10`, `events 3.3.0`.
+     `editorView.js` 8.19 → 7.59 MB.
+  Live proof (dev profile, build #30, evidence in
+  `screenshots/m20-exceljs-from-source/`):
+  - Webview export of `ConditionalFormatting-Variants`: the dataBar gets a
+    valid v4 x14 id, and it matches between the rule and its `<extLst>`.
+  - Webview re-import of that export: every CF type renders. The screenshot
+    was Read and checked.
+  - Webview import of Smorgasboard and TwoImages: both reach "Imported.".
+  - TwoImages export: `xl/media/*` bytes are SHA-1-identical to the source.
+  Follow-up milestone (operator): Univer 0.23 → 1.x is `BACKLOG.md` F5.
 
 ## Next
 
-1. **Release 1.0.0.** Nothing is tagged or published yet (no git tags, no
-   GitHub release, `npm view joplin-plugin-notesheet` → 404). Tag `v1.0.0`
-   on `main`, cut a GitHub release with the `.jpl` from `publish/`, then
-   `npm publish` — the Joplin plugin marketplace indexes npm packages with
-   the `joplin-plugin` keyword (already set in `package.json`).
-2. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
+1. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
    D2 iconSet glyphs, D3 per-run rich text in HTML, D4/D5 accounting
    formats, E1 multi-table workbooks (`xlsx-multi-table-unsupported`),
    E2 theme-tinted borders, E3/E4 keybinding bugs (E3 is upstream Univer
    #6988). D1 dataBar already shipped in M18 — drop it from `BACKLOG.md`
    when M19 is planned.
-3. **M20 — codebase health** (`BACKLOG.md` group F): `uuid` CVE via
-   exceljs, transitive deprecation noise, exceljs watch-item.
-4. **M21 — in-cell (rich-value) image round-trip** (`richData` /
+2. **M21 — in-cell (rich-value) image round-trip** (`richData` /
    `_localImage`; fixes the `#VALUE!` placeholder; M18 round-3 item #2).
 
 Order and per-item scope are the operator's call at planning time.
 
 ## Notes
+
+- **M20 dependency / bundling lessons (2026-10-13).**
+  - npm 11 re-writes `package-lock.json` at `package.json`'s 4-space
+    indent. The committed lockfile is 2-space, so you get a 25k-line
+    whitespace-only diff. After any install, re-serialise it with
+    `JSON.stringify(lock, null, 2) + "\n"` before diffing or committing.
+  - webpack `resolve.fallback` applies only when normal resolution
+    **fails**. To stub an *installed* package (e.g. `fast-csv`, `archiver`),
+    use `resolve.alias: { pkg: false }`. A fallback on it does nothing, and
+    the package gets bundled anyway.
+  - `browserOverrides()` is **shallow-spread** onto `extraScriptConfig`, so
+    any `resolve` you add there must re-spread `extraScriptConfig.resolve`
+    (the `api` alias and `.ts`/`.tsx` extensions), or those are silently
+    dropped.
+  - A package.json `"browser"` field that points at a prebuilt bundle (like
+    exceljs's) means npm `overrides` never reach the web build. Grep the
+    built bundle for a version-specific string to check what actually
+    shipped.
+  - `scripts/pge/eval-export.js` had a stale-flag bug.
+    `window.__notesheetExportPending` was never reset, so every export after
+    the first in a long-lived webview frame (re-opening an already-open note
+    keeps the same frame) timed out with "export blob was never captured".
+    That's fixed now. If the error comes back, run a direct click probe to
+    tell a harness problem from a real export failure.
+  - New `scripts/pge/eval-import.js` drives the **webview** Import button
+    (`setInputFiles` on `#notesheet-xlsx-input` and accepts the confirm
+    dialog). `import-fixture.sh` runs under Node and can't catch a break in
+    the webview bundle.
 
 - **M18 A1: read images BEFORE the chart strip, NOT via the loaded-workbook
   image API.** The task brief recommended exceljs's `ws.getImages()` +

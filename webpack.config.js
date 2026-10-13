@@ -443,9 +443,58 @@ function hyphenationPatternStub() {
     });
 }
 
+// exceljs's package.json "browser" field points web targets at its prebuilt
+// dist/exceljs.min.js — a browserify bundle with uuid 8.3.2 (and every
+// other exceljs dependency) frozen inside it, so npm `overrides` can never
+// reach the code the editor actually runs. Bundle exceljs from source
+// instead: lib/exceljs.bare.js is exceljs's own "no polyfills, bring your
+// own" entry (exceljs.browser.js is the same plus core-js/regenerator, which
+// Electron doesn't need). webpack 5 doesn't polyfill Node core modules the
+// way browserify did, so supply the few the browser code path touches.
+// fs/crypto/tmp/archiver/unzipper/fast-csv are only reached by the Node file,
+// streaming and CSV APIs (readFile/writeFile, stream.xlsx.*, workbook.csv,
+// sheet-protection hashing), none of which the webview calls.
+// Merged over extraScriptConfig.resolve (browserOverrides() is shallow-spread
+// onto it, so a bare `resolve` here would drop its alias and extensions).
+function exceljsFromSourceResolve() {
+    const exceljsDir = path.dirname(require.resolve('exceljs/package.json'));
+    return {
+        ...extraScriptConfig.resolve,
+        alias: {
+            ...extraScriptConfig.resolve.alias,
+            exceljs$: path.join(exceljsDir, 'lib', 'exceljs.bare.js'),
+            // Installed packages, so they must be stubbed by alias — a
+            // `fallback` only applies when normal resolution fails.
+            // fast-csv backs workbook.csv (CSV read/write), never called.
+            tmp: false,
+            archiver: false,
+            unzipper: false,
+            'fast-csv': false,
+        },
+        fallback: {
+            buffer: require.resolve('buffer/'),
+            events: require.resolve('events/'),
+            stream: require.resolve('readable-stream', { paths: [exceljsDir] }),
+            fs: false,
+            crypto: false,
+        },
+    };
+}
+
+function exceljsFromSourceGlobals() {
+    // process/browser sets process.browser = true, which is what selects
+    // exceljs's browser branches (xlsx.js load(), zip-stream.js) and backs
+    // the process.nextTick calls in its stream-buf.
+    return new webpack.ProvidePlugin({
+        Buffer: ['buffer', 'Buffer'],
+        process: 'process/browser',
+    });
+}
+
 function browserOverrides() {
     return {
         target: 'web',
+        resolve: exceljsFromSourceResolve(),
         // Ship one file. Joplin's addScript API loads a single file by path;
         // it has no chunk-loading runtime, so async splits would fail at load.
         // LimitChunkCountPlugin(maxChunks:1) collapses dynamic import() chunks
@@ -471,6 +520,7 @@ function browserOverrides() {
         plugins: [
             new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
             hyphenationPatternStub(),
+            exceljsFromSourceGlobals(),
         ],
     };
 }
