@@ -277,6 +277,10 @@ async function installExportInterceptor(frame) {
     await frame.evaluate(() => {
         window.__notesheetExportB64 = null;
         window.__notesheetExportErr = null;
+        // Reset too: the webview frame outlives a run when the note is
+        // already open, so a flag left `true` by an earlier export made
+        // every later run skip the capture and time out.
+        window.__notesheetExportPending = false;
         const realCreate = URL.createObjectURL.bind(URL);
         const patched = function (obj) {
             // Only intercept the first Blob-typed call; restore immediately

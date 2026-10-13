@@ -901,6 +901,32 @@ every feature.
 
 - **M20 — codebase health** (`BACKLOG.md` group F), branch
   `m20-codebase-health`, started 2026-10-13. Operator chose M20 next.
+  Implementation + live proof DONE; remaining: PR + README milestone row.
+  `npm audit`: 113 → 20 (prod 98 → **0**). Commits, in order:
+  1. `npm audit fix`: only in-range patch/minor moves (tar, handlebars,
+     grpc-js, protobufjs, postcss, …).
+  2. Scoped override `@univerjs/core → nanoid 5.1.16`. Clears 94 of the 98
+     prod findings. Univer pins nanoid 5.1.11 exactly.
+  3. `lint-staged 15.5.2 → 16.4.0`. Operator first picked 17, but research
+     showed 16.4.0 already drops micromatch, while 17 needs Node ≥22.22.1,
+     which would drop CI's Node 20. Operator switched to 16.4.0.
+  4. Scoped override `exceljs → uuid 11.1.1`, plus a **webview bundle that
+     compiles exceljs from `lib/exceljs.bare.js`**
+     (`webpack.config.js` → `exceljsFromSourceResolve()` /
+     `exceljsFromSourceGlobals()`). The operator chose this over
+     "override + document the gap", because the prebuilt
+     `dist/exceljs.min.js` has uuid 8 baked in. New exact devDeps:
+     `buffer 6.0.3`, `process 0.11.10`, `events 3.3.0`.
+     `editorView.js` 8.19 → 7.59 MB.
+  Live proof (dev profile, build #30, evidence in
+  `screenshots/m20-exceljs-from-source/`):
+  - Webview export of `ConditionalFormatting-Variants`: the dataBar gets a
+    valid v4 x14 id, and it matches between the rule and its `<extLst>`.
+  - Webview re-import of that export: every CF type renders. The screenshot
+    was Read and checked.
+  - Webview import of Smorgasboard and TwoImages: both reach "Imported.".
+  - TwoImages export: `xl/media/*` bytes are SHA-1-identical to the source.
+  Follow-up milestone (operator): Univer 0.23 → 1.x is `BACKLOG.md` F5.
 
 ## Next
 
@@ -916,6 +942,34 @@ every feature.
 Order and per-item scope are the operator's call at planning time.
 
 ## Notes
+
+- **M20 dependency / bundling lessons (2026-10-13).**
+  - npm 11 re-writes `package-lock.json` at `package.json`'s 4-space
+    indent. The committed lockfile is 2-space, so you get a 25k-line
+    whitespace-only diff. After any install, re-serialise it with
+    `JSON.stringify(lock, null, 2) + "\n"` before diffing or committing.
+  - webpack `resolve.fallback` applies only when normal resolution
+    **fails**. To stub an *installed* package (e.g. `fast-csv`, `archiver`),
+    use `resolve.alias: { pkg: false }`. A fallback on it does nothing, and
+    the package gets bundled anyway.
+  - `browserOverrides()` is **shallow-spread** onto `extraScriptConfig`, so
+    any `resolve` you add there must re-spread `extraScriptConfig.resolve`
+    (the `api` alias and `.ts`/`.tsx` extensions), or those are silently
+    dropped.
+  - A package.json `"browser"` field that points at a prebuilt bundle (like
+    exceljs's) means npm `overrides` never reach the web build. Grep the
+    built bundle for a version-specific string to check what actually
+    shipped.
+  - `scripts/pge/eval-export.js` had a stale-flag bug.
+    `window.__notesheetExportPending` was never reset, so every export after
+    the first in a long-lived webview frame (re-opening an already-open note
+    keeps the same frame) timed out with "export blob was never captured".
+    That's fixed now. If the error comes back, run a direct click probe to
+    tell a harness problem from a real export failure.
+  - New `scripts/pge/eval-import.js` drives the **webview** Import button
+    (`setInputFiles` on `#notesheet-xlsx-input` and accepts the confirm
+    dialog). `import-fixture.sh` runs under Node and can't catch a break in
+    the webview bundle.
 
 - **M18 A1: read images BEFORE the chart strip, NOT via the loaded-workbook
   image API.** The task brief recommended exceljs's `ws.getImages()` +
