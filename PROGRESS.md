@@ -3,7 +3,7 @@
 This file is the generator's session-to-session handoff. Update after
 every feature.
 
-**Last verified against the repo: 2026-10-13** (`main` @ `0221d59`).
+**Last verified against the repo: 2026-10-13** (`main` @ `9ec4258`).
 
 > **Staleness rule for agents.** If the "Last verified" date above is more
 > than one day old, do NOT trust `## In progress` / `## Next` as-is. First
@@ -15,6 +15,35 @@ every feature.
 > wins over this file whenever they disagree.
 
 ## Done
+
+- **M20 — Codebase health** (2026-10-13, PR #44, squash `9ec4258`;
+  README row ✅). Merged `main` re-verified: clean `npm ci`, prod audit 0,
+  61 suites / 529 tests, CI green on Node 20.x + 22.x.
+  `npm audit`: 113 → 20 (prod 98 → **0**). Commits, in order:
+  1. `npm audit fix`: only in-range patch/minor moves (tar, handlebars,
+     grpc-js, protobufjs, postcss, …).
+  2. Scoped override `@univerjs/core → nanoid 5.1.16`. Clears 94 of the 98
+     prod findings. Univer pins nanoid 5.1.11 exactly.
+  3. `lint-staged 15.5.2 → 16.4.0`. Operator first picked 17, but research
+     showed 16.4.0 already drops micromatch, while 17 needs Node ≥22.22.1,
+     which would drop CI's Node 20. Operator switched to 16.4.0.
+  4. Scoped override `exceljs → uuid 11.1.1`, plus a **webview bundle that
+     compiles exceljs from `lib/exceljs.bare.js`**
+     (`webpack.config.js` → `exceljsFromSourceResolve()` /
+     `exceljsFromSourceGlobals()`). The operator chose this over
+     "override + document the gap", because the prebuilt
+     `dist/exceljs.min.js` has uuid 8 baked in. New exact devDeps:
+     `buffer 6.0.3`, `process 0.11.10`, `events 3.3.0`.
+     `editorView.js` 8.19 → 7.59 MB.
+  Live proof (dev profile, build #30, evidence in
+  `screenshots/m20-exceljs-from-source/`):
+  - Webview export of `ConditionalFormatting-Variants`: the dataBar gets a
+    valid v4 x14 id, and it matches between the rule and its `<extLst>`.
+  - Webview re-import of that export: every CF type renders. The screenshot
+    was Read and checked.
+  - Webview import of Smorgasboard and TwoImages: both reach "Imported.".
+  - TwoImages export: `xl/media/*` bytes are SHA-1-identical to the source.
+  Follow-up milestone (operator): Univer 0.23 → 1.x is `BACKLOG.md` F5.
 
 - **1.0.0 released** (2026-10-07) — tag `v1.0.0` on `main`, GitHub release
   "Notesheet 1.0.0" with the `.jpl`, and `joplin-plugin-notesheet@1.0.0`
@@ -899,35 +928,9 @@ every feature.
 
 ## In progress
 
-- **M20 — codebase health** (`BACKLOG.md` group F), branch
-  `m20-codebase-health`, started 2026-10-13. Operator chose M20 next.
-  Implementation + live proof DONE; PR #44 open, README row marked ✅.
-  On merge: move this entry to `## Done`.
-  `npm audit`: 113 → 20 (prod 98 → **0**). Commits, in order:
-  1. `npm audit fix`: only in-range patch/minor moves (tar, handlebars,
-     grpc-js, protobufjs, postcss, …).
-  2. Scoped override `@univerjs/core → nanoid 5.1.16`. Clears 94 of the 98
-     prod findings. Univer pins nanoid 5.1.11 exactly.
-  3. `lint-staged 15.5.2 → 16.4.0`. Operator first picked 17, but research
-     showed 16.4.0 already drops micromatch, while 17 needs Node ≥22.22.1,
-     which would drop CI's Node 20. Operator switched to 16.4.0.
-  4. Scoped override `exceljs → uuid 11.1.1`, plus a **webview bundle that
-     compiles exceljs from `lib/exceljs.bare.js`**
-     (`webpack.config.js` → `exceljsFromSourceResolve()` /
-     `exceljsFromSourceGlobals()`). The operator chose this over
-     "override + document the gap", because the prebuilt
-     `dist/exceljs.min.js` has uuid 8 baked in. New exact devDeps:
-     `buffer 6.0.3`, `process 0.11.10`, `events 3.3.0`.
-     `editorView.js` 8.19 → 7.59 MB.
-  Live proof (dev profile, build #30, evidence in
-  `screenshots/m20-exceljs-from-source/`):
-  - Webview export of `ConditionalFormatting-Variants`: the dataBar gets a
-    valid v4 x14 id, and it matches between the rule and its `<extLst>`.
-  - Webview re-import of that export: every CF type renders. The screenshot
-    was Read and checked.
-  - Webview import of Smorgasboard and TwoImages: both reach "Imported.".
-  - TwoImages export: `xl/media/*` bytes are SHA-1-identical to the source.
-  Follow-up milestone (operator): Univer 0.23 → 1.x is `BACKLOG.md` F5.
+- **Release 1.0.1** (M20 security release), branch `release-1.0.1`:
+  version bump + CHANGELOG. After merge: tag `v1.0.1`, GitHub release with
+  the `.jpl`, `npm publish`.
 
 ## Next
 

@@ -2,6 +2,17 @@
 
 All notable changes will be documented here. Versioning follows [SemVer](https://semver.org/).
 
+## 1.0.1
+
+Security and maintenance release (milestone M20). No change to how spreadsheets look or behave.
+
+- **Security:** fixes every known vulnerability in the plugin's runtime dependencies (`npm audit --omit=dev`: 98 → 0).
+    - `uuid` updated to 11.1.1 for the `.xlsx` engine ([GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq)), including inside the spreadsheet editor itself.
+    - `nanoid` updated to 5.1.16 for the spreadsheet engine ([GHSA-28wg-ghj8-5hjv](https://github.com/advisories/GHSA-28wg-ghj8-5hjv)).
+    - Assorted transitive patch updates.
+- **Smaller download:** the plugin package shrank from 9.3 MB to 8.7 MB because the editor now bundles only the parts of the `.xlsx` engine it uses.
+- `.xlsx` import and export were re-verified end-to-end in the editor: conditional formatting (data bars, color scales, icon sets) and embedded images round-trip unchanged.
+
 ## 1.0.0
 
 First public release on the Joplin plugin marketplace (milestones M1–M18, M22; see the README Milestones table for per-PR detail).
