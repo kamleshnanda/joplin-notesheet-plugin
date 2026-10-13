@@ -3,7 +3,23 @@
 This file is the generator's session-to-session handoff. Update after
 every feature.
 
+**Last verified against the repo: 2026-10-13** (`main` @ `0221d59`).
+
+> **Staleness rule for agents.** If the "Last verified" date above is more
+> than one day old, do NOT trust `## In progress` / `## Next` as-is. First
+> refresh from the real state — `git log --oneline -15`, `git branch -a`,
+> `git tag`, `gh pr list --state all --limit 10`, `gh release list`,
+> `npm view joplin-plugin-notesheet version`, and the README "Milestones"
+> table — then correct this file (move finished items to `## Done`, drop
+> stale `## Next` items) and bump the date before starting work. The repo
+> wins over this file whenever they disagree.
+
 ## Done
+
+- **1.0.0 released** (2026-10-07) — tag `v1.0.0` on `main`, GitHub release
+  "Notesheet 1.0.0" with the `.jpl`, and `joplin-plugin-notesheet@1.0.0`
+  published to npm (marketplace indexes it via the `joplin-plugin`
+  keyword). Followed by README macOS plugin-settings path fix (PR #43).
 
 - **M22 — Marketplace readiness** (2026-10-06, PR #41; milestone marked
   ✅ in PR #42) — `.jpl` cut 13.7 → 9.3 MB by stubbing the 76 unused
@@ -883,24 +899,18 @@ every feature.
 
 ## In progress
 
-_Nothing in flight._
+- **M20 — codebase health** (`BACKLOG.md` group F), branch
+  `m20-codebase-health`, started 2026-10-13. Operator chose M20 next.
 
 ## Next
 
-1. **Release 1.0.0.** Nothing is tagged or published yet (no git tags, no
-   GitHub release, `npm view joplin-plugin-notesheet` → 404). Tag `v1.0.0`
-   on `main`, cut a GitHub release with the `.jpl` from `publish/`, then
-   `npm publish` — the Joplin plugin marketplace indexes npm packages with
-   the `joplin-plugin` keyword (already set in `package.json`).
-2. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
+1. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
    D2 iconSet glyphs, D3 per-run rich text in HTML, D4/D5 accounting
    formats, E1 multi-table workbooks (`xlsx-multi-table-unsupported`),
    E2 theme-tinted borders, E3/E4 keybinding bugs (E3 is upstream Univer
    #6988). D1 dataBar already shipped in M18 — drop it from `BACKLOG.md`
    when M19 is planned.
-3. **M20 — codebase health** (`BACKLOG.md` group F): `uuid` CVE via
-   exceljs, transitive deprecation noise, exceljs watch-item.
-4. **M21 — in-cell (rich-value) image round-trip** (`richData` /
+2. **M21 — in-cell (rich-value) image round-trip** (`richData` /
    `_localImage`; fixes the `#VALUE!` placeholder; M18 round-3 item #2).
 
 Order and per-item scope are the operator's call at planning time.

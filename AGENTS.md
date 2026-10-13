@@ -28,6 +28,17 @@ Use a structured question (e.g. `AskUserQuestion`). Do **not** self-assign
 by merge date, scope heuristic, or "is this major" judgment — those were
 explicitly rejected in favor of just asking.
 
+## A stale `PROGRESS.md` is not a plan — refresh it from the repo first
+
+`PROGRESS.md` is read cold by the next session, so a stale `## Next` item
+sends that session off to redo finished work (it once still said "release
+1.0.0" a week after v1.0.0 was tagged, released, and on npm). If its
+"Last verified against the repo" date is **more than one day old**, verify
+state from the repo — git log / branches / tags, PRs, GitHub releases,
+`npm view`, the README milestones table — correct the file, and bump the
+date before acting on it. The exact checklist is at the top of
+`PROGRESS.md`.
+
 ## Stale build is the FIRST suspect for any reported render bug
 
 When the operator reports that something **renders** wrong in Joplin (not a

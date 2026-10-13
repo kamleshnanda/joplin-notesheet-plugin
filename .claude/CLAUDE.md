@@ -22,7 +22,10 @@ Before doing anything else:
 1. Read `PROGRESS.md`. It is your handoff note from the previous
    session. If it doesn't exist, create it with four sections
    (`## Done`, `## In progress`, `## Next`, `## Notes`) and leave them
-   empty.
+   empty. If its "Last verified against the repo" date is more than one
+   day old, refresh it from the repo first (git log/branches/tags, PRs,
+   releases, npm, README milestones), correct stale entries, and bump the
+   date — the procedure is spelled out at the top of `PROGRESS.md`.
 2. Read `NEXT_FINDINGS.md` if present — it is the evaluator's specific
    feedback from the last cycle. Address those points before moving
    on. Delete the file once you've addressed every bullet.
