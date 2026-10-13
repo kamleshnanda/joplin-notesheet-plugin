@@ -901,7 +901,8 @@ every feature.
 
 - **M20 — codebase health** (`BACKLOG.md` group F), branch
   `m20-codebase-health`, started 2026-10-13. Operator chose M20 next.
-  Implementation + live proof DONE; remaining: PR + README milestone row.
+  Implementation + live proof DONE; PR #44 open, README row marked ✅.
+  On merge: move this entry to `## Done`.
   `npm audit`: 113 → 20 (prod 98 → **0**). Commits, in order:
   1. `npm audit fix`: only in-range patch/minor moves (tar, handlebars,
      grpc-js, protobufjs, postcss, …).
