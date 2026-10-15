@@ -21,7 +21,7 @@ every feature.
   The `.jpl` on npm, on the release and local build #36 are byte-identical
   (SHA-256 `0e9d76a2…`). Then PR #46 (`2edd4b6`): Claude Code commit/PR
   attribution turned off in `.claude/settings.json`; repo-local git identity is
-  the GitHub noreply address (no Amazon identity in new commits).
+  the GitHub noreply address for all new commits.
 
 - **M20 — Codebase health** (2026-10-13, PR #44, squash `9ec4258`;
   README row ✅). Merged `main` re-verified: clean `npm ci`, prod audit 0,
