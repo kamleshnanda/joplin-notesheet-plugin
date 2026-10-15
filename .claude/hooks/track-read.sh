@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
+# Run from the project root so relative paths (AGENT_STOP, STEER.md,
+# .claude/.evidence-reads, test-results.json) resolve correctly even after
+# the session has cd'd into a subdirectory. CLAUDE_PROJECT_DIR is set by
+# Claude Code for hooks; fall back to this script's own location.
+cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || exit 0
 # Records which evidence files (screenshots, console logs) the agent has opened this session.
 # verify-gate.sh consults this list before allowing a test to be marked passing.
 log="${VERIFY_READ_LOG:-./.claude/.evidence-reads}"
