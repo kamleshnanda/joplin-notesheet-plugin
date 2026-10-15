@@ -18,14 +18,29 @@
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-52-59-327Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-53-18-327Z.json"
         ],
-        "evaluator_verdict": "PASS (2026-10-15): own screenshot A1 stays on A1, no scroll; own probe 14/14 scored real-keystroke cases; main baseline reproduces the wrap; jest failing-first confirmed. 3 LOW findings fixed in 97c1cac. Cancel leak accepted + documented (upstream; harmless). | Re-verified 2026-10-15 after review fix afd75a5 (jumpOver === JumpOver.moveGap only): build #40 installed, live probe 14/14 on two runs, Cmd+Left D5→A5 still jumps. | Corner cases 2026-10-15 (operator-requested): bottom-right T1000 Right/Down vetoed; 50-column sheet AX5 Right + AX1000 Down vetoed and T5 Right → U5 (clamp follows real width); sheet width restored; 20/20 on two runs, build #40.",
+        "evaluator_verdict": "PASS (2026-10-15): own screenshot A1 stays on A1, no scroll; own probe 14/14 scored real-keystroke cases; main baseline reproduces the wrap; jest failing-first confirmed. 3 LOW findings fixed in 97c1cac. Cancel leak accepted + documented (upstream; harmless). | Re-verified 2026-10-15 after review fix afd75a5 (jumpOver === JumpOver.moveGap only): build #40 installed, live probe 14/14 on two runs, Cmd+Left D5\u2192A5 still jumps. | Corner cases 2026-10-15 (operator-requested): bottom-right T1000 Right/Down vetoed; 50-column sheet AX5 Right + AX1000 Down vetoed and T5 Right \u2192 U5 (clamp follows real width); sheet width restored; 20/20 on two runs, build #40.",
         "last_attempted_at": "2026-10-15T05:36:00Z"
     },
     "feature-2-m19-insert-link-alt-shortcut": {
         "passes": false,
-        "evidence": null,
+        "evidence": [
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/eval-2026-10-15T17-57-29-409Z.png",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/eval-2026-10-15T17-57-29-409Z.pixels.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/eval-2026-10-15T17-43-59-100Z.png",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/eval-2026-10-15T17-43-59-100Z.pixels.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-56-55-547Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-57-29-348Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-41-42-680Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-42-16-982Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-51-45-334Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-52-18-678Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-49-53-102Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-branch-2026-10-15T17-50-29-124Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-main-2026-10-15T17-48-03-659Z.json",
+            "screenshots/feature-2-m19-insert-link-alt-shortcut/probe-main-2026-10-15T17-48-49-424Z.json"
+        ],
         "evaluator_verdict": null,
-        "last_attempted_at": null
+        "last_attempted_at": "2026-10-15T17:58:00Z"
     },
     "feature-3-m19-rich-text-runs-in-html": {
         "passes": false,

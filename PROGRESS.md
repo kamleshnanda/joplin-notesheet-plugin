@@ -3,7 +3,7 @@
 This file is the generator's session-to-session handoff. Update after
 every feature.
 
-**Last verified against the repo: 2026-10-14** (`main` @ `2edd4b6`).
+**Last verified against the repo: 2026-10-15** (`main` @ `2edd4b6`; branch `m19-render-import-gaps`).
 
 > **Staleness rule for agents.** If the "Last verified" date above is more
 > than one day old, do NOT trust `## In progress` / `## Next` as-is. First
@@ -955,9 +955,19 @@ every feature.
      and commit the JSONs. A `main` baseline for these is optional (+~10 min);
      the recommendation was to skip it, since the per-edge wrap is already
      reproduced. If any case fails, set feature-1 back to `passes: false`.
-  2. **Then feature-2** (E4 alt-shortcut insert-link): generator → evaluator,
-     same flow. First verify the accelerator is free in Joplin's default
-     keymap.
+  2. **feature-2 (E4 insert-link alt shortcut) — generator DONE 2026-10-15,
+     awaiting evaluator** (`passes: false`, evidence filled). Commits `d2bafb1`
+     (failing-first, 12 fail / 4 pass), `1725529` (impl), `fa8e033` (live proof +
+     docs). Accelerator `CmdOrCtrl+Alt+K`: free in both default keymap tables at
+     the installed Joplin v3.7.21 (`e41516e6`, KeymapService.ts L22–79 darwin /
+     L80–137 default; `Option+Cmd+L` IS taken by toggleNoteList, so candidate 2
+     would have failed on macOS) and in every installed Univer binding (pinned
+     in `tests/m19InsertLinkShortcut.test.ts`). Live (build #42 = HEAD
+     `fa8e033`): `scripts/pge/insert-link-probe.js` 8/8 ×2, main baseline
+     `probe-main-*.json`. **Spec premise corrected:** real Cmd+K already opens
+     Univer's panel when the grid has focus (on `main` too); only cell-editing /
+     focus-outside-iframe falls to Joplin's textLink. Docs say exactly that.
+     Next: feature-3 after the evaluator grades feature-2.
   3. **State:** branch `m19-render-import-gaps` is pushed, with **draft PR #47**
      open so CI runs (this branch name doesn't match the `m**/**` push trigger).
      Check #47's CI result first.
@@ -1000,6 +1010,10 @@ every feature.
     `A5:C5` selected and `C5` active, Left is a no-op on branch; main wrapped to
     T4. Excel-style collapse-and-move is deferred as BACKLOG **E5**, milestone
     TBD (operator). Don't assign one. README Known gaps documents it.
+
+- **feature-2-m19-insert-link-alt-shortcut** — generator done (see RESUME HERE
+  item 2); evaluator pending. Operator FYI: Cmd/Ctrl+K behaviour is
+  focus-dependent (README Known gaps bullet rewritten accordingly).
 
 ## Next
 
@@ -2080,3 +2094,48 @@ Order and per-item scope are the operator's call at planning time.
   so the test simply asserts the constructor + code constant
   shape. Acceptable: the wrap is unit-tested by the existing
   m12ImportRecovery suite for the in-tree crash classes.
+
+- **M19 feature-2 (E4) live-harness notes (2026-10-15, verified):**
+  - **Node:** Homebrew `node` 26.5 is broken on this machine (`libsimdjson.33.dylib`
+    missing after a simdjson 5.0.5 upgrade). Use
+    `PATH=~/.config/nvm/versions/node/v22.19.0/bin:$PATH` (Node 22 = CI matrix).
+  - **Cmd/Ctrl+K routing on macOS (Joplin 3.7.21):** keydown reaches the editor
+    iframe FIRST; if Univer's `InsertLinkShortcut` (precondition
+    `whenSheetEditorFocused`) handles it, it preventDefaults and Joplin's
+    `textLink` menu accelerator never fires. In cell-edit mode or with focus
+    outside the iframe Univer doesn't handle it, so Joplin runs `textLink` →
+    log `Received command, but editor is gone textLink`, nothing opens. Same on
+    `main`. Windows/Linux NOT verified live (no machine).
+  - **Our accelerator** `CmdOrCtrl+Alt+K` → plugin command → `postMessage` →
+    webview `openUniverInsertLink(activeApi, InsertLinkShortcut.id)`; panel opens
+    in ~100–300 ms in all focus states. `InsertHyperLinkToolbarOperation` is NOT
+    exported by sheets-hyper-link-ui 0.23, but `InsertLinkShortcut` is (re-exported
+    by `@univerjs/preset-sheets-hyper-link`); its `.id` is the toolbar op. The op
+    TOGGLES (closes if `currentEditing`), so pressing twice closes the panel.
+  - **Target view:** `hasActivePluginEditor` = some view `active` (not `opened`);
+    `postInsertLinkToActiveEditor` (`src/insertLinkShortcut.ts`) requires
+    `isActive && isVisible` (WebviewController `visible` = `active && opened`),
+    first match wins (mirrors Joplin's getActivePluginEditorView); dead handles
+    (isActive throws) are dropped. Plugin API calls return Promises at runtime even
+    where typed `void` — `postMessage` is awaited.
+  - **Stable selectors:** Univer link panel = `input[placeholder="<hyperLink.form.linkPlaceholder>"]`
+    ("Enter link" in en-US; read from the installed locale), root = its closest
+    `.univer-rounded-xl` (CellLinkEdit root div, no id/data attr). Joplin's
+    markdown link prompt = `.smalltalk .content-area` containing "Insert Hyperlink"
+    (`dialogs.prompt`, useEditorCommands.ts L83–84); cancel via
+    `.smalltalk [data-name="js-cancel"]`. A leftover smalltalk dialog intercepts
+    every click on the page — clear it before any canvas click.
+  - **Harness:** `scripts/pge/insert-link-lib.js` (shared), `insert-link-probe.js`
+    (`PGE_NOTE_ID` + `PGE_MD_NOTE_ID`), `eval-screenshot.js` region
+    `insertLinkPanel` (whole-page capture). Keystrokes are System Events
+    `key code 40` to the dev PID; `devJoplinPid()` throws if any non-dev Joplin
+    runs. AX `AXMenuItemCmdModifiers` bit1 = Option, bit3 = no-Cmd. Flakes seen and
+    handled: back-to-back presses within ~400 ms of a programmatic panel close can
+    miss (probe settles 500 ms); in the first ~minute after a relaunch the markdown
+    Cmd+K control case missed twice (Joplin's own prompt; not reproducible by hand;
+    after a 45 s warm-up 8/8 ×2). Test notes: notesheet `c3f5b13b…`, markdown
+    `c31b0272…` (dev profile).
+  - **Out-of-scope bug spotted (not fixed):** our existing `CmdOrCtrl+Shift+S`
+    ("New Spreadsheet", `src/index.ts`) collides with Joplin's default
+    `focusElementSideBar` (KeymapService.ts L45 `Shift+Cmd+S` / L100
+    `Ctrl+Shift+S`). Needs an operator decision (BACKLOG item + milestone).
