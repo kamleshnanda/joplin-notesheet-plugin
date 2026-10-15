@@ -36,7 +36,10 @@ import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
-import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
+import {
+    InsertLinkShortcut,
+    UniverSheetsHyperLinkPreset,
+} from '@univerjs/preset-sheets-hyper-link';
 import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';
 
 import { withFlatTableTheme } from './univerTableTheme';
@@ -60,6 +63,7 @@ import {
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
 import { MOVE_SELECTION_COMMAND_ID, makeArrowEdgeClamp } from './editor/arrowEdgeClamp';
+import { isInsertLinkMessage, openUniverInsertLink } from './editor/insertLink';
 import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
 import { registerTextToNumberCommand } from './formulas/registerTextToNumber';
@@ -955,6 +959,11 @@ function bootUniver(snapshot: Record<string, unknown>): void {
 // Univer 1.x (BACKLOG F5): re-verify BeforeCommandExecute + `cancel` semantics.
 const shouldClampArrowMove = makeArrowEdgeClamp(Direction, JumpOver.moveGap);
 
+// M19 E4: the operation Univer's own Cmd/Ctrl+K shortcut runs
+// (`sheet.operation.insert-hyper-link-toolbar` in 0.23), read from the shortcut
+// rather than hard-coded; tests/m19InsertLinkShortcut.test.ts pins it.
+const INSERT_LINK_COMMAND_ID = InsertLinkShortcut.id;
+
 interface ArrowClampApi {
     addEvent?: (event: string, cb: (e: ArrowClampEvent) => void) => unknown;
     Event?: { BeforeCommandExecute?: string };
@@ -1102,6 +1111,13 @@ function init(): void {
         const m = event?.message as LoadMessage | undefined;
         if (m && m.type === 'load' && m.snapshot) {
             bootUniver(m.snapshot);
+            return;
+        }
+        // M19 E4: the host's "Insert link in spreadsheet" command (its own
+        // accelerator, since Cmd/Ctrl+K is Joplin's) — run the same operation
+        // Univer's Cmd/Ctrl+K shortcut fires. See src/editor/insertLink.ts.
+        if (isInsertLinkMessage(m)) {
+            openUniverInsertLink(activeApi, INSERT_LINK_COMMAND_ID);
         }
     });
     window.webviewApi.postMessage(READY_MESSAGE).catch((err) => {
