@@ -23,6 +23,7 @@ import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
 
 import {
     createUniver,
+    Direction,
     IResourceManagerService,
     LocaleType,
     LogLevel,
@@ -58,6 +59,7 @@ import {
     NOTESHEET_ARRAY_FORMULAS_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
+import { MOVE_SELECTION_COMMAND_ID, makeArrowEdgeClamp } from './editor/arrowEdgeClamp';
 import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
 import { registerTextToNumberCommand } from './formulas/registerTextToNumber';
@@ -907,6 +909,8 @@ function bootUniver(snapshot: Record<string, unknown>): void {
         }
     }
 
+    installArrowEdgeClamp(univerAPI);
+
     // Drawing transforms (drag, resize, anchor changes) don't trigger
     // SheetEditEnded, so without this hook the workbook snapshot picks up
     // the new transform in memory but never gets written back to the note.
@@ -937,6 +941,74 @@ function bootUniver(snapshot: Record<string, unknown>): void {
         } catch (e) {
             console.warn('[Notesheet] could not subscribe to CommandExecuted', e);
         }
+    }
+}
+
+// M19 feature-1 (BACKLOG E3): arrow keys stop at the sheet edge, as in Excel,
+// instead of Univer 0.23's wrap (findNextRange `isGoBack = true`; upstream
+// univer#6988 closed as by-design). A command-level veto, not a shortcut
+// override: committing a cell edit with an arrow key calls MoveSelectionCommand
+// directly (editor-bridge `_moveSelection`), bypassing ShortcutService. Setting
+// `event.cancel` makes the facade throw CanceledError, which core
+// `executeCommand` catches and turns into `false` — nothing reaches the console.
+// The decision lives in src/editor/arrowEdgeClamp.ts (pure, Jest-tested).
+// Univer 1.x (BACKLOG F5): re-verify BeforeCommandExecute + `cancel` semantics.
+const shouldClampArrowMove = makeArrowEdgeClamp(Direction);
+
+interface ArrowClampApi {
+    addEvent?: (event: string, cb: (e: ArrowClampEvent) => void) => unknown;
+    Event?: { BeforeCommandExecute?: string };
+    getActiveWorkbook?: () => {
+        getActiveSheet?: () => {
+            getSheet?: () => unknown;
+            getSelection?: () => {
+                getActiveRange?: () => { getRange?: () => unknown } | null;
+            } | null;
+        } | null;
+    } | null;
+}
+
+interface ArrowClampEvent {
+    id?: string;
+    params?: unknown;
+    cancel?: boolean;
+}
+
+function installArrowEdgeClamp(api: unknown): void {
+    const a = api as ArrowClampApi;
+    const eventName = a?.Event?.BeforeCommandExecute;
+    if (typeof a?.addEvent !== 'function' || !eventName) {
+        console.warn(
+            '[Notesheet] BeforeCommandExecute unavailable — arrow keys will wrap at the sheet edge',
+        );
+        return;
+    }
+    try {
+        a.addEvent(eventName, (event) => {
+            // Runs synchronously inside executeCommand for EVERY command:
+            // cheap id check first, and never throw (a non-CanceledError
+            // thrown here would reject the user's command).
+            if (event?.id !== MOVE_SELECTION_COMMAND_ID) return;
+            try {
+                const ws = a.getActiveWorkbook?.()?.getActiveSheet?.();
+                const sheet = ws?.getSheet?.();
+                const range = ws?.getSelection?.()?.getActiveRange?.()?.getRange?.();
+                if (!sheet || !range) return;
+                if (
+                    shouldClampArrowMove(
+                        event.params,
+                        range as Parameters<typeof shouldClampArrowMove>[1],
+                        sheet as Parameters<typeof shouldClampArrowMove>[2],
+                    )
+                ) {
+                    event.cancel = true;
+                }
+            } catch (e) {
+                console.warn('[Notesheet] arrow edge clamp check failed', e);
+            }
+        });
+    } catch (e) {
+        console.warn('[Notesheet] could not subscribe to BeforeCommandExecute', e);
     }
 }
 
