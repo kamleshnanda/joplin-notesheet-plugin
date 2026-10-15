@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
-# Run from the project root so relative paths (AGENT_STOP, STEER.md,
-# .claude/.evidence-reads, test-results.json) resolve correctly even after
-# the session has cd'd into a subdirectory. CLAUDE_PROJECT_DIR is set by
-# Claude Code for hooks; fall back to this script's own location.
-cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || exit 0
 #
 # Denies any Write/Edit to the results file unless the agent has opened at least
 # one evidence file (screenshot/console log) since the gate last fired.
@@ -23,6 +18,16 @@ target=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sys
 
 # Only guard the results file (anchor on path separator so e.g. vitest-results.json doesn't match)
 case "$target" in "$results"|*/"$results") ;; *) exit 0 ;; esac
+
+# Run from the project root so the relative evidence log resolves correctly
+# even after the session has cd'd into a subdirectory. CLAUDE_PROJECT_DIR is set
+# by Claude Code for hooks; fall back to this script's own location. Done AFTER
+# the target filter (which doesn't depend on cwd) so a failed cd only blocks
+# writes to the results file, never unrelated edits. Guard → fail CLOSED.
+cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || {
+  echo '{"decision":"block","reason":"PGE verify-gate hook could not cd to the project root, so it cannot check the evidence log; refusing to modify the results file unguarded."}'
+  exit 0
+}
 
 if [ ! -s "$log" ]; then
   cat <<'JSON'
