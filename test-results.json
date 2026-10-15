@@ -1,7 +1,10 @@
 {
     "feature-1-m19-arrow-keys-clamp-at-sheet-edge": {
-        "passes": false,
+        "passes": true,
         "evidence": [
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T02-02-56-854Z.png",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T02-02-56-854Z.pixels.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-evaluator-2026-10-15T02-03-38-273Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T01-56-32-620Z.png",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T01-56-32-620Z.pixels.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/main-baseline-a1-left.png",
@@ -11,7 +14,7 @@
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-52-59-327Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-53-18-327Z.json"
         ],
-        "evaluator_verdict": null,
+        "evaluator_verdict": "PASS (2026-10-15): own screenshot A1 stays on A1, no scroll; own probe 14/14 scored real-keystroke cases; main baseline reproduces the wrap; jest failing-first confirmed. 3 LOW findings fixed in 97c1cac. Cancel leak accepted + documented (upstream; harmless).",
         "last_attempted_at": "2026-10-15T01:57:00Z"
     },
     "feature-2-m19-insert-link-alt-shortcut": {
