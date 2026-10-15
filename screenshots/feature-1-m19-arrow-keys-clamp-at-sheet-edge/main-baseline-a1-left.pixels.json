@@ -1,0 +1,67 @@
+{
+  "source": "/Users/kamleshn/workspace/joplin-univer/screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/main-baseline-a1-left.png",
+  "region": "editor canvas after a real ArrowLeft at A1 (arrowEdge.before/after = facade selection; row-0 slab sampled)",
+  "regionKind": "arrowEdgeA1",
+  "dominant": "rgb(168,176,189)",
+  "count": 992,
+  "sampled": 2247,
+  "top": [
+    [
+      "rgb(168,176,189)",
+      992
+    ],
+    [
+      "rgb(214,216,219)",
+      383
+    ],
+    [
+      "rgb(216,217,217)",
+      368
+    ],
+    [
+      "rgb(217,217,217)",
+      145
+    ],
+    [
+      "rgb(33,33,33)",
+      19
+    ],
+    [
+      "rgb(222,223,224)",
+      18
+    ],
+    [
+      "rgb(95,96,96)",
+      14
+    ],
+    [
+      "rgb(152,152,153)",
+      13
+    ]
+  ],
+  "regionWidth": 400,
+  "regionHeight": 80,
+  "inkRows": 80,
+  "inkRowSpread": 1,
+  "redInk": 0,
+  "blueInk": 0,
+  "greenInk": 0,
+  "greyInk": 57,
+  "pinkInk": 0,
+  "lightGreenInk": 0,
+  "yellowInk": 0,
+  "arrowEdge": {
+    "key": "ArrowLeft",
+    "before": {
+      "range": "A1",
+      "currentRow": 0,
+      "currentColumn": 0
+    },
+    "after": {
+      "range": "T1000",
+      "currentRow": 999,
+      "currentColumn": 19
+    },
+    "stayedOnA1": false
+  }
+}

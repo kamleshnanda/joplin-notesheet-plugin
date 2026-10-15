@@ -960,6 +960,10 @@ every feature.
     shows the cursor at T1000.
   - Docs updated (README Known gaps → Editor, CHANGELOG Unreleased, BACKLOG E3).
   - `passes` is left false for the evaluator.
+  - Operator decision (2026-10-15): ship the multi-cell case as-is. With
+    `A5:C5` selected and `C5` active, Left is a no-op on branch; main wrapped to
+    T4. Excel-style collapse-and-move is deferred as BACKLOG **E5**, milestone
+    TBD (operator). Don't assign one. README Known gaps documents it.
 
 ## Next
 
