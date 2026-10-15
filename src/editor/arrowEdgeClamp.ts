@@ -33,6 +33,13 @@
 // Univer 1.x upgrade (BACKLOG F5) checklist: this depends on the facade's
 // `BeforeCommandExecute` event + `event.cancel`, on the command id below and
 // on the `{ direction, jumpOver, extra }` param shape. Re-verify all three.
+// Also re-check the cancel leak: in Univer 0.23 core `executeCommand`, a
+// `CanceledError` thrown by a before-listener skips the command-stack
+// `dispose()`, so each vetoed keystroke leaves one stale
+// `_commandExecutionStack` entry (reset on every note open; harmless today —
+// only `syncExecuteCommand` reads it, to set a mutation's `trigger`, and every
+// `trigger` reader compares other ids). Drop this note if upstream wraps the
+// before-listeners in try/finally.
 
 export const MOVE_SELECTION_COMMAND_ID = 'sheet.command.move-selection';
 

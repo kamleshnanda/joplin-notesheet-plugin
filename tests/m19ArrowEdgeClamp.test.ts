@@ -35,7 +35,7 @@ const Direction: DirectionEnum = JSON.parse(
         [
             '--input-type=module',
             '-e',
-            "const m = await import('@univerjs/core'); process.stdout.write(JSON.stringify(m.Direction));",
+            "const m = await import('@univerjs/presets'); process.stdout.write(JSON.stringify(m.Direction));",
         ],
         { cwd: __dirname, encoding: 'utf8' },
     ),
@@ -104,7 +104,7 @@ const lastRow = (c: number): ArrowEdgeRange => ({
 });
 
 describe('M19 arrow edge clamp — Univer contract', () => {
-    it('reads the four Direction members from @univerjs/core', () => {
+    it('reads the four Direction members from @univerjs/presets (what editorView uses)', () => {
         for (const k of ['UP', 'RIGHT', 'DOWN', 'LEFT'] as const) {
             expect(typeof Direction[k]).toBe('number');
         }
@@ -250,5 +250,23 @@ describe('M19 arrow edge clamp — never veto Ctrl/Cmd+arrow, formula-editor or 
     });
     it('no active selection → allow', () => {
         expect(shouldClampArrowMove({ direction: Direction.LEFT }, null, sheet)).toBe(false);
+    });
+});
+
+// KNOWN SHORTCOMING (README "Known gaps → Editor", BACKLOG E5, milestone TBD):
+// Univer moves a multi-cell selection from the range's EDGE, not from the
+// active cell. Excel collapses A5:C5 (active C5) + Left to B5; Notesheet
+// cancels because the range's left edge is already in column A. Pinned so a
+// change in either direction is a deliberate decision, not an accident.
+describe('M19 arrow edge clamp — KNOWN SHORTCOMING: multi-cell selection moves from its edge', () => {
+    it('A5:C5 + Left → cancel (Excel would move the active cell C5 to B5)', () => {
+        expect(shouldClampArrowMove({ direction: Direction.LEFT }, range('A5:C5'), sheet)).toBe(
+            true,
+        );
+    });
+    it('A5:C5 + Right → allow (the range edge is not at the sheet edge)', () => {
+        expect(shouldClampArrowMove({ direction: Direction.RIGHT }, range('A5:C5'), sheet)).toBe(
+            false,
+        );
     });
 });
