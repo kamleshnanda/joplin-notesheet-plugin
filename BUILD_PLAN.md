@@ -1,1311 +1,885 @@
-# Notesheet PGE — build plan (M17: Chart import from `.xlsx` + chart rendering in HTML / preview-pane export)
+# Notesheet PGE — build plan (M19: Static-render & import gaps)
 
-> **Cycle context.** Sixth real-feature cycle. M13/A–E shipped via this
-> harness (PRs #19–#23), M14 was an explicit NO-GO (`docs/m14-sheetjs-spike.md`),
-> M15 conditional formatting shipped (PRs #26 + #27), and M16 snapshot →
-> HTML rendering shipped (PR #28). M16 deferred two follow-ups that
-> M17 picks up:
->
-> 1. **The original M16 brief listed "charts don't render in HTML
->    export" as an explicit gap.** Static charts in the M16 content
->    script were punted because the import-side path
->    (`xlsxBufferToSnapshot`) couldn't read chart drawings yet — a
->    snapshot built from an Excel-authored chart workbook would have
->    no `SHEET_DRAWING_PLUGIN` resource to walk in the first place.
->    M17 closes the import gap AND adds inline SVG emit in the same
->    cycle so both halves arrive together.
-> 2. **`xlsxBufferToSnapshot` currently throws
->    `NotesheetImportError('xlsx-charts-unsupported', ...)`** for any
->    workbook whose drawings exceljs's reconcile loop trips on (`anchors`
->    crash class, classified at `src/xlsx.ts:1745`). The README's
->    "Known shortcomings" line says `M17 addresses this`; this is the
->    standing promise.
->
-> **Two-layer fidelity test pattern remains the project default for
-> "match Excel" features.** M13/E established it (snapshot fidelity vs
-> source XML, canvas fidelity vs Excel reference PNG); M15 extended both
-> layers; M16 ran HTML-content fidelity vs source-fixture content
-> (Jest-only). M17 inherits both anchor disciplines:
->
-> - **Excel-authored fixture tests** (criteria 1, 2, 5) anchor to the
->   source Excel chart XML inside the `.xlsx`, parsed independently
->   via stdlib `JSZip` + regex / DOMParser. Expected values come from
->   the source XML, NOT from "what `xlsxBufferToSnapshot` happens to
->   emit." (Per `feedback_pge_fidelity_test_gap.md` — the M13/E mistake
->   was asserting our own emit and missing the actual rendered
->   colour.)
-> - **Programmatic round-trip tests** (criterion 6) anchor to the
->   ORIGINAL in-memory snapshot we author. Build snapshot →
->   `snapshotToXlsxBuffer` → `xlsxBufferToSnapshot` → assert RE-IMPORTED
->   chart matches ORIGINAL chart. Tests Notesheet-emit ↔ Notesheet-
->   import inverseness, NOT Excel parity.
-> - **HTML / SVG export tests** (criterion 7) anchor to structural SVG
->   element counts derived from the input snapshot — `<rect>` count
->   == data length, `<path>` count == slice count, ±3° on pie sweep
->   angles. Not pinned to byte-string output; renderer can change
->   emit style without breaking the test as long as counts match.
->
-> **Test-suite no-regression discipline (criterion #10).** This cycle's
-> evaluator runs `git diff tests/` and confirms the ONLY changes in
-> `tests/` are: NEW files (`tests/m17*.test.ts` family) AND the two
-> flipped pin-down lines in `tests/m12ImportRecovery.test.ts:59,84`.
-> No content edit to any other existing test file. The eighteen
-> existing test files listed in operator criterion #10 stay untouched
-> and pass. This prevents the "262 → 287 by deleting 5 existing tests
-> and adding 30 new ones" failure mode that almost slipped through
-> M13/E.
->
-> **Approach choice for the import-side architecture.** Two viable
-> approaches were called out in the operator brief: (A) catch the
-> exceljs throw, parse charts from the zip, retry with a drawing-
-> stripped buffer; (B) add a NEW pre-load zip-direct reader
-> `readChartsFromXlsxZip`, build a drawing-stripped buffer, then
-> pass the stripped buffer to exceljs.
->
-> **This plan picks Approach B.** Rationale: pre-stripping is the
-> cleanest way to keep exceljs's reconcile loop functional for
-> everything that's NOT a chart drawing (cells, tables, CF, theme,
-> hyperlinks); avoids a retry path that would mask future crash
-> classes we haven't classified yet; keeps `NotesheetImportError`
-> defined for genuine non-chart crashes.
->
-> **Important — call-ordering distinction the operator brief
-> conflated.** The four existing zip-direct readers
-> (`readTablesFromXlsxZip`, `readThemeFont`, `readThemeClrScheme`,
-> `readNamedHyperlinkCells`) are NOT pre-load — they all run AFTER
-> `await wb.xlsx.load(buffer)` (verified at `src/xlsx.ts:1764-1779`).
-> They work because exceljs's load already succeeded for non-chart
-> workbooks; they're parallel parsers reading the SAME successfully-
-> loaded buffer, not pre-strippers. M17's `readChartsFromXlsxZip`
-> is fundamentally different: it MUST run BEFORE `wb.xlsx.load`
-> because the load currently throws on chart drawings. The flow is:
->
-> 1. Read chart parts from the ORIGINAL buffer.
-> 2. Build a STRIPPED buffer in memory by removing every chart
->    drawing reference: `xl/drawings/drawing*.xml`,
->    `xl/drawings/_rels/drawing*.xml.rels`, the `<drawing r:id="...">`
->    element from each `xl/worksheets/sheet{N}.xml`, the matching
->    drawing rel from `xl/worksheets/_rels/sheet{N}.xml.rels`, and
->    the chart Override entries from `[Content_Types].xml`.
-> 3. Call `wb.xlsx.load(STRIPPED_BUFFER)` — succeeds cleanly because
->    exceljs's reconcile loop no longer encounters chart drawings.
-> 4. Continue calling the EXISTING post-load readers
->    (`readTablesFromXlsxZip` etc.) against the ORIGINAL buffer
->    (their inputs do not include chart parts; they're unaffected
->    by the strip).
->
-> Document the strip recipe as a single helper
-> `stripChartPartsFromZip(buffer): Promise<Buffer>` with its own
-> unit test that round-trips a non-chart-bearing fixture buffer
-> through it and asserts byte-equality (idempotency) plus a
-> chart-bearing fixture and asserts post-strip
-> `[Content_Types].xml` no longer mentions chart Overrides AND
-> post-strip `xl/worksheets/sheet1.xml` no longer carries
-> `<drawing r:id=...>`.
->
-> **Forward-compat note.** A future zip-direct reader that walks
-> `<drawing>` elements (e.g. for image import in M18+) MUST decide
-> whether to consume the ORIGINAL or STRIPPED buffer — pick at
-> implementation time. Document the choice in `xlsx.ts` comments
-> at the strip call-site. Add a unit test asserting that all 4
-> existing post-load readers return identical output before and
-> after the strip step on each of the 10 chart fixtures.
->
-> **`SHEET_DRAWING_PLUGIN` snapshot resource shape (from
-> `src/charts/xlsxChart.ts:310` — `readChartsFromSnapshot`).** The
-> resource's `data` field is a JSON-stringified map:
->
-> ```
-> { [subUnitId]: { data: { [drawingId]: ISheetDrawing }, order: string[] } }
-> ```
->
-> Each `ISheetDrawing` filtered by `componentKey === 'NotesheetChart'`
-> carries:
->
-> ```
-> {
->   componentKey: 'NotesheetChart',
->   data: {
->     chartId: string,
->     type: 'bar' | 'line' | 'pie' | 'doughnut',
->     title: string,
->     sourceRange: { startRow, endRow, startColumn, endColumn },
->     labels: string[],
->     datasets: Array<{ label?: string, data: number[] }>,
->   },
->   axisAlignSheetTransform: {
->     from: { column, columnOffset, row, rowOffset },
->     to:   { column, columnOffset, row, rowOffset },
->   },
-> }
-> ```
->
-> M10's export pipeline (`readChartsFromSnapshot`) already documents
-> this shape. M17's import path writes the SAME shape directly into
-> the snapshot's `resources` array — we are outside Univer's command
-> bus during snapshot construction, so we cannot route through
-> `ICommandService.executeCommand('sheet.command.add-floating-dom', ...)`.
-> Direct resource write is the right path.
->
-> **SVG palette parity.** The static SVG renderer in the content script
-> MUST use the same `CHART_PALETTE` array used by the live Chart.js
-> renderer (`src/charts/extractData.ts:11`) so a single chart is the
-> same colour in the editor and in the exported PDF. The planner
-> picks: **duplicate the palette in the content script with a comment
-> pointing at the source.** Rationale: the content-script bundle is a
-> separate `commonjs2` output target (M16 confirmed it ships at ~8.4 KB
-> with NO Chart.js / JSZip / exceljs in it); pulling
-> `src/charts/extractData.ts` directly drags `chart.js` types and the
-> data-extraction logic into the bundle. An **8-entry hex array**
-> (`['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
-'#06b6d4', '#84cc16']` — verified at `src/charts/extractData.ts:11-20`)
-> with a comment (`// MUST match src/charts/extractData.ts:CHART_PALETTE`)
-> is simpler and stays under M16's bundle target.
->
-> **Bundle size discipline.** M16 shipped at ~8.4 KB. Adding chart-to-
-> SVG rendering grows it. Don't pull Chart.js, D3, or any visualization
-> library into the content script — hand-author SVG primitives (`<rect>`
-> for bars, `<polyline>` / `<path>` for lines, `<path>` with arc
-> commands for pie / doughnut slices). **Target stays under ~20 KB after
-> M17 lands.** The planner sets this as a soft gate; if the bundle
-> creeps higher, the generator flags it before flipping the row.
->
-> **Multi-feature cycle.** M17 decomposes into 8 user-observable
-> features. Earlier features establish the import path; mid-features
-> verify type fidelity, live-update wiring, and round-trip robustness;
-> later features cover the HTML/SVG export side and the live-fixture
-> PGE smokes. Each feature is independently evaluator-gradable from a
-> fresh context.
+> **Prior plan.** The completed M17 plan (chart import + chart SVG export)
+> that this file replaces lives in git history:
+> `git log --follow -- BUILD_PLAN.md` (last M17 revision: `git show 045d3d2:BUILD_PLAN.md`).
 
-## Operator ask
+> **Milestone assignment.** The operator has already assigned all of this
+> work to **M19** (README "Milestones" row, `BACKLOG.md` groups D–E). Adding
+> anything to or removing anything from that row, or moving an item to a
+> different milestone, is the operator's call (AGENTS.md "Milestone
+> assignment is the maintainer's call — always ask"). Generators do not
+> self-assign.
 
-(See `OPERATOR_ASK.md` for the full brief — 12 numbered acceptance
-criteria, extensive Out-of-scope list, three suggested fixture sets,
-detailed Related-risks notes.) The user-facing change: a workbook
-authored in Excel that contains a bar / line / pie / doughnut chart
-opens in Notesheet without throwing. The chart shows up live in the
-Univer editor as a Chart.js float-DOM at its anchor position; the
-chart re-renders when the user edits the source range; the chart
-round-trips through Notesheet's M10 export back to Excel; the chart
-also renders as inline SVG in Joplin's preview pane and in the M16
-PDF / HTML export. The README's "Known shortcomings — Workbooks with
-chart drawings… M17 addresses this" entry can be removed.
+## Cycle context
 
-## Harness extension chosen for this cycle
+M19 closes the documented gaps in `BACKLOG.md` groups D (PDF / HTML / preview
+renderer) and E (editor + `.xlsx` import). D1 (dataBar in HTML) already
+shipped in M18. The operator approved all seven remaining items: D2, D3,
+D4, D5, E1, E2, E3, E4. Research findings that the operator supplied are
+folded into each feature's spec below.
 
-The PGE harness needs three additions for M17:
+Two different proof regimes apply:
 
-- **`floatDomChart` regionKind** in `eval-screenshot.js`'s
-  `REGION_BY_FEATURE` table. Until M17 every screenshotted note had
-  Univer rendering content as a canvas; charts are float-DOM (HTML
-  overlays on top of the canvas). The existing canvas-screenshot path
-  captures the canvas underneath the float-DOM but NOT the float-DOM
-  itself. The new regionKind screenshots the outer Univer container
-  (`.univer-render-wrapper` or equivalent — selector is verified at
-  generator time) instead of just the canvas. Reference: M16's
-  `previewPane` regionKind precedent for a non-canvas region.
-- **`scripts/pge/import-fixture.sh` fixture-path expansion.** The
-  script currently hardcodes
-  `tests/fixtures/formatting-testdata/`. Expand the fixture-
-  path search to ALSO accept `tests/fixtures/charts/` so the chart
-  fixtures can be imported via the same harness path.
-- **`samplePreviewPaneInk()` extension** — a new `inlineSvgCount`
-  signal counting `<svg>` elements inside the preview iframe DOM. The
-  M17 preview-pane gate is `inlineSvgCount ≥ 1` for chart-bearing
-  fixtures. The existing `tableCount` / `sheetHeadings` / `rawJsonLeak`
-  signals stay unchanged.
+- **Renderer features (D2–D5).** `src/contentScripts/notesheetRenderer.ts`
+  reads the snapshot without booting Univer. The proof is (a) a Jest
+  fidelity test anchored to an **external** ground truth (the fixture's own
+  XML, a cited spec, or a real-Excel PNG under `screenshots/excel-reference/`),
+  written **failing first** and committed before the fix (CONTRIBUTING
+  "Testing"), and (b) a PGE **preview-pane** screenshot
+  (`eval-screenshot.js` `previewPane` region, M16 pattern).
+- **Editor / import features (E1–E4).** The proof is Jest plus a **live**
+  probe in the running Joplin: a CDP probe (pattern `scripts/pge/move-selection.js`),
+  a webview import (`scripts/pge/eval-import.js` — `import-fixture.sh` runs
+  under Node and can't catch a webview-bundle break, per the M20 notes), and an
+  editor-canvas screenshot. Any feature that touches `.xlsx` export also gets a
+  file-content check on the **exported** artifact via
+  `scripts/pge/eval-export.js` (planner HARD RULE).
 
-Generator owns these as part of feature-3 (editor-canvas smoke) and
-feature-8 (preview-pane smoke) respectively. They are part of the
-harness, not separate features themselves.
+### Proof before passing (applies to every feature)
+
+Per `.claude/CLAUDE.md`, a row only flips to `passes: true` after this
+sequence: `npm run typecheck && npm run lint && npm test` green → `npm run dist`
+→ **quit Joplin → `install-plugin.sh` → `launch-joplin.sh`** (in that order,
+because install against a live Joplin removes the plugin) → open/import the
+fixture → capture the screenshot under `screenshots/<feature-id>/` → Read
+the screenshot → the evaluator grades PASS from its **own** capture. Each new
+feature ID has to be registered in `scripts/pge/eval-screenshot.js`'s
+feature → region map (`previewPane` for D-features, editor canvas for
+E-features). The harness work belongs to the feature.
+
+**Stale build is the first suspect** for any render that looks unfixed
+(AGENTS.md). Before debugging, check the `.jpl` mtime against the fix commit
+and grep the unpacked bundle for a non-minified string token.
+
+### Operator inputs this plan depends on (gaps the planner had to assume)
+
+1. **Excel reference PNGs for D4/D5 and the non-3Arrows icon sets in D2.**
+   `screenshots/excel-reference/ConditionalFormatting-Variants.png` already
+   exists and covers 3Arrows (column I). No Excel render exists yet for the
+   accounting patterns or the other icon families. Two PNGs need to be
+   captured by the operator in real Excel and committed:
+   `screenshots/excel-reference/NumberFormats-Accounting.png` (fixture authored
+   in feature-4) and `screenshots/excel-reference/IconSets-Variants.png`
+   (fixture authored in feature-6). The plan assumes the operator can do this
+   while the cycle runs. The PNG-sampling tests use the M15 **skip-when-missing**
+   pattern (`excelCanvasFidelity.test.ts` ~L686–735), so the cycle isn't blocked
+   by a missing PNG. Each of those features also carries a mandatory
+   spec-anchored Jest test (ECMA-376 / Microsoft number-format documentation,
+   cited inline), so it still has an external anchor before the PNG lands. When
+   feature-4 starts, the generator writes a `STEER`-style request to the operator
+   in `PROGRESS.md` `## In progress` asking for both captures, so they can be
+   done in one batch.
+2. **E4 accelerator choice.** The operator chose "alt shortcut + document".
+   The plan proposes `CmdOrCtrl+Alt+K` but requires the generator to verify,
+   against the upstream Joplin default keymap, that it is unbound. If it is
+   bound, the generator picks the first free candidate from the list in
+   feature-2 and records the citation. The choice is not open for debate after
+   that. It is recorded in README and CHANGELOG.
+
+### Test-suite no-regression discipline (all features)
+
+The evaluator runs `git diff main -- tests/` and confirms the changes are
+**only** new files (`tests/m19*.test.ts`, new fixtures, new
+`tests/util/*` helpers) plus the specific existing-test edits listed below.
+Any other content edit to an existing test file is a NEEDS_WORK.
+
+| Existing test                                                                                                          | Allowed edit                                                                                                                                                             | Feature   |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| `tests/m16NotesheetMarkdownRender.test.ts` — the krona pin (`'Krona accounting pattern → " 1,234.56 kr "'`, ~L546–560) | Rewrite it to assert the new Excel-anchored layout, **or** delete it and point at the canonical m19 fidelity test (CONTRIBUTING: don't keep two copies of one assertion) | feature-4 |
+| `tests/m16NotesheetMarkdownRender.test.ts` — the three US-Accounting pins (~L523–544: positive / negative / zero)      | Same rule as the row above. These pin the "single space" approximation that D5 removes                                                                                   | feature-5 |
+| `tests/m12FixtureRoundTrip.test.ts:194` `KNOWN SHORTCOMING — theme-tinted borders…`                                    | Flip it into a passing assertion that cites the m19 E2 fidelity test                                                                                                     | feature-8 |
+| `tests/m12ImportRecovery.test.ts` header comments (~L23, ~L79)                                                         | Comment-only updates if the `xlsx-multi-table-unsupported` code is renamed. No assertion changes                                                                         | feature-7 |
+
+`tests/m18AbsoluteRelTargets.test.ts` has to keep passing **unchanged**,
+because feature-7 replaces the normalizer that test was written for.
+
+---
 
 ## Features
 
-### feature-1-m17-chart-import-no-crash
-
-**Spec**
-
-When a user imports a chart-bearing `.xlsx` (any of the 10 hand-
-crafted fixtures under `tests/fixtures/charts/01-*` through
-`10-*.xlsx`) via Notesheet's existing "Import .xlsx" path, the
-import does NOT throw `NotesheetImportError('xlsx-charts-unsupported',
-...)`. The returned snapshot carries a `SHEET_DRAWING_PLUGIN`
-resource with at least one chart drawing per fixture, in the shape
-`readChartsFromSnapshot()` already consumes (M10 export side). Each
-chart's `chartId`, `type`, `sourceRange`, `anchor`, `labels`, and
-`datasets` are populated from the source `xl/charts/chart{N}.xml` /
-`xl/drawings/drawing{N}.xml` parts independently of exceljs's chart
-parser (which is thin / uneven and is what crashes today).
-
-The implementation extends the existing zip-direct reader pattern with
-a new `readChartsFromXlsxZip(buffer)` that runs BEFORE
-`wb.xlsx.load(buffer)`. The chart parts are read first, then a
-drawing-stripped buffer is constructed in-memory and passed to
-exceljs (which loads cleanly). The `xlsx-charts-unsupported` error
-class stays defined for any future drawing-related crash class we
-haven't classified.
-
-**Acceptance criteria**
-
-The evaluator must verify ALL of the following from a fresh context:
-
-1. **Each of the 10 chart fixtures imports without throwing.** A new
-   Jest test `tests/m17ChartImportNoCrash.test.ts` loads each file
-   under `tests/fixtures/charts/01-bar-simple.xlsx` through
-   `10-bar-with-trendline.xlsx` via `xlsxBufferToSnapshot()` and
-   asserts: - No exception thrown. - Returned snapshot is a valid object with non-empty `sheetOrder`. - Snapshot has a `resources` array containing an entry whose
-   `name === 'SHEET_DRAWING_PLUGIN'`. - Parsing that resource's `data` JSON via the M10 reader pattern
-   (`readChartsFromSnapshot(snapshot)`) returns at least 1 chart
-   drawing for every fixture except `06-two-charts-one-sheet.xlsx`,
-   which returns exactly 2. - **Multi-anchor walk discipline.**
-   `06-two-charts-one-sheet.xlsx` packs BOTH charts into a SINGLE
-   `xl/drawings/drawing1.xml` with two `<xdr:twoCellAnchor>`
-   blocks (verified via `unzip -p
-tests/fixtures/charts/06-two-charts-one-sheet.xlsx
-xl/drawings/drawing1.xml`). For each
-   `xl/drawings/drawingN.xml`, the implementation MUST walk
-   its `<xdr:twoCellAnchor>` / `<xdr:oneCellAnchor>` /
-   `<xdr:absoluteAnchor>` elements **in document order**. For
-   each anchor, look up its `r:id` against
-   `xl/drawings/_rels/drawingN.xml.rels` to resolve the chart
-   part path, then parse THAT chart's xml. Walking
-   `xl/charts/chart{N}.xml` in zip-key order is **wrong** — it
-   mis-aligns charts with anchors when one drawing has multiple
-   anchors. Pin-down: assert
-   `06-two-charts-one-sheet.xlsx`'s drawing has chart1.xml
-   mapped to anchor 0 (the FIRST `<xdr:twoCellAnchor>` block in
-   `drawing1.xml`) and chart2.xml mapped to anchor 1 (the
-   SECOND block). The exact `<xdr:from>`/`<xdr:to>` coordinates
-   for each anchor are read from the source XML for assertion —
-   **NOT hardcoded in the test** (the M13/E our-own-emit trap;
-   parse them at test time so a future re-saved fixture flows
-   through).
-2. **Chart fields match source XML — anchored upstream.** The same
-   test parses `xl/charts/chart{N}.xml` and `xl/drawings/drawing{N}.xml`
-   directly from the fixture's zip (using `JSZip` + regex or
-   stdlib XML reading — same pattern as `tests/util/pngSampler.ts`,
-   pure-stdlib, no new deps) and asserts the snapshot's chart drawing
-   matches the source XML on: - `type` (parsed from `<c:barChart>` / `<c:lineChart>` / `<c:pieChart>`
-   / `<c:doughnutChart>` element name). - `sourceRange` — parsed from the `<c:f>` CHILD of
-   `<c:cat><c:strRef>` (categories ref) AND the `<c:f>` CHILD of
-   `<c:val><c:numRef>` (values ref). The bounding box of cat-ref
-   unioned with val-ref across all `<c:ser>` is the source range.
-   **The FIRST `<c:f>` in the chart XML is the series-name ref
-   nested inside `<c:tx><c:strRef>`, NOT the categories ref —
-   verified by `unzip -p tests/fixtures/charts/01-bar-simple.xlsx
-xl/charts/chart1.xml | grep '<c:f>'` (returns `Sheet1!$B$1`,
-   `Sheet1!$A$2:$A$5`, `Sheet1!$B$2:$B$5` in that order — the
-   categories ref is the SECOND, not the first). Same shape in
-   03-pie-single, 09-bar-percent-axis, 07-chart-cross-sheet.**
-   Row/col indices decoded from the `Sheet!$A$1:$B$5` ref string. - `anchor` (parsed from the drawing XML's
-   `<xdr:from>`/`<xdr:to>` `<xdr:col>`/`<xdr:row>` numbers). - `chartId` is non-empty (we don't pin a specific id format —
-   either a synthetic uuid or a normalized form from the drawing
-   part is acceptable).
-   The expected values come from the source XML, NEVER from what
-   `xlsxBufferToSnapshot` produces. Per `feedback_pge_fidelity_test_gap.md`.
-3. **Synthetic robustness cases — drawing-shape coverage beyond
-   the 10 hand-crafted fixtures.** The 10 in-tree fixtures all use
-   simple `<xdr:twoCellAnchor>` + non-empty `<c:cat>` + the standard
-   drawing-rels shape. The Jest test additionally covers (built
-   in-memory in the test, NOT checked-in fixtures):
-    - **`<xdr:oneCellAnchor>` drawing.** A synthetic .xlsx with a
-      chart anchored via `oneCellAnchor` (one corner, plus an
-      EMU `<xdr:ext>` extent). Asserts: import does NOT throw;
-      produces 1 chart drawing with `anchor.fromCol/fromRow`
-      populated and either an inferred `to` (e.g. `from + ext`
-      converted to cell coords) or null `to` — pin one shape and
-      document the choice in `## Notes`.
-    - **Missing chart-target rels.** A synthetic .xlsx with a
-      drawing whose `_rels/drawing1.xml.rels` points at a
-      `chartZ.xml` that doesn't exist in `xl/charts/`. This is
-      the original 'anchors' crash class exceljs's reconcile loop
-      trips on. Asserts: import does NOT throw; produces 0 chart
-      drawings (the dangling reference is silently dropped); a
-      `console.warn` is logged with the missing target path.
-    - **`<c:cat>` omitted (numeric-axis chart shape).** Synthetic
-      chart XML with only `<c:val>` and no `<c:cat>` — Excel emits
-      this for numeric scatter / X-Y plots. Asserts: import does
-      NOT throw; the chart is dropped with a warn (M17's
-      ChartType union doesn't include 'scatter'; document the
-      drop in `## Notes`).
-4. **The `xlsx-charts-unsupported` error class stays defined.** The
-   `NotesheetImportError` class is still exported, the
-   `xlsx-charts-unsupported` code is still a recognized literal, and
-   the error path triggers on a synthetic input that produces an
-   `'anchors'` exceljs crash NOT covered by the new
-   `readChartsFromXlsxZip` path. The Jest test uses `jest.spyOn` on
-   `readChartsFromXlsxZip` to make it return `[]`, then loads
-   `MultiSheet.xlsx`, and asserts the error still throws — verifying
-   we haven't deleted the safety net for future crash classes.
-5. **`npm test` runs the full suite green** with this feature's new
-   test file in place. No existing test file is edited as part of
-   this feature's implementation. (Feature-9 below specifically flips
-   the two pin-downs in `m12ImportRecovery.test.ts`.)
-
-**Out of scope**
-
-- Live editor rendering of the chart (covered by feature-3).
-- Round-trip back to xlsx (covered by feature-5).
-- Cross-sheet source range resolution (covered by feature-2 and
-  feature-5).
-- Chart fidelity-of-render (M13/E-style canvas-vs-Excel pixel parity)
-  — Notesheet's chart palette is `CHART_PALETTE`, not Excel's per-chart
-  style XML. Out of M17 entirely.
-
-**Suggested fixture(s)**
-
-- `tests/fixtures/charts/01-bar-simple.xlsx`
-- `tests/fixtures/charts/02-line-multi-series.xlsx`
-- `tests/fixtures/charts/03-pie-single.xlsx`
-- `tests/fixtures/charts/04-doughnut.xlsx`
-- `tests/fixtures/charts/05-bar-special-chars.xlsx`
-- `tests/fixtures/charts/06-two-charts-one-sheet.xlsx`
-- `tests/fixtures/charts/07-chart-cross-sheet.xlsx`
-- `tests/fixtures/charts/08-drag-resized.xlsx`
-- `tests/fixtures/charts/09-bar-percent-axis.xlsx`
-- `tests/fixtures/charts/10-bar-with-trendline.xlsx`
-
-(All 10 already shipped — they are the M10 export ground-truth set.)
-
-**Related risks**
-
-- `readChartsFromXlsxZip` runs BEFORE exceljs's load. The drawing-
-  stripping step must not corrupt the zip — `[Content_Types].xml`
-  references and sheet rels referencing drawing parts must also be
-  cleaned up, otherwise exceljs's clean-load path may itself trip on
-  dangling references. Document the strip recipe in the implementation
-  and unit-test it.
-- Source range cell references that target an entire column (`Sheet1!$A:$A`)
-  vs a finite range (`Sheet1!$A$1:$A$5`) — the former is rejected by
-  M10's export; the import should reject (drop with `console.warn`)
-  the same way to keep the surface symmetric.
-- `chartId` uniqueness across two charts on one sheet
-  (`06-two-charts-one-sheet.xlsx`). Both must be present in the
-  snapshot's drawing resource as separate entries.
-- Don't symptom-patch test failures. If a typecheck or test regresses
-  after wiring the import path, run `git diff package-lock.json` first
-  per `feedback_dependency_hygiene.md`. The new path uses only stdlib
-    - JSZip + the existing chart utilities — no new dependency should
-      appear.
-- **Untouchable test files**: this feature MUST NOT edit any of:
-  `m13RotatedText.test.ts`, `m13RichText.test.ts`,
-  `m12FixturePinDowns.test.ts`, `m12FixtureRoundTrip.test.ts`,
-  `excelReferenceFidelity.test.ts`, `excelCanvasFidelity.test.ts`,
-  `m15ConditionalFormatting.test.ts` (note: this file does not exist
-  in the current tree — operator's criterion #10 lists it but the
-  M15 cycle put its tests inside `excelReferenceFidelity.test.ts`
-  and `excelCanvasFidelity.test.ts`; this rule still binds for any
-  file that DOES exist),
-  `m16NotesheetMarkdownRender.test.ts`, `m16FormulaSourceOfTruth.test.ts`,
-  `roundTripBidirectional.test.ts`, `xlsxChart.test.ts`,
-  `formattingFidelity.test.ts`, `exportTableRoundTrip.test.ts`,
-  `borders.test.ts`, `hyperlinks.test.ts`, `numberFormats.test.ts`,
-  `mergedCells.test.ts`, `themeFonts.test.ts`. (Several of those file
-  names — `borders.test.ts`, `hyperlinks.test.ts`, etc. — also do
-  not exist as separate files in the current tree; the operator's
-  list is a precaution against accidental coverage deletion. The
-  rule binds for whatever subset DOES exist when the generator runs.)
+Order: isolated, low-risk editor items first (E3, E4). Then the renderer items,
+smallest first (D3 → D4 → D5 → D2). Then the two import/export items with the
+widest blast radius (E1, E2). Last is a closeout. Each feature is one PR-sized
+unit. feature-4 and feature-5 share a formatter and **may** ship in one PR, but
+they are graded separately.
 
 ---
 
-### feature-2-m17-chart-type-fidelity
+### feature-1-m19-arrow-keys-clamp-at-sheet-edge
+
+_Backlog E3. Ours now: upstream Univer #6988 was closed as by-design, and the maintainer advises overriding._
 
 **Spec**
 
-For each supported chart type (bar / line / pie / doughnut), a fixture
-of that type imports with the matching Notesheet `ChartType` literal
-in the snapshot's chart drawing. Fixtures whose source type is NOT in
-the supported four (radar, scatter, area, etc.) fall back to `'bar'`
-in the imported drawing AND add a `meta.unsupportedSourceType` field
-carrying the source type string for evaluator visibility, plus emit
-a single `console.warn` line during import. The `ChartType` union
-remains the existing four-type union from `src/charts/xlsxChart.ts:24`.
+In the Notesheet editor, pressing an arrow key at the sheet's edge leaves the
+active cell where it is, as Excel does. Today, Left in column A wraps to the
+last column of the previous row, and Left or Up at A1 jumps to the bottom-right
+cell. Right in the last column and Down in the last row also wrap. Root cause:
+`findNextRange` in `@univerjs/sheets-ui` `lib/es/index.js` (~L5060) defaults
+`isGoBack = true`. Shift+arrow (`findNextRangeExpand`) and Ctrl/Cmd+arrow
+(`findNextGapRange`) already clamp and must keep working. Committing a cell
+edit with an arrow key calls `MoveSelectionCommand` directly (~L10744) and
+bypasses `ShortcutService`, so overriding only the shortcut would miss that
+path. The fix is a command-level veto. In `src/editorView.tsx`, next to the
+existing `univerAPI.addEvent(univerAPI.Event.CommandExecuted, …)` (~L915),
+register `univerAPI.addEvent(univerAPI.Event.BeforeCommandExecute, e => …)`.
+When `e.id === 'sheet.command.move-selection'`, and `!e.params?.jumpOver`, and
+`!e.params?.extra`, and the active cell has **no visible cell beyond it** in
+`e.params.direction`, set `e.cancel = true`. Core `executeCommand` catches the
+resulting `CanceledError` and returns `false`. The "beyond" check has to be
+merge-aware (use the merge's outer edge on the movement side) and hidden-aware
+(hidden rows/columns don't count as visible cells). Put the edge decision in a
+pure helper (suggested: `src/editor/arrowEdgeClamp.ts`) so Jest can test it
+without Univer.
 
 **Acceptance criteria**
 
-1. **Type round-trip — Jest test `tests/m17ChartTypeFidelity.test.ts`.**
-    - `01-bar-simple.xlsx` imports as a chart with `type === 'bar'`.
-    - `02-line-multi-series.xlsx` imports as `type === 'line'`.
-    - `03-pie-single.xlsx` imports as `type === 'pie'`.
-    - `04-doughnut.xlsx` imports as `type === 'doughnut'`.
-      The expected `type` value comes from independently parsing the
-      source `xl/charts/chart{N}.xml`'s top-level chart-type element name
-      (`<c:barChart>` / `<c:lineChart>` / `<c:pieChart>` /
-      `<c:doughnutChart>`) — anchored UPSTREAM, not pinned to our own
-      emit literal.
-2. **Multi-series count for line.** `02-line-multi-series.xlsx`'s
-   imported drawing has `datasets.length === 3` (the source XML has
-   three `<c:ser>` elements; the test parses the source to confirm
-   the expected count, then asserts equality).
-3. **Unsupported-type fallback.** A small in-memory fixture (built
-   programmatically via `JSZip` from a hand-authored `chart1.xml`
-   with `<c:radarChart>` as the chart-type element, dropped into a
-   minimal `xlsx` zip skeleton) imports as `type === 'bar'`. The
-   chart drawing carries `meta.unsupportedSourceType === 'radar'`.
-   `console.warn` is called at least once during the import (test
-   uses `jest.spyOn(console, 'warn')`).
-4. **`ChartType` union is unchanged.** TypeScript compile succeeds
-   without widening the existing
-   `export type ChartType = 'bar' | 'line' | 'pie' | 'doughnut'`
-   (`src/charts/xlsxChart.ts:24`). The fallback path produces
-   `'bar'` — it does not introduce a fifth string literal into the
-   union.
+1. **Jest (pure helper), new file `tests/m19ArrowEdgeClamp.test.ts`.** It runs
+   a fake worksheet model (row/col count, hidden rows/cols, merges) through the
+   helper and returns cancel/allow for these cases. A5 Left → cancel. C1 Up →
+   cancel. A1 Left → cancel. A1 Up → cancel. Last-col Right → cancel. Last-row
+   Down → cancel. B5 Left → allow. Column A hidden with B5 active, Left →
+   cancel. Active cell inside merge `A5:B6`, Left → cancel. Active cell inside
+   merge `B5:C6`, Left → allow. Any `jumpOver` param → allow (Ctrl/Cmd+arrow
+   is never vetoed). Any `extra` param → allow. The Direction enum values come
+   from `@univerjs/core`'s exported `Direction` and are not hard-coded.
+2. **Live CDP probe** (new `scripts/pge/arrow-edge-probe.js`, modelled on
+   `move-selection.js`). It sends **real keystrokes** with Playwright
+   `keyboard.press` into the webview frame, not `executeCommand`, because the
+   bug lives in the shortcut path. For each case it records the active cell
+   before and after (`univerAPI.getActiveWorkbook().getActiveSheet().getActiveRange()`).
+   The JSON output in `screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-*.json` shows:
+    - A5 Left → A5. C1 Up → C1. A1 Left → A1. A1 Up → A1. Last-col Right → unchanged. Last-row Down → unchanged.
+    - B5 Left → A5 (normal movement is not affected).
+    - Shift+Left at A5 → selection unchanged, no wrap (already clamped, regression check).
+    - Ctrl/Cmd+Left from D5 → jumps to the data edge as it does on `main` today (regression check; record the `main` result first).
+    - Type `x` at A5, then Left → the edit commits (A5 value is `x`) and the active cell stays A5.
+    - Column A hidden, B5 active, Left → stays B5.
+    - A drawing (use fixture `tests/fixtures/images/TwoImages-MultiSheet.xlsx`) selected → arrow keys still nudge the drawing (its transform `left` changes). The veto must not swallow drawing moves.
+3. **Screenshot** `screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-*.png`
+   of the editor canvas after Left from A1. The active-cell highlight is
+   visibly on A1 (top-left), not at the bottom-right of the grid.
+4. **Console signal.** The Joplin DevTools console shows no uncaught
+   `CanceledError` and no `[Notesheet]` errors during the probe run.
+5. **Docs.** The README "Known gaps → Editor" bullet for Left in column A / Up
+   in row 1 is removed. A CHANGELOG entry and the `BACKLOG.md` E3 line are
+   updated to say it's fixed in M19, with the citation to upstream #6988's
+   by-design closure.
 
 **Out of scope**
 
-- Implementing native rendering for radar / scatter / area charts.
-- Trendline support for `10-bar-with-trendline.xlsx` — the bar chart
-  imports correctly; the trendline itself is dropped silently or with
-  a documented gap. (Operator's brief lists trendlines as out of
-  scope.)
-- Chart titles' rich-text formatting — M17 ships plain-text titles
-  only. (Operator's brief lists this as out of scope.)
+- Enter / Tab / Shift+Enter / Shift+Tab wrap behaviour (these use different commands).
+- Ctrl/Cmd+arrow semantics (left as Univer implements them).
+- Page Up/Down and Home/End.
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/charts/01-bar-simple.xlsx`
-- `tests/fixtures/charts/02-line-multi-series.xlsx`
-- `tests/fixtures/charts/03-pie-single.xlsx`
-- `tests/fixtures/charts/04-doughnut.xlsx`
-- Programmatically built radar-chart zip (in-memory in the test, NOT
-  a checked-in fixture — the point is to exercise the fallback, not
-  to support radar long-term).
+- A fresh empty notesheet (`scripts/pge/create-empty-notesheet.sh`), seeded via CDP with a value at D5 and a merge `A5:B6` for the merge cases.
+- `tests/fixtures/images/TwoImages-MultiSheet.xlsx` for the drawing-nudge case.
 
 **Related risks**
 
-- The fallback path must NOT break the bar / line / pie / doughnut
-  cases — each type's parser keys off the chart-type element name
-  exactly. A regex like `/<c:(bar|line|pie|doughnut)Chart\b/` returns
-  the matched type; everything else falls to `'bar'`.
-- **Untouchable test files**: same list as feature-1.
+- Univer also fires `move-selection` from the drawing / float-DOM code. The `extra` guard and criterion 2's drawing case are there to cover it.
+- Formula-bar / cell-editor arrow handling: inside an active edit, Left moves the caret, not the selection. Confirm the veto only fires when the command is actually dispatched.
+- Research says this survives Univer 1.x (`BACKLOG.md` F5). Note the dependency on `BeforeCommandExecute` in the F5 upgrade checklist comment.
+
+**Files likely touched**
+
+`src/editorView.tsx`, new `src/editor/arrowEdgeClamp.ts`, new
+`tests/m19ArrowEdgeClamp.test.ts`, new `scripts/pge/arrow-edge-probe.js`,
+`scripts/pge/eval-screenshot.js` (feature id), `README.md`, `BACKLOG.md`,
+`CHANGELOG.md`.
 
 ---
 
-### feature-3-m17-multisheet-import-editor-canvas
+### feature-2-m19-insert-link-alt-shortcut
+
+_Backlog E4. Operator decision: "Alt shortcut + document"._
 
 **Spec**
 
-When the user imports
-`tests/fixtures/formatting-testdata/MultiSheet.xlsx` (the
-original "this crashes import" fixture, currently throwing
-`xlsx-charts-unsupported`) via the Notesheet plugin's "Import .xlsx"
-flow in Joplin, the resulting note opens in the Univer editor with:
+A dedicated keyboard shortcut opens Univer's own insert-link panel for the
+selected cell while a Notesheet note is active. Cmd/Ctrl+K stays a documented
+known gap. Background from research: Joplin binds Cmd/Ctrl+K as an Electron
+app-menu accelerator to `textLink` (`laurent22/joplin`
+`packages/lib/services/KeymapService.ts` ~L39/L94;
+`packages/app-desktop/gui/MenuBar.tsx` ~L732).
+`editorCommandDeclarations.ts` enables that accelerator with
+`|| hasActivePluginEditor`. At runtime Joplin finds no built-in editor and logs
+`Received command, but editor is gone textLink`, so the keystroke never reaches
+the plugin iframe. A plugin can't fix this. Re-registering `textLink` would
+break the markdown editor, and duplicate accelerators have undefined behaviour.
+The fix:
 
-- The cells from each sheet rendered (already works once import
-  doesn't throw — the M5 + M9 paths handle this).
-- The chart float-DOM visible at its anchor position.
-- The chart's title text visible.
-- The chart bars / lines / pie slices visible (live Chart.js render).
+- Register a plugin command (suggested name `notesheetInsertLink`, label "Insert link in spreadsheet") with `enabledCondition: 'hasActivePluginEditor'`.
+- Expose it as a `joplin.views.menuItems` entry with its own free accelerator. This follows the existing `CmdOrCtrl+Shift+S` pattern in `src/index.ts` ~L225.
+- When the command runs, check `joplin.views.editors.isActive(handle)` and send `joplin.views.editors.postMessage(handle, { type: 'insertLink' })`.
+- In the webview, the `onMessage` handler in `src/editorView.tsx` (~L1029) calls `univerAPI.executeCommand('sheet.operation.insert-hyper-link-toolbar')`. That command ID is verified present in `@univerjs/sheets-hyper-link-ui` 0.23 and is the one `InsertLinkShortcut` uses (~L1627).
 
-The PGE harness imports the fixture via `import-fixture.sh
-MultiSheet.xlsx`, opens the resulting note in Joplin's Custom Editor,
-and screenshots the editor canvas region INCLUDING the float-DOM
-overlay (not just the canvas underneath). The new `floatDomChart`
-regionKind makes this possible.
+**Accelerator verification (required before coding).** Confirm that
+`CmdOrCtrl+Alt+K` is not bound in Joplin's default keymap (`KeymapService.ts`,
+macOS and Windows/Linux tables) or in `MenuBar.tsx`, and cite the file and
+commit SHA in the PR. If it is bound, use the first free candidate from
+`CmdOrCtrl+Alt+L` → `CmdOrCtrl+Shift+Alt+K` and record why. Plugin menu items
+appear in Tools → Options → Keyboard Shortcuts, so users can rebind it.
 
 **Acceptance criteria**
 
-1. **Import succeeds without error.** The PGE harness's
-   `import-fixture.sh MultiSheet.xlsx` returns a valid Joplin note ID
-   without raising the `xlsx-charts-unsupported` error.
-2. **Editor canvas + float-DOM screenshot at
-   `screenshots/feature-3-m17-multisheet-import-editor-canvas/eval-*.png`.**
-   Captured via `bash scripts/pge/eval-screenshot.sh feature-3-m17-multisheet-import-editor-canvas`.
-   The screenshot's `floatDomChart` regionKind targets the outer
-   Univer container (NOT just the main canvas — that would crop
-   off the chart). The screenshot shows:
-    - At least one rendered table region (cells from the imported
-      sheet — confirmed by visible row/col headers in the canvas).
-    - At least one Chart.js float-DOM visible at its anchor (the user
-      would recognise it as a chart — bars, lines, or pie slices
-      visible).
-    - The chart's title text visible.
-    - No raw "Cannot read properties of undefined (reading 'anchors')"
-      error shown anywhere in the UI.
-3. **Pixel sidecar `eval-*.pixels.json` includes** at least one
-   non-background colour from the `CHART_PALETTE` array (which is
-   an **8-entry hex array**, verified at
-   `src/charts/extractData.ts:11-20`; the test reads the palette
-   directly and checks the histogram for membership). The dominant
-   colour is NOT a near-white background like `rgb(255,255,255)`
-   (which would mean the chart float-DOM rendered as empty /
-   errored).
-4. **The Jest suite stays green.** Running `npm test` after
-   harness-only changes (`scripts/pge/eval-screenshot.js`,
-   `import-fixture.sh`) leaves all existing tests passing. No new
-   Jest test is required for this feature — the gate is the
-   screenshot.
-5. **Generator-evidence** at
-   `screenshots/feature-3-m17-multisheet-import-editor-canvas/generator-evidence.png`
-   plus its `.pixels.json` sidecar; both Read via the Read tool to
-   satisfy the `verify-gate` hook.
+1. **Jest** (new `tests/m19InsertLinkShortcut.test.ts`, using the existing `api` mocks):
+    - `onStart` registers a command named `notesheetInsertLink` with `enabledCondition: 'hasActivePluginEditor'`.
+    - A menu item is created with the verified accelerator string.
+    - Running the command posts `{ type: 'insertLink' }` to the active editor handle.
+    - It posts nothing when `isActive` returns false.
+    - It never re-registers or overrides `textLink`: assert no `commands.register` call has the name `textLink`.
+2. **Live, keystroke path.** With a Notesheet note open and cell B2 selected,
+   the harness sends the verified accelerator as a real OS keystroke via
+   `osascript` System Events. The harness already holds Accessibility permission
+   for `prep-joplin-window.sh`. Screenshot
+   `screenshots/feature-2-m19-insert-link-alt-shortcut/eval-*.png` shows Univer's
+   hyperlink edit panel open over the grid (link text / URL inputs visible), and
+   Joplin's markdown "Insert link" dialog is **not** showing. A CDP DOM probe
+   records the panel's root element as present. The generator identifies a
+   stable selector and documents it in `PROGRESS.md` Notes.
+3. **Live, menu path.** Clicking Tools → "Insert link in spreadsheet" opens the
+   same panel (probe JSON in the same folder).
+4. **Live, no regression on markdown notes.** In a plain markdown note, Cmd/Ctrl+K
+   still opens Joplin's own link dialog, and the new menu item is
+   disabled/greyed (its `enabledCondition` is false). The screenshot or probe
+   records both.
+5. **Docs.**
+    - README "Known gaps → Editor" Cmd/Ctrl+K bullet is rewritten. It says Cmd/Ctrl+K is owned by Joplin's `textLink` app-menu accelerator and can't be intercepted by a plugin (cite the KeymapService.ts / MenuBar.tsx / editorCommandDeclarations.ts paths).
+    - It names the new shortcut.
+    - It gives the workaround for users who want Cmd/Ctrl+K itself: Tools → Options → Keyboard Shortcuts, clear or rebind `textLink`, then bind "Insert link in spreadsheet" to Cmd/Ctrl+K.
+    - `BACKLOG.md` E4 and CHANGELOG are updated to match.
 
 **Out of scope**
 
-- Pixel-perfect chart rendering parity with Excel. Notesheet's
-  Chart.js renderer uses `CHART_PALETTE`, not the source workbook's
-  per-chart style XML. The chart looks like a Notesheet chart,
-  recognisably the same data, NOT pixel-identical.
-- Pixel-perfect anchor-position parity. Excel's anchors carry EMU
-  sub-cell offsets that Notesheet rounds to the nearest cell. The
-  chart appears within ±1 cell of where Excel places it.
-- Live update through the data bus (covered by feature-4).
-- Round-trip preservation through M10 export (covered by feature-5).
+- Making Cmd/Ctrl+K itself open Univer's panel (not possible from a plugin, per the research above).
+- Editing or removing an existing link via the shortcut (Univer's panel behaviour is whatever it does).
+- Joplin Mobile.
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/formatting-testdata/MultiSheet.xlsx` — the
-  original "this crashes import" fixture, already shipped.
+- `tests/fixtures/formatting-testdata/Hyperlinks-Variants.xlsx`, imported, to confirm existing links still render and click through after the change.
+- An empty notesheet for the insert case.
 
 **Related risks**
 
-- **`floatDomChart` regionKind is new harness work.** The Univer
-  outer-container selector needs verification at generator time
-  (DevTools session). Candidate selectors include
-  `.univer-render-wrapper`, `.univer-app-layout`, or the Univer-mounted
-  div inside `UserWebviewIndex.html`. Use the M16 `previewPane`
-  precedent for graceful fallback (try multiple selectors in order).
-- **`import-fixture.sh` fixture-path expansion.** The script currently
-  hardcodes `tests/fixtures/formatting-testdata/`. Extend it
-  to ALSO accept `tests/fixtures/charts/` so future cycles' chart
-  fixtures import via the same path.
-- **Window prep.** `prep-joplin-window.sh` must run before the
-  screenshot — the existing fill-window + sidebar/note-list-hide
-  routine. No additional state needed for editor-canvas screenshots
-  (the editor pane is the default after the existing prep).
-- **Active-cell selection bleed.** Univer paints a blue selection
-  border on A1 by default. If A1 is inside the visible region, the
-  selection border may show in the screenshot. `move-selection.js`
-  is available to move selection off A1 if needed; the float-DOM
-  chart is unlikely to overlap A1 (charts in
-  `MultiSheet.xlsx` typically anchor to row > 5).
-- **Untouchable test files**: same list as feature-1.
+- Multiple open editor views (split / second window): the command must target the **active** handle only. Track handles in a set in `src/index.ts` and pick via `isActive`.
+- The `onMessage` dispatcher in `editorView.tsx` already handles `snapshot`-type messages. Add the new `type` branch without disturbing the snapshot-load path (M18 RTE fence work is adjacent).
+
+**Files likely touched**
+
+`src/index.ts`, `src/editorView.tsx`, new `tests/m19InsertLinkShortcut.test.ts`,
+possibly `tests/__mocks__/*`, `scripts/pge/eval-screenshot.js`, `README.md`,
+`BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
-### feature-4-m17-live-update-data-bus
+### feature-3-m19-rich-text-runs-in-html
+
+_Backlog D3._
 
 **Spec**
 
-An imported chart drawing wires up to Notesheet's existing chart
-data bus (`subscribeChartUpdate` from `src/charts/dataBus.ts`) on the
-SAME code path as a Notesheet-authored chart. When the source range's
-cells change in the editor, the chart re-renders. This feature pins
-the import-to-bus contract via Jest, NOT via a runtime drag-test
-(the runtime gate is implicit in feature-3's screenshot — the chart
-must already be subscribed to render at all).
+In Joplin's preview pane and in PDF / HTML export, a cell whose snapshot
+carries rich-text runs (`cell.p.body.textRuns`) renders each run with its own
+style. Today `renderCellValue` (`notesheetRenderer.ts` ~L713) flattens
+`dataStream` to plain text. Each run becomes a `<span>` covering
+`dataStream.slice(st, ed)` (escaped). The span's inline style maps Univer
+`ITextStyle` as follows:
+
+- `bl:1` → `font-weight:bold`
+- `it:1` → `font-style:italic`
+- `ul.s:1` → `text-decoration:underline`
+- `st.s:1` → `text-decoration:line-through` (combined with underline when both are set)
+- `cl.rgb` → `color`
+- `fs` → `font-size:<n>pt`
+- `ff` → `font-family` (quoted and escaped)
+- `va` (sub/superscript) → `vertical-align:sub|super` only if the importer emits it
+
+Text not covered by any run inherits the cell style. Paragraph breaks
+(`\r\n` / `\r` / `\n` in the dataStream) keep rendering as `<br/>`, including
+inside a run. All text and attribute values stay escaped. MaliciousValues-style
+`<script>` in a run must render as literal text.
 
 **Acceptance criteria**
 
-1. **Jest test
-   `tests/m17ChartImportLiveUpdate.test.ts`** asserts:
-    - Import `01-bar-simple.xlsx` to a snapshot via
-      `xlsxBufferToSnapshot()`.
-    - The snapshot has exactly one chart drawing in the
-      `SHEET_DRAWING_PLUGIN` resource.
-    - The chart drawing's `chartId` is a non-empty string.
-    - Calling **`extractDataFromSnapshot(snapshot, sourceRange)`**
-      (a NEW production helper M17 adds to
-      `src/charts/extractData.ts` — the existing exported function
-      is `extractRangeAsChartData(workbook, range)` which takes a
-      Univer FWorkbook, NOT a snapshot — verified at
-      `src/charts/extractData.ts:60`; M17 needs the snapshot variant
-      for the M16 content-script renderer (feature-7) to extract
-      chart data without booting Univer) against the imported chart's
-      `sourceRange` returns labels and dataset values matching
-      what the source `xl/charts/chart{N}.xml` declared. Expected
-      values come from independently parsing the source XML's
-      `<c:cat><c:strRef><c:strCache><c:pt><c:v>` and
-      `<c:val><c:numRef><c:numCache><c:pt><c:v>` elements — NOT from
-      `xlsxBufferToSnapshot`'s output.
-2. **Bus-id parity.** The test confirms that the imported chart's
-   `chartId` is what a `subscribeChartUpdate(chartId, listener)` call
-   would key off. (Concretely: the test reads the chart-drawing
-   `chartId`, calls `subscribeChartUpdate(chartId, listener)`, then
-   `pushChartUpdate(chartId, fakeChartData)`, and asserts the
-   listener fires with `fakeChartData`. The bus listener fires
-   even with no other code path active — that's just the bus
-   contract; the test below proves the editor actually wires the
-   import to the bus.)
-3. **`trackedCharts` Map population on snapshot load.** The most
-   dangerous M13-class trap: today `editorView.tsx:177` declares
-   `trackedCharts = new Map()`, and it's populated ONLY by
-   `insertChart()` at `editorView.tsx:290`. Imported snapshots have
-   NO code path to populate it. So a chart imported from .xlsx
-   subscribes to nothing, and editing a source-range cell does
-   not trigger `pushChartUpdate` on the imported chart's `chartId`
-   — the live editor renders the chart with stale data forever.
-   M17 MUST add a snapshot-load → `trackedCharts.set(chartId, ...)`
-   code path. The Jest test asserts: import a snapshot, simulate
-   the editorView's snapshot-consumer code path (whatever name
-   the generator picks — likely a new `populateTrackedChartsFromSnapshot`
-   helper exported from `editorView.tsx` for testability), then
-   assert `trackedCharts.has(importedChartId) === true` AND
-   `trackedCharts.get(importedChartId).sourceRange` equals the
-   imported chart drawing's `sourceRange`. **WITHOUT this, feature-3's
-   PGE screenshot is the only signal — and a stale-data chart looks
-   identical to a fresh one in a single screenshot. This is exactly
-   the M13 failure mode (snapshot data correct, runtime broken)
-   the harness was built to prevent.**
-4. **End-to-end live update through trackedCharts.** Builds on
-   criterion 3. The Jest test:
-    - Imports a snapshot with one chart.
-    - Calls the snapshot-load population helper.
-    - Subscribes a listener to the imported chart's `chartId`.
-    - Simulates an edit to a cell inside the chart's source range
-      (modify `cell.v`, then trigger whatever function `editorView.tsx`
-      uses to fan out source-range edits to chart subscribers — at
-      `editorView.tsx:200` today it iterates `trackedCharts.values()`
-      and calls `pushChartUpdate(chart.id, fresh)` per chart whose
-      range contains the edited cell).
-    - Asserts the listener fires with new data reflecting the edit.
-5. **No second renderer code path.** Static-analysis sentinel: a
-   `grep` test (or simple file-content check) asserts that
-   `src/editorView.tsx`'s chart-mount logic doesn't grow a second
-   chart-render branch keyed off "imported vs authored" — both flow
-   through the same `NotesheetChart` component +
-   `subscribeChartUpdate` subscription path.
+1. **Jest fidelity test written failing first**, new
+   `tests/m19RichTextHtml.test.ts`. The expected run boundaries and styles are
+   parsed **independently from the fixture's own sheet XML** with JSZip + regex
+   on `xl/worksheets/sheet1.xml` `<is><r><rPr>…</rPr><t>…</t></r>`. They are
+   not taken from `xlsxBufferToSnapshot` output. For
+   `RichTextInOneCell.xlsx`:
+    - A1: "Hello" is inside an element whose computed style includes bold, and " world" is not bold.
+    - A2: "Red" carries the color from the XML (`00FF0000` → `#FF0000`), " and " has no run color, "Blue" carries `#0000FF`, and " text" has no run color.
+
+    Parse the rendered HTML with a DOM parser (jsdom is already available to
+    Jest, or use an equivalent). Don't match byte strings, so the emit format
+    can change without breaking the test. The first commit on the branch for
+    this feature contains this test **failing** against the current renderer.
+
+2. **Jest escape / safety.** A synthetic snapshot with a run whose text is
+   `<img src=x onerror=alert(1)>`, and a run whose `ff` contains `";background:url(x)`,
+   renders with no live element and no injected style. The text appears
+   literally.
+3. **Jest regression.** Cells with `cell.p` but **no** `textRuns`, and hyperlink
+   cells (`buildHyperlinkCellP` shape: one empty-`ts` run plus `customRanges`),
+   render exactly the same text as on `main`. The existing
+   `m16NotesheetMarkdownRender` and `rteFenceRoundTrip` suites pass unchanged.
+4. **PGE preview-pane screenshot** of `RichTextInOneCell.xlsx`, imported via
+   the webview Import button (`eval-import.js`) and viewed in the preview pane,
+   at `screenshots/feature-3-m19-rich-text-runs-in-html/eval-*.png`. In cell A1,
+   "Hello" is visibly heavier than " world". In A2, "Red" is red and "Blue" is
+   blue, and " and " / " text" are the default ink colour.
+5. **Docs.** The README "Known gaps → PDF / HTML export" per-run rich-text
+   bullet is removed, and `BACKLOG.md` D3 is marked done. The stale "Per-run
+   formatting is out of scope per the M16 plan" comment in
+   `notesheetRenderer.ts` (~L703–706) is updated.
 
 **Out of scope**
 
-- A runtime-driven drag test of the source range. The bus contract is
-  the testable surface; runtime drag-and-drop is brittle in CI and
-  not the gate.
-- Validating that `extractData` works correctly for cells the snapshot
-  hasn't computed yet — `extractData` reads `cell.v` (cached value)
-  and tolerates missing cells today. M17 relies on that existing
-  behaviour.
+- Rendering hyperlinks as `<a href>` in the preview (they render as text today and continue to).
+- Paragraph-level styles (alignment, indent) within `cell.p`.
+- Rich text in chart titles (charts have their own SVG path).
+- Theme-font fallback inside a run beyond what `ff` names.
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/charts/01-bar-simple.xlsx` — simplest single-series
-  case. The test exercises the bus contract on this fixture only;
-  feature-2 covers per-type fidelity for the others.
+`tests/fixtures/formatting-testdata/RichTextInOneCell.xlsx` (A1, A2).
+`MaliciousValues.xlsx` for a spot check.
 
 **Related risks**
 
-- The chart's source range may reference cells that don't exist in
-  the snapshot. `extractData` already tolerates this; the test exercises
-  a fixture where every source-range cell DOES exist
-  (`01-bar-simple.xlsx`'s data is `Sheet1!$A$1:$B$5`).
-- Whole-column references (`Sheet1!$A:$A`) — out of scope, see
-  feature-1's risks.
-- **Untouchable test files**: same list as feature-1.
+- `renderCellValue` is shared by every cell. The numFmt path (`formatNumberWithPattern`) must still run for non-rich cells.
+- RTE fence integrity (CONTRIBUTING "Rendered notesheet HTML must survive the Rich Text editor"). The new spans live inside the `joplin-editable` wrapper and must not change `wrapEditable`.
+
+**Files likely touched**
+
+`src/contentScripts/notesheetRenderer.ts`, new `tests/m19RichTextHtml.test.ts`,
+`scripts/pge/eval-screenshot.js`, `README.md`, `BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
-### feature-5-m17-bidirectional-roundtrip-excel-fixtures
+### feature-4-m19-accounting-symbol-position
+
+_Backlog D4._
 
 **Spec**
 
-A chart imported from one of the hand-crafted fixtures and then
-exported back through Notesheet's existing M10 pipeline produces an
-xlsx that re-imports with the same chart drawing. This pins import
+In the preview pane and in PDF / HTML export, an accounting-style number format
+puts the currency symbol where the format code puts it. For the krona pattern
+`_-* #,##0.00 "kr"_-`, the symbol goes **after** the number (`1,234.56 kr`), as
+Excel does. The current `formatAccounting` (`notesheetRenderer.ts` ~L661)
+pulls the first quoted literal and always emits `${symbol}${number}`. It also
+emits `kr-` for zero under a single-section format, where Excel shows
+`0.00 kr`. Replace the regex-and-symbol extraction with a **section tokenizer**
+that keeps format-code order. Token kinds: quoted literal, `\X` escaped
+literal, bare literal chars (`$ - + ( ) : space`), `_X` pad, `*X` fill, `??`
+digit placeholders, and the numeric core (`#,##0.00`). The rendered output
+follows token order, with Excel's section-selection rules:
 
-- export are inverse operations on the chart subset, parallel to
-  how M9 (tables) and M15 (CF) already pin inverse round-trip on their
-  respective subsets.
+- 1 section: applies to all values, and negatives get a leading `-`.
+- 2 sections: positive/zero ; negative.
+- 3 sections: positive ; negative ; zero.
+- 4 sections: the fourth is text.
+
+For this feature `_X` and `*X` keep their **current** single-space rendering.
+feature-5 replaces that. This feature only changes ordering and section
+selection.
 
 **Acceptance criteria**
 
-1. **Jest test `tests/m17ChartBidirectionalRoundTrip.test.ts`**
-   asserts for each of the four type-anchor fixtures
-   (`01-bar-simple.xlsx`, `02-line-multi-series.xlsx`,
-   `03-pie-single.xlsx`, `04-doughnut.xlsx`): - Import the fixture to a snapshot via `xlsxBufferToSnapshot()`. - Export the snapshot via `snapshotToXlsxBuffer()` (M10 path). - Re-import the resulting buffer via `xlsxBufferToSnapshot()`. - The second snapshot's chart drawing matches the first snapshot's
-   chart drawing on: - `type` (string equality). - `sourceRange` (deep equality on `{startRow, endRow, startColumn,
-endColumn}`). - `labels` (array equality). - `datasets[*].label` and `datasets[*].data` (deep equality).
-   The expected values come from the FIRST snapshot, NOT from a
-   hardcoded literal — this is a snapshot-vs-snapshot inverseness
-   test (fundamentally the M9 pattern, not the M13/E pattern). It
-   does NOT pin to source XML because M10's emit may legitimately
-   produce slightly different XML (palette colours, spPr details)
-   that nonetheless re-imports to the same logical chart.
-2. **Cross-sheet survives.** A fifth round-trip case using
-   `07-chart-cross-sheet.xlsx` (chart anchored on Sheet2,
-   referencing Sheet1 data). After round-trip, the chart drawing
-   is still on the same sheet-id (Sheet2) AND its `sourceRange`
-   still resolves to Sheet1's cells (NOT to Sheet2). **This
-   requires extending `ChartDrawing.sourceRange` (currently
-   `{ startRow, endRow, startColumn, endColumn }` at
-   `src/charts/xlsxChart.ts:34`) with a new optional
-   `sourceSheetId?: string` field.** Today's M10 export at
-   `xlsxChart.ts:551` rebuilds cell-ref formulas as
-   `<chartContainingSheetName>!$A$2:$A$5` because there's no
-   sheet field; on cross-sheet imports that's wrong. M17 plumbs
-   `sourceSheetId` through both M10 export and M17 import, then
-   feature-5's cross-sheet test:
-    - Imports `07-chart-cross-sheet.xlsx` and asserts the
-      chart's `sourceSheetId` resolves to Sheet1 (data sheet),
-      not Sheet2 (chart sheet). The expected sheet name comes
-      from the source XML (`<c:f>Sheet1!$A$2:$A$5</c:f>`),
-      parsed independently.
-    - After M10 export + re-import, asserts the round-tripped
-      chart's `sourceSheetId` STILL resolves to Sheet1. Catches
-      "M10 silently rebuilds the formula prefix as the chart's
-      containing sheet" — which would let the cached labels/values
-      pass equality but break Excel's re-evaluation from cells.
-    - Asserts the EXPORTED xlsx's `xl/charts/chart1.xml`'s
-      `<c:f>` formula prefix is still `Sheet1!`, not `Sheet2!`
-      (verify via JSZip + regex on the exported buffer).
+1. **New fixture** `tests/fixtures/formatting-testdata/NumberFormats-Accounting.xlsx`,
+   generated by a new section in `generate_excel_samples.py`. Don't edit
+   `NumberFormats.xlsx` (fixtures README rule). Rows:
+    - krona single-section `_-* #,##0.00 "kr"_-` × {1234.56, −1234.56, 0}.
+    - krona 4-section (Excel's built-in Swedish accounting) `_-* #,##0.00 "kr"_-;-* #,##0.00 "kr"_-;_-* "-"?? "kr"_-;_-@_-` × {1234.56, −1234.56, 0, "text"}.
+    - US Accounting `_("$"* #,##0.00_);_("$"* \(#,##0.00\);_("$"* "-"??_);_(@_)` × {1234.56, −1234.56, 0, "text"}.
+    - Euro suffix `#,##0.00 "€"` × {1234.56}, as a regression check.
+
+    Add the fixture to the fixtures README table.
+
+2. **Jest fidelity test written failing first**, new
+   `tests/m19AccountingFormats.test.ts`. Expected **visible-text token order**
+   (ignoring pad/fill whitespace) is written in the test with a citation to the
+   Microsoft number-format-code documentation and ECMA-376 Part 1 §18.8.31.
+   Examples: krona 1234.56 → `1,234.56 kr`. Krona −1234.56 (single section) →
+   `-1,234.56 kr`. Krona 0 (single section) → `0.00 kr`. Krona 0 (4-section) →
+   `- kr`. US 1234.56 → `$` … `1,234.56`. US −1234.56 → `$` … `(1,234.56)`.
+   US 0 → `$` … `-`. Text in the 4th section → the text. The cell's visible text
+   is read from the rendered DOM.
+3. **Excel-reference geometric test (skip-when-missing)** against
+   `screenshots/excel-reference/NumberFormats-Accounting.png` (operator input
+   #1). For the krona rows, the "kr" ink's left edge is to the **right** of the
+   digits' ink. For the US rows, the "$" ink sits in the left part of the cell
+   and the digits sit at the right. Sample with `tests/util/pngSampler.ts`
+   (pure stdlib), following the M15 skip-when-missing pattern.
+4. **Pin migration.** The krona pin in `m16NotesheetMarkdownRender.test.ts`
+   (~L546) is rewritten or removed per the allowed-edit table, and cites the m19
+   test. No other m16 assertion changes.
+5. **PGE preview-pane screenshot** of the imported `NumberFormats-Accounting.xlsx`
+   at `screenshots/feature-4-m19-accounting-symbol-position/eval-*.png`. Every
+   krona row reads number-then-`kr`. The single-section zero row reads `0.00 kr`.
+   The US rows still read `$`-then-number.
+6. **Docs.** The README "Known gaps → PDF / HTML export" krona bullet is removed,
+   `BACKLOG.md` D4 is marked done, and the formatter header comment
+   (~L345–358) is corrected.
 
 **Out of scope**
 
-- Pixel-byte-equal XML output. M10's emit may differ from Excel's
-  in `spPr`, `extLst`, and other "Microsoft extension" blocks —
-  those are dropped on re-import without affecting the chart's
-  data round-trip.
-- Anchor-position byte parity. The EMU sub-cell offsets are rounded
-  to nearest cell on import; the inverse rounds back, but precision
-  isn't guaranteed.
-- Programmatic edge-case round-trips (covered by feature-6).
-- **Bar orientation (`<c:barDir val="bar"/>` horizontal vs `val="col"`
-  vertical) round-trip.** 5 of 10 fixtures are horizontal bars
-  (`01-bar-simple`, `05-bar-special-chars`, `06-two-charts-one-sheet`
-  chart 1, `09-bar-percent-axis`, `10-bar-with-trendline`); the
-  remaining 2 'bar' fixtures (`07`, `08`) are vertical. M10's
-  exporter at `src/charts/xlsxChart.ts:108` hardcodes
-  `<c:barDir val="col"/>` and Notesheet's `ChartType` union has
-  only `'bar'` with no orientation flag. M17 IMPORTS preserves
-  the source bar direction in the chart drawing (so feature-1's
-  XML-anchored test passes), but M17 EXPORT collapses everything
-  to vertical. Document the gap in M17's README "Known
-  shortcomings" entry. Round-trip 01-bar-simple and observe that
-  the re-imported chart drawing's orientation field reverts to
-  vertical — pin this as a documented behaviour, NOT a bug. A
-  future cycle can extend `ChartType` to `'bar' | 'barH' | ...`
-  or add `meta.barDir` to ChartDrawing.
+- `[$kr-41D]` locale-currency bracket codes and other `[$…]` currency tags beyond the existing `[$-409]` strip. List these as a remaining gap in README.
+- Locale-specific digit grouping and decimal separators. Output stays `en-US` grouping, as today.
+- Width semantics of `_X`, `*X`, and `??` (feature-5).
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/charts/01-bar-simple.xlsx`
-- `tests/fixtures/charts/02-line-multi-series.xlsx`
-- `tests/fixtures/charts/03-pie-single.xlsx`
-- `tests/fixtures/charts/04-doughnut.xlsx`
-- `tests/fixtures/charts/07-chart-cross-sheet.xlsx`
+New `NumberFormats-Accounting.xlsx`. Existing `NumberFormats.xlsx` B9 (krona)
+and B16 (US accounting) as smoke checks.
 
 **Related risks**
 
-- M10's chart export reads `SHEET_DRAWING_PLUGIN` via
-  `readChartsFromSnapshot`. M17's import writes to the same resource
-  shape. If the shapes diverge (e.g. import uses
-  `transform.from.col` but export reads `axisAlignSheetTransform.from.column`),
-  the round-trip silently drops the chart. The test is the contract;
-  the shape is documented at the top of this BUILD_PLAN.
-- M10's chart export expects a minimum `sourceRange` (header row +
-  ≥1 data row + label col + ≥1 data col). If an Excel-authored chart
-  has fewer rows/cols (e.g. a chart over `A1:B1` only — header but
-  no data), M10's export drops it silently. M17's import should
-  honour the same minimum or document the gap.
-- **`07-chart-cross-sheet.xlsx` is misnamed.** The fixture has the
-  chart anchored on Sheet2 referencing Sheet1 data (verified via
-  `unzip -p tests/fixtures/charts/07-chart-cross-sheet.xlsx
-xl/charts/chart1.xml | grep '<c:f>'` → all three formula refs
-  resolve to `Sheet1!`, `Sheet1!$A$2:$A$5`, `Sheet1!$B$2:$B$5`).
-  But BOTH the categories ref AND the values ref are on Sheet1 —
-  they're not split across DIFFERENT sheets. So this fixture
-  exercises "chart-on-different-sheet-than-data," NOT
-  "categories-and-values-on-different-sheets" (which Excel
-  permits). The latter case is OUT OF SCOPE for M17 — when M17
-  resolves both refs, M10's export rebuilds both refs as the
-  chart's containing sheet. Document at `xlsxChart.ts`.
-- **Untouchable test files**: same list as feature-1.
+- `formatNumberWithPattern`'s branch order (~L380–480). The `[Red]…;[Blue]…` two-section colour branch runs before accounting. Make sure a 2-section accounting code without colour markers reaches the tokenizer, and that colour-marker codes still take the colour branch.
+- The text-suffix branch (`@ "suffix"`) has to keep winning for its pattern.
+- The unknown-pattern fall-through pin (`'???-NO-SUCH-PATTERN-???'` → raw) has to stay green.
+
+**Files likely touched**
+
+`src/contentScripts/notesheetRenderer.ts`, `tests/fixtures/formatting-testdata/generate_excel_samples.py`,
+new fixture plus fixtures README row, new `tests/m19AccountingFormats.test.ts`,
+`tests/m16NotesheetMarkdownRender.test.ts` (allowed pin only), `scripts/pge/eval-screenshot.js`,
+`README.md`, `BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
-### feature-6-m17-programmatic-roundtrip-pack
+### feature-5-m19-accounting-fill-and-padding-width
+
+_Backlog D5. Builds on feature-4's tokenizer._
 
 **Spec**
 
-A pack of 5–7 in-memory snapshots authored DIRECTLY in test code, each
-carrying one chart in `SHEET_DRAWING_PLUGIN`, exercises Notesheet's
-own emit-and-import round-trip on edge cases that the Excel-authored
-fixture set doesn't cover or covers thinly. Each case is built by
-constructing a `UniverSnapshot` programmatically (NOT via
-`new ExcelJS.Workbook()` — exceljs's chart write API is thin / uneven;
-M10 explicitly bypasses it), calling `snapshotToXlsxBuffer()`, then
-`xlsxBufferToSnapshot()`, and asserting equality on the chart fields
-the operator cares about (`type`, `sourceRange`, `anchor`, `labels`,
-`datasets`).
+In the preview pane and in PDF / HTML export, Excel's column-alignment
+constructs render with Excel's geometry instead of collapsing to one space:
+
+- `_X` (pad) becomes blank space exactly the width of character X. Use an inline `<span style="visibility:hidden">X</span>` or an equivalent technique that keeps exact glyph width and survives PDF print.
+- `??` digit placeholders become blank space the width of a digit (hidden `0`).
+- `*<space>` (repeat-fill) makes the cell content span the full cell width, with the fill absorbing the slack. That puts the text before the fill flush left and the text after it flush right. Use an inline flex container with a `flex:1` spacer, so it works in Joplin's preview and in Chromium PDF export.
+
+Together, these make a column of US-Accounting values line up as it does in
+Excel: `$` at the left edge, the digits right-aligned, and positive values
+inset by the width of `)` so they line up with the parenthesised negatives.
 
 **Acceptance criteria**
 
-1. **Jest test `tests/m17ChartProgrammaticRoundTrip.test.ts` covers
-   the following cases at minimum:**
-    - **Case A — bar chart with negative values.** Datasets contain
-      mixed positive and negative numbers (e.g. `[3, -2, 5, -1]`).
-      Round-trip preserves all values including negatives.
-    - **Case B — line chart with single-data-point series.** Labels
-      length 1, datasets[0].data length 1. Round-trip preserves the
-      1-element shape.
-    - **Case C — pie chart with very long category labels.** At
-      least one label > 30 chars. Round-trip preserves the label
-      string verbatim.
-    - **Case D — doughnut chart with empty series (zero rows of
-      data).** Labels length 0, datasets[0].data length 0. Round-trip
-      does NOT crash; the resulting drawing is either preserved with
-      empty arrays, or silently dropped — the test accepts either
-      outcome (DROP results in zero chart drawings; PRESERVE results
-      in one chart drawing with empty arrays). Document which path
-      the implementation takes in `## Notes`.
-    - **Case E — bar chart with special chars in title and category
-      names.** Title contains `&`, `<`, `>`, `"`, `'`. Category names
-      contain `&`, `<`, `>`. Round-trip preserves the strings
-      verbatim. (This pins the M10 `escapeXml` + the M17 reverse-
-      unescape are inverse on the supported character set.)
-    - **Case F — cross-sheet chart.** A snapshot with two sheets;
-      chart on Sheet2 references data on Sheet1. Round-trip preserves
-      the cross-sheet reference. (Parallels `07-chart-cross-sheet.xlsx`
-      but generated, so the test is self-contained.)
-    - **Case G — two charts on one sheet.** Two chart drawings in
-      `SHEET_DRAWING_PLUGIN` for the same `subUnitId`. Round-trip
-      preserves both with distinct `chartId`s. (Parallels
-      `06-two-charts-one-sheet.xlsx` but generated.)
-2. **Each case anchors to its ORIGINAL snapshot, NOT to the
-   re-imported snapshot or to a hardcoded literal.** The test reads
-   the original snapshot's chart-drawing fields, runs the round-trip,
-   reads the re-imported snapshot's chart-drawing fields, and asserts
-   `originalChart.X === reimportedChart.X` for each pinned field.
-3. **Bundle assertion.** The full case set produces ≥ 5 distinct
-   round-trip cases (counted as Jest `test()` calls inside the
-   `describe('feature-6: programmatic round-trip pack', ...)` block).
-4. **No `new ExcelJS.Workbook()` is invoked anywhere in the test.**
-   (Lint sentinel: a top-of-file comment forbids it; the test exercises
-   ONLY the M10 export pipeline + the M17 import pipeline.)
+1. **Jest fidelity test written failing first**, in
+   `tests/m19AccountingFormats.test.ts` (new `describe`). The structure is
+   anchored to the format code (ECMA-376 / Microsoft docs, cited):
+    - For US positive 1234.56, the rendered cell contains a hidden pad whose text is exactly `)` after the digits, and a fill spacer between `$` and the digits.
+    - For krona, there are hidden `-` pads at both ends.
+    - For the 4-section zero `"-"??`, there are exactly two hidden digit-width pads after `-`.
+    - The visible text (pads and fills stripped) equals feature-4's expectations, so the test confirms the two features compose.
+    - No pad or fill markup leaks visible characters. `visibility:hidden` or equivalent is asserted.
+2. **Alignment check (Jest + jsdom-free).** For a 3-row US-Accounting column
+   (1234.56 / −1234.56 / 0), every rendered cell has the same structure:
+   `[symbol][fill][number-or-dash][pad or ")"]`. The positive value's trailing
+   pad character equals the negative value's closing `)`. That is the property
+   that makes Excel's columns align.
+3. **Excel-reference geometric test (skip-when-missing)**, same PNG as
+   feature-4. For the US rows, the right edge of the last digit in the positive
+   row and the right edge of the last digit inside the parentheses in the
+   negative row are within Δ ≤ 3 px of each other (Excel's alignment property).
+   The same property is checked on the evaluator's preview-pane capture.
+4. **Pin migration.** The three US-Accounting pins in
+   `m16NotesheetMarkdownRender.test.ts` (~L523–544) are rewritten or removed per
+   the allowed-edit table.
+5. **PGE preview-pane screenshot** of `NumberFormats-Accounting.xlsx` at
+   `screenshots/feature-5-m19-accounting-fill-and-padding-width/eval-*.png`.
+   In the US column, `$` hugs the cell's left edge and the digits of the
+   positive and negative rows line up on the right. The krona rows are
+   right-aligned with `kr` last. The same layout holds in a PDF export of that
+   note (File → Export → PDF; screenshot of the PDF page, or `pdftotext -layout`
+   output showing the alignment, captured as evidence).
+6. **Docs.** The README "Known gaps → PDF / HTML export" `_X` underscore-fill
+   bullet is removed, `BACKLOG.md` D5 is marked done, and the
+   `formatAccounting` comment (~L650–660) about the "single space"
+   approximation is removed.
 
 **Out of scope**
 
-- Exhaustive chart-type coverage (the pack stays at 5–7 cases per
-  operator brief; the four-type fidelity is feature-2's job).
-- Asserting the round-tripped buffer opens cleanly in Excel itself
-  (the M10 export pipeline already covers that via
-  `tests/xlsxChart.test.ts`).
-- Programmatic round-trips through unsupported types (radar, scatter)
-  — feature-2 covers fallback.
+- `*X` with a non-space X (e.g. `*-` dash leaders). It renders without the repeated character and is documented as a remaining gap in README.
+- `?` placeholders in fraction formats (`# ?/?`).
+- Exact pixel parity of glyph widths with Excel's fonts (we match the construct, not Excel's font metrics).
 
 **Suggested fixture(s)**
 
-- None on disk — every case is built in-memory in the test.
+`NumberFormats-Accounting.xlsx` (from feature-4).
 
 **Related risks**
 
-- **`SHEET_DRAWING_PLUGIN` resource shape mismatch.** Building a
-  snapshot programmatically requires authoring the resource JSON in
-  the SAME shape `readChartsFromSnapshot` expects (componentKey ===
-  'NotesheetChart', `axisAlignSheetTransform` populated, etc.). The
-  shape is documented at the top of this BUILD_PLAN. The test should
-  use a shared `buildChartSnapshot(opts)` helper inside the test
-  file to reduce per-case repetition.
-- **Empty-data degenerate case (D).** M10's export currently emits
-  `<c:numCache><c:ptCount val="0"/></c:numCache>` for empty datasets;
-  the import path needs to tolerate this. The test pins whatever
-  behaviour the implementation lands on (preserve OR drop), and the
-  generator documents the choice in `## Notes`.
-- **Untouchable test files**: same list as feature-1.
+- A `display:flex` container inside a `<td>` can change row height and wrapping. Check that cells with `wrapText` and merged cells around the accounting column look unchanged in the preview screenshot.
+- PDF export path (Chromium print). Confirm the flex spacer still works and `print-color-adjust` isn't affected.
+
+**Files likely touched**
+
+`src/contentScripts/notesheetRenderer.ts`, `tests/m19AccountingFormats.test.ts`,
+`tests/m16NotesheetMarkdownRender.test.ts` (allowed pins only), `scripts/pge/eval-screenshot.js`,
+`README.md`, `BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
-### feature-7-m17-chart-svg-html-export-jest
+### feature-6-m19-iconset-glyphs-in-html
+
+_Backlog D2._
 
 **Spec**
 
-The M16 content script (`src/contentScripts/notesheetRenderer.ts`)
-is extended to walk the snapshot's `SHEET_DRAWING_PLUGIN` resource
-and emit static inline SVG for each chart at its anchor position,
-inside or alongside the rendered HTML table. The static SVG uses the
-SAME `CHART_PALETTE` colours that the live Chart.js renderer uses
-(duplicated in the content script with a comment pointing at
-`src/charts/extractData.ts`). Static SVG works in Joplin's PDF export
-(no JS runtime at view time); the editor preview pane shows the SAME
-SVG.
+In the preview pane and in PDF / HTML export, cells covered by an iconSet
+conditional-formatting rule show the band's icon glyph to the left of the
+value, as Excel does. Today the `iconSet` case falls through to `default` in
+`evaluateCfFor` (`notesheetRenderer.ts` ~L1026). The importer
+(`src/xlsx.ts` ~L1358–1427) emits Univer-shaped rules
+`{ type:'iconSet', isShowValue, config:[{operator, value:cfvo, iconType, iconId}] }`.
+Config is in **descending** threshold order: index 0 is the highest band, and
+the last entry is a catch-all. `iconType` is the source `iconSet` name, passed
+through verbatim, and each entry can name its own `iconType` (Univer-authored
+rules may mix sets or use `EMPTY_ICON_TYPE`). The renderer:
 
-The renderer falls through cleanly when the `SHEET_DRAWING_PLUGIN`
-resource is absent — the M16 base table-render path is unaffected,
-and non-notesheet fenced blocks still fall through to markdown-it's
-default renderer.
+1. Resolves each entry's cfvo against the range values. Reuse `resolveCfvo` for num / percent / percentile / min / max.
+2. Picks the first entry whose `operator` / `value` the cell satisfies, which mirrors Univer's `IconSetCalculateUnit`.
+3. Maps `(iconType, iconId)` to an inline-SVG glyph, following the ordering in Univer's `iconGroup` (`@univerjs/sheets-conditional-formatting` `lib/es/index.js` ~L2255; e.g. 3Arrows = [up-green, right-gold, down-red]).
+4. Emits the glyph inline in the cell, before the value, sized to the cell font.
+5. Honours `isShowValue === false` by omitting the value.
+
+Inline SVG, not Unicode, so colours survive PDF export and don't depend on
+emoji fonts.
+
+**Supported first (in scope).** All 3-icon sets Univer and Excel share:
+`3Arrows`, `3ArrowsGray`, `3TrafficLights1`, `3TrafficLights2`, `3Signs`,
+`3Symbols`, `3Symbols2`, `3Flags`. `EMPTY_ICON_TYPE` renders no glyph.
 
 **Acceptance criteria**
 
-1. **Jest test `tests/m17ChartInHtmlExport.test.ts` covers FIVE
-   distinct render cases:**
-    - **Bar chart fixture.** Builds a programmatic bar-chart snapshot
-      in-memory (using the same `buildChartSnapshot` helper feature-6
-      introduces, or an inline equivalent). Runs the M16 renderer
-      on the snapshot. Asserts the resulting HTML contains exactly
-      one `<svg>` element AND the count of `<rect>` elements inside
-      that SVG equals the dataset's `data.length`. **Structural
-      floors (prevent the "0 rects, valid input, still passes"
-      degenerate-emit hole):** every `<rect>` MUST have
-      `width > 0` AND `height > 0`. The dataset's data length MUST
-      be ≥ 1 (the test's input has 4 points; assert `rectCount >= 1`
-      in addition to `rectCount === data.length`).
-    - **Line chart fixture.** Programmatic line-chart snapshot.
-      Renders an `<svg>` containing at least one `<polyline>` OR one
-      `<path>` element per dataset. The count of polylines+paths
-      dedicated to data lines (excluding axis lines / titles) equals
-      `datasets.length`. **Structural floor:** each line element's
-      `points` attr (or `d` attr for path) parses to ≥ 2
-      comma-separated coordinate pairs (a "line" with 1 point is
-      degenerate).
-    - **Pie chart fixture.** Programmatic pie-chart snapshot. Renders
-      an `<svg>` containing one `<path>` per slice (one per data
-      point in `datasets[0].data`). The pie sweep angles approximate
-      the data proportions within ±3° (tolerance accounts for
-      `pathArcCommand` rounding). The test independently computes the
-      expected sweep angles from the input data
-      (`angle_i = data[i] / sum(data) * 360`) and parses each
-      `<path>`'s `d` attribute to extract the sweep — same M13/E
-      "expected from input, NOT from emit" discipline. **Structural
-      floors:** sum of all sweep angles is within ±1° of 360, AND
-      no individual sweep angle is exactly 0.
-    - **No-charts fall-through.** A snapshot with NO
-      `SHEET_DRAWING_PLUGIN` resource (M16's existing test-case
-      shape) renders as a table-only HTML with NO `<svg>` elements.
-      The M16 base test cases still pass — feature-7 implementation
-      does NOT regress them.
-    - **CF + chart on the same sheet.** A snapshot with both a
-      `SHEET_CONDITIONAL_FORMATTING_PLUGIN` resource (one cellIs
-      rule painting B2:B5 pink) AND a `SHEET_DRAWING_PLUGIN`
-      resource (one bar chart anchored at B2:F20). Renders to
-      HTML containing BOTH the CF-coloured `<td>` (the cellIs
-      paint flows through M16's existing CF evaluator) AND the
-      chart `<svg>`, in document order: the `<table>` block
-      first, then the `<svg>`. No `position:absolute` /
-      `z-index` styling — the chart sits AFTER the table, never
-      overlaid. (Hand-authored SVG inline in HTML can't easily
-      layer over a colour-painted `<td>`; the explicit non-overlay
-      behaviour avoids inventing a layout system.)
-2. **`CHART_PALETTE` colour parity.** At least one case asserts the
-   first dataset's primary colour in the SVG output matches
-   `CHART_PALETTE[0]` — currently `#3b82f6` (the actual first entry
-   of the 8-entry array at `src/charts/extractData.ts:11-20`).
-   The test reads the palette from `src/charts/extractData.ts`
-   directly (e.g. via a `tests/util/m17ChartPaletteSync.ts` helper
-   that imports the symbol — NOT a fs+regex parse, which can fail
-   silently if the source format shifts) so a future palette change
-   updates both the runtime AND the test atomically.
-3. **No new visualization-library dependency added.** `git diff
-package.json package-lock.json` after the implementation lands
-   shows no new entry for `chart.js`, `d3`, `victory`, or any
-   visualization lib in the content-script's transitive set.
-   (Verification: `npm ls --json | jq` over the content-script
-   bundle's deps — or simply read the bundle's text and assert no
-   `chart.js` symbol leaked in.)
-4. **Bundle size soft-gate.** After M17 lands, the M16 content
-   script bundle stays under ~20 KB (was ~8.4 KB pre-M17; the
-   chart-to-SVG renderer is the only major new logic). The generator
-   measures the bundle size during the feature-7 build, surfaces
-   the number to the operator if it exceeds 20 KB, and flags it
-   here in `## Notes`. This is a soft gate — the feature does NOT
-   fail review on bundle size alone, but a sudden 50 KB jump merits
-   investigation before flipping the row.
+1. **Jest band-selection fidelity, written failing first**, new
+   `tests/m19IconSetHtml.test.ts`. For `ConditionalFormatting-Variants.xlsx`
+   column I (`I2:I11`, 3Arrows, cfvo percent 0/33/67, from the fixture's own
+   `<cfRule type="iconSet">` XML, parsed independently), the expected band for
+   each cell is computed from the XML cfvos with Excel's `>=` semantics
+   (ECMA-376 §18.3.1.49 `gte` default true). The rendered HTML's glyph
+   identity (a `data-icon="3Arrows:0"`-style attribute or an equivalent stable
+   hook) matches: values in the top band → up-green, the middle band →
+   right-gold, the bottom band → down-red.
+2. **Jest colour anchoring.** The glyph fill colours for 3Arrows match the
+   Excel reference `screenshots/excel-reference/ConditionalFormatting-Variants.png`
+   within RGB Δ ≤ 8. Sample the I11 (green up), a mid-band cell, and I2 (red
+   down) glyph regions with `tests/util/pngSampler.ts`, reusing the sentinel
+   approach in `excelCanvasFidelity.test.ts` ~L888. Colours sampled from the
+   PNG are the expected values, not constants copied from our SVG.
+3. **New fixture** `tests/fixtures/formatting-testdata/IconSets-Variants.xlsx`
+   (openpyxl `IconSetRule`, via `generate_excel_samples.py`). One column per
+   in-scope set, values 0..90, plus one column with `showValue="0"`. Add it to
+   the fixtures README. Jest asserts the band per cell for every in-scope set,
+   from the fixture XML. A skip-when-missing PNG colour test runs against
+   `screenshots/excel-reference/IconSets-Variants.png` (operator input #1).
+4. **Jest out-of-scope behaviour.** A 4- or 5-icon set (e.g. `5Rating`) and an
+   unknown name render the value with **no** glyph and no exception. This is
+   pinned as a `KNOWN SHORTCOMING` test naming the follow-up.
+5. **PGE preview-pane screenshot** of `ConditionalFormatting-Variants.xlsx` at
+   `screenshots/feature-6-m19-iconset-glyphs-in-html/eval-*.png`. In column I,
+   high-value rows show a green up-arrow, mid rows a gold right-arrow, low rows
+   a red down-arrow, each to the left of the number. A second capture of
+   `IconSets-Variants.xlsx` shows traffic-light circles, symbols, and flags in
+   their columns. The dataBar, colorScale, cellIs, and top-N columns of
+   ConditionalFormatting-Variants look unchanged from `main`.
+6. **Docs.** README "Known gaps → PDF / HTML export" is updated so the iconSet
+   bullet lists **only** the unsupported sets. The README "Compatibility" /
+   renderer paragraph (~L48: "only iconSet is not yet rendered") is corrected,
+   and `BACKLOG.md` D2 is updated.
 
-**Out of scope**
+**Out of scope (explicit list)**
 
-- Pixel-perfect SVG-vs-Chart.js parity. The static SVG is recognisably
-  the same chart with the same palette and the same data, NOT
-  pixel-identical.
-- ARIA / `<title>` / `<desc>` accessibility extras. M17 ships
-  `<title>` with the chart name as the minimum (operator brief).
-- DataBar / iconSet / colorScale CF rendering interactions with the
-  chart layer — CF rules paint cells, charts render at anchor; the
-  two layers don't interact in the static SVG output.
-- iconSet glyph SVG inside CF columns (still M16-followup; M17 only
-  adds chart-as-SVG, not CF-icon-as-SVG).
+- 4- and 5-icon sets: `4Arrows`, `4ArrowsGray`, `5Arrows`, `5ArrowsGray`, `4RedToBlack`, `4TrafficLights`, `4Rating`, `5Rating`, `5Quarters`, `5Boxes`, `_5Felling`.
+- x14-only 3-icon sets: `3Triangles`, `3Stars`.
+- Custom per-threshold icon overrides from `<x14:cfIcon>` beyond what the importer already maps.
+- Importer changes: `reverse="1"`, and mapping source `showValue="0"` into `isShowValue`. The importer hard-codes `isShowValue: true`. The renderer honours the snapshot flag, but fixing the importer is a follow-up. Note it in README, and note in criterion 3 that the `showValue="0"` column is expected to show values until that follow-up lands.
+- Changing Univer's own canvas icon artwork (README already documents that gap).
 
 **Suggested fixture(s)**
 
-- None on disk — every case is built in-memory in the test using a
-  shared snapshot-builder helper (shared with feature-6 via
-  `tests/util/chartSnapshotBuilder.ts` or an in-test factory).
+`ConditionalFormatting-Variants.xlsx` (column I) plus new `IconSets-Variants.xlsx`.
 
 **Related risks**
 
-- **Bundle size.** Hand-author the SVG primitives (rect / polyline /
-  path with arc commands). Don't pull D3 or Chart.js. Operator's
-  related-risks block is explicit on this; the soft gate is ~20 KB.
-- **Zero / negative-value edge cases.** Bar charts with negative
-  values: bars below the zero line. Pie charts with all-zero data:
-  degenerate "no data to plot" emit (NOT a divide-by-zero crash).
-  feature-6's case A and case D exercise both; the renderer handles
-  them without throwing.
-- **CHART_PALETTE duplication.** The content-script's hardcoded
-  palette MUST match `src/charts/extractData.ts:CHART_PALETTE`
-  byte-for-byte. The test imports the source palette as a TS
-  symbol via `tests/util/m17ChartPaletteSync.ts` (which re-exports
-  `CHART_PALETTE` from `src/charts/extractData.ts`) and asserts
-  array equality with the renderer's hardcoded copy. Do NOT use
-  `fs.readFileSync` + regex — a malformed regex passes silently
-  and the drift goes undetected. Document this contract in the
-  renderer file's header comment.
-- **CF + chart on the same sheet — z-order is "no overlay."**
-  Snapshots may carry both `SHEET_CONDITIONAL_FORMATTING_PLUGIN`
-  AND `SHEET_DRAWING_PLUGIN`. Feature-7 criterion 1's CF+chart
-  case enforces document-order rendering (table first, then SVG)
-  — never `position:absolute` / `z-index` overlay. Hand-authored
-  SVG can't easily layer over a CF-painted `<td>`; the explicit
-  non-overlay behaviour avoids inventing a layout system. The
-  user gets both the CF-coloured cells AND the chart, just not
-  visually overlapping.
-- **Untouchable test files**: this feature MUST NOT edit
-  `tests/m16NotesheetMarkdownRender.test.ts`, but it SHOULD verify
-  (by running the suite) that those tests stay green after the
-  content-script extension lands.
+- `evaluateCfFor` currently returns only per-cell **fills**. Glyphs need a second output channel (e.g. `Map<key, {fill?, iconHtml?, hideValue?}>`). Change the return type without changing dataBar / colorScale / cellIs / rank behaviour. Their existing m16 tests must stay green unchanged.
+- Rule priority / `stopIfTrue` interplay with other rules on the same range.
+- Bundle size of the content script. Keep the SVGs as small path strings, not base64 images (Univer's own icons are base64).
+
+**Files likely touched**
+
+`src/contentScripts/notesheetRenderer.ts` (plus optionally a new
+`src/contentScripts/iconSetGlyphs.ts`), `generate_excel_samples.py`, new fixture
+plus README row, new `tests/m19IconSetHtml.test.ts`, `scripts/pge/eval-screenshot.js`,
+`README.md`, `BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
-### feature-8-m17-chart-preview-pane-pge-smoke
+### feature-7-m19-table-parts-canonicalized-on-import
+
+_Backlog E1. Reframed by research: multi-table workbooks already import. The failure depends on the form of the table relationship Target, not on how many tables there are._
 
 **Spec**
 
-When the user opens the imported `MultiSheet.xlsx` note in Joplin
-and views Joplin's preview pane (markdown-rendered HTML), the chart
-appears as inline SVG at its anchor position. The PGE harness
-captures a screenshot of the preview iframe and the
-`samplePreviewPaneInk()` sidecar reports `inlineSvgCount ≥ 1`.
+A workbook whose table parts are wired up in valid but unusual OOXML forms
+imports cleanly, and each table lands on the right sheet with its style. M18's
+`normalizeAbsoluteRelTargets` (`src/xlsx.ts:785`, called ~L2205) fixes only
+leading-`/` targets. exceljs 4.4.0 keys loaded tables by the literal
+`../tables/${name}.xml` (`lib/xlsx/xlsx.js:166`) and only loads parts named
+`xl/tables/table\d+.xml` (`:391`). It then looks up
+`options.tables[rel.Target]` (`lib/xlsx/xform/sheet/worksheet-xform.js:520-522`),
+gets `undefined`, and crashes in `lib/doc/worksheet.js:917-920`. A dangling
+`rId` also crashes at `:521`. Upstream exceljs #1468 has been open since 2020
+with no fix.
 
-This is the second PGE smoke that exercises a single fixture import
-(parallels feature-3 against the editor canvas). One fixture import,
-two screenshot-grades.
+**Fix (Option A, operator-recommended).** Replace `normalizeAbsoluteRelTargets`
+with `canonicalizeTableParts(zip)`. For each `xl/worksheets/_rels/*.rels` table
+relationship:
+
+1. Resolve its Target to a package path. Handle `/abs`, `../`, `./`, and bare relative forms.
+2. If the part is missing, drop the `<tablePart r:id>` from the sheet XML and drop the relationship.
+3. If the part isn't named `xl/tables/table\d+.xml`, rename it to an unused `tableK.xml` and fix its `[Content_Types].xml` `<Override PartName>`. Also move its own `_rels` part if present.
+4. Rewrite the Target to `../tables/tableK.xml`.
+
+Non-table absolute targets that the old normalizer fixed (anything
+`m18AbsoluteRelTargets.test.ts` covers) must still be normalized. Either keep
+that generic pass inside the new function or run it first.
+
+Feed the **canonical** buffer to both exceljs and our own
+`readTablesFromXlsxZip` (`src/xlsx.ts:1656`, called ~L2251; today it reads the
+original `buffer`).
+
+Also fix our reader's sheet-keying bug. It keys by the worksheet **filename**
+number, but `src/xlsx.ts` ~L2407 looks up by `ws.id` (the `workbook.xml`
+`sheetId`), and the two diverge on edited workbooks (M18 A1 note). Resolve the
+filename to the sheetId with the existing `buildFilenameToSheetId`
+(`src/drawings/sheetIdResolver.ts`). Replace the `xlsx-multi-table-unsupported`
+classification (~L2237–2243) with a residual code that names the real cause
+(suggested `xlsx-table-part-unresolved`, message "A table in this .xlsx
+references a part Notesheet couldn't resolve…"), and fix the stale comments
+(~L2214–2218, ~L2183).
 
 **Acceptance criteria**
 
-1. **Preview-pane screenshot at
-   `screenshots/feature-8-m17-chart-preview-pane-pge-smoke/eval-*.png`.**
-   Captured via `bash scripts/pge/eval-screenshot.sh feature-8-m17-chart-preview-pane-pge-smoke`
-   after `import-fixture.sh MultiSheet.xlsx` lands the note and
-   `prep-joplin-window.sh` fills the window with preview-pane visible.
-   Re-uses M16's `previewPane` regionKind from `eval-screenshot.js`.
-   The screenshot shows:
-    - The rendered HTML table with cells from each sheet (M16's
-      existing render path — confirmed by `<table>` + cell-bg
-      visible).
-    - At least one inline `<svg>` chart element at the chart's anchor
-      position.
-    - The chart's title text (the SVG `<title>` content or a `<text>`
-      element with the title string) visible.
-    - No raw JSON `{"id":...}` leak text shown in the preview.
-2. **Pixel sidecar `eval-*.pixels.json`** carries
-   `inlineSvgCount ≥ 1` (new sampler signal added to
-   `samplePreviewPaneInk()`). The existing M16 signals are still
-   present:
-    - `tableCount ≥ 1` (the M16 base render still works).
-    - `rawJsonLeak === false` (the renderer still ran).
-    - `sheetHeadings.length ≥ 1` (multi-sheet headings still
-      emit).
-3. **The `ensurePreviewPaneVisible()` harness routine still works.**
-   M16's window-prep + layout-toggling routine drives Joplin from
-   any starting state into "preview pane visible" via the AppleScript-
-   based menu clicks. If it has rotted since M16 shipped, the
-   feature-8 implementation fixes it as part of the cycle (per
-   operator's related-risks note).
-4. **Generator-evidence** at
-   `screenshots/feature-8-m17-chart-preview-pane-pge-smoke/generator-evidence.png`
-   plus its `.pixels.json` sidecar; both Read via the Read tool.
+1. **New fixtures**, built by zip surgery from an existing two-table workbook
+   (`FormulasAndStructuredRefs.xlsx` or `LargeWorkbook.xlsx`) with a committed
+   generator script (suggested `tests/util/m19BuildTablePartVariants.ts`, or
+   checked-in `.xlsx` files under `tests/fixtures/formatting-testdata/` with a
+   README row each):
+    - (a) **renamed part**: `xl/tables/Sales.xml` with matching Target and Content_Types Override.
+    - (b) **`./` target**: `Target="./../tables/table2.xml"` or another `./`-prefixed form valid relative to the owner dir.
+    - (c) **dangling rId**: a `<tablePart r:id="rId9">` with no matching relationship, and separately a relationship whose Target part is missing.
+    - (d) **sheetId ≠ filename**: `sheet1.xml` ↔ `sheetId="3"`, `sheet2.xml` ↔ `sheetId="2"`, each with its own table.
+2. **Jest written failing first**, new `tests/m19TablePartCanonicalize.test.ts`.
+   On `main`, each of (a)–(d) either throws from `xlsxBufferToSnapshot` or puts
+   a table on the wrong sheet. After the fix, every variant imports without
+   throwing. The snapshot table resource lists each table under the subUnit
+   whose sheet name matches the **source** `workbook.xml` sheet that owns it.
+   Each table's `ref` / name equals the source table XML's `ref` / `name`,
+   parsed independently from the fixture zip. For (c) the dangling table is
+   absent and the other tables are present.
+3. **Jest regression.** `tests/m18AbsoluteRelTargets.test.ts` and
+   `tests/m12ImportRecovery.test.ts` pass with **no assertion edits**. The
+   zip-transform "no nodebuffer" browser-safety guard in m18AbsoluteRelTargets
+   covers the new function too, and it must use only browser-safe JSZip output
+   types.
+4. **Live webview import** (`scripts/pge/eval-import.js`) of fixtures (a) and
+   (d) reaches "Imported." Screenshot
+   `screenshots/feature-7-m19-table-parts-canonicalized-on-import/eval-*.png`
+   shows the second sheet's table with its header band styled, on the sheet
+   whose tab name matches the source. The DevTools console has no
+   `Cannot read properties of undefined (reading 'name')`.
+5. **Export file-content check** (`scripts/pge/eval-export.js`) on the imported
+   fixture (d). The exported `.xlsx` contains one `xl/tables/table*.xml` per
+   source table. Each one's `<table ref>` equals the source table's `ref`, and
+   each is referenced from the worksheet whose `workbook.xml` sheet name matches
+   the source owner.
+6. **Docs.** `BACKLOG.md:52` and the README milestone row text (~L143,
+   "multi-table workbooks") are reworded to the real diagnosis. Wording changes
+   to the milestone row are the operator's call, so propose the text in the PR.
+   The README "Known gaps" import section is updated. The remaining residual is
+   unresolvable/corrupt table parts, which now skip the table instead of
+   failing the import.
 
 **Out of scope**
 
-- Pixel-byte-equal SVG between editor canvas (Chart.js) and preview
-  pane (static SVG). They use the same palette and data; they look
-  recognisably the same. Pixel parity is not the gate.
-- Joplin Export → PDF round-trip pixel test. The PDF export pipeline
-  is downstream of HTML; if HTML preview-pane works, PDF works
-  (gated by Joplin's Electron / Chromium PDF renderer, NOT M17's
-  emit). The PDF gate is "no crash" — covered by feature-7's Jest
-  output as a structural check, not a runtime PDF capture.
-- Multi-pane layout state-machine work beyond what M16 already does.
+- Worksheets themselves not named `sheetN.xml`. The reader regex still assumes that. If it's found in the wild, note it as a follow-up.
+- Pivot tables, query tables, and table `extLst` slicers.
+- Fixing exceljs upstream (#1468). We work around it.
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/formatting-testdata/MultiSheet.xlsx` —
-  same fixture as feature-3, exercised through the preview-pane
-  region instead of the editor canvas.
+The new variants (a)–(d). Existing `FormulasAndStructuredRefs.xlsx` and
+`LargeWorkbook.xlsx` as regressions.
 
 **Related risks**
 
-- **`samplePreviewPaneInk()` extension** is new harness work for
-  this cycle — adds the `inlineSvgCount` signal. The function counts
-  `<svg>` elements inside the preview iframe DOM via
-  `document.querySelectorAll('svg').length`. Test the new signal
-  works on a single-table no-chart preview (returns 0) and on a
-  chart-bearing preview (returns ≥ 1).
-- **Preview iframe DOM stability.** M16 verified
-  `iframe.noteTextViewer` as the preview-pane element on the current
-  Joplin build (verified 2026-06-06). M17 inherits this; if the
-  selector changes between Joplin versions, the screenshot fails
-  loudly with "no preview-pane element found" — same fallback
-  pattern as M13/E's `tableHeaderRowRegion`.
-- **Layout-state toggling.** `ensurePreviewPaneVisible()` cycles
-  through 5 distinct Joplin layout states (Custom Editor active /
-  TinyMCE active / markdown editor-only / split / preview-only).
-  States 4 and 5 both work for evidence capture.
-- **Untouchable test files**: same list as feature-1. (No Jest test
-  file is added for this feature — the gate is the screenshot.)
+- Every import passes through this function. A bug here breaks **all** imports. The full fixture sweep (`scripts/pge/bulk-import-check.cjs`) must stay green, and its output is attached as evidence.
+- Chart / image / shape importers already re-read the original buffer and resolve sheetIds themselves. Don't change their inputs in this feature. Only exceljs and `readTablesFromXlsxZip` switch to the canonical buffer.
+- The `[Content_Types].xml` Override has to stay consistent, or Excel will refuse the **exported** file. Criterion 5 guards this.
+
+**Files likely touched**
+
+`src/xlsx.ts`, possibly `src/drawings/sheetIdResolver.ts` (re-use only), new
+fixtures plus README rows, new `tests/m19TablePartCanonicalize.test.ts`,
+`tests/m12ImportRecovery.test.ts` (comments only, if the code is renamed),
+`scripts/pge/eval-screenshot.js`, `README.md`, `BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
-### feature-9-m17-flip-pin-downs-and-test-count
+### feature-8-m19-theme-tinted-borders-roundtrip
 
-**Spec**
+_Backlog E2._
 
-The two pin-down lines in `tests/m12ImportRecovery.test.ts:59,84`
-flip from "MultiSheet.xlsx → xlsx-charts-unsupported with a friendly
-message" / "LargeWorkbook.xlsx → xlsx-charts-unsupported (same crash
-class as MultiSheet)" to positive pin-downs that assert
-"MultiSheet.xlsx → snapshot with N charts" / "LargeWorkbook.xlsx →
-snapshot with M charts". The third pin-down on line 96
-(`FormulasAndStructuredRefs.xlsx → xlsx-multi-table-unsupported`)
-stays UNCHANGED — that's a different crash class, not addressed by
-M17. The error class itself
-(`NotesheetImportError(code='xlsx-charts-unsupported', ...)`) stays
-DEFINED for any future drawing-related crash class we haven't
-classified.
+**Spec (planner survey of the current behaviour)**
 
-After the flips and all M17 features land, the full test suite count
-moves from 267 to ≥ 290 (≥ 23 new Jest tests across features 1, 2,
-4, 5, 6, 7 plus the 2 flipped pin-downs).
+- **Import** resolves `{theme, tint}` border colours against the **source** workbook's palette. `readThemeClrScheme` reads `xl/theme/theme*.xml`, and `resolveExceljsColor` + `applyOoxmlTint` turn the reference into RGB (`src/xlsx.ts` ~L350–375, ~L903–960, ~L1584–1655).
+- The snapshot stores **only the resolved RGB** (`bd.<side>.cl.rgb`).
+- **Export** (`applyStyleToCell`, ~L3126–3146) writes `{ argb }`. The theme reference is lost: the exported `styles.xml` carries `<color rgb="FF95B3D7"/>` where the source had `<color theme="4" tint="0.3999…"/>`. Changing the theme in Excel afterwards no longer recolours the border, and the exported file doesn't match the source XML.
+- The only theme-tinted-border fixture (`BordersAndCellColors.xlsx` row 15) uses the Office-2007 palette, which is identical to exceljs's built-in default. So a palette mix-up can't be seen today. The `KNOWN SHORTCOMING` test at `tests/m12FixtureRoundTrip.test.ts:194` only asserts `/^#[0-9A-F]{6}$/`.
+
+**Change.** Round-trip the theme reference. On import, record each themed
+border side's `{theme, tint}` together with the RGB it resolved to. Suggested
+mechanism: a side resource, e.g. `SHEET_NOTESHEET_BORDER_THEME_PLUGIN`
+`{ [subUnitId]: { "r:c:side": {theme, tint, rgb} } }`, the same "keep original,
+re-emit if unchanged" pattern as M18 A3's EMU anchors. Don't use an extra field
+inside Univer's style object, because Univer may normalise it away; the
+generator verifies whichever choice is made. On export, if the cell's current
+side RGB still equals the recorded resolved RGB, emit
+`color: { theme, tint }`. If the user changed the colour in the editor, emit
+`argb` as today. The in-editor rendering keeps using the source-palette RGB,
+which is already correct.
 
 **Acceptance criteria**
 
-1. **`tests/m12ImportRecovery.test.ts:59`** is the ONLY content edit
-   to that file. The flipped test asserts:
-    - `MultiSheet.xlsx` imports without throwing.
-    - The returned snapshot has a non-empty `SHEET_DRAWING_PLUGIN`
-      resource.
-    - The number of chart drawings in that resource is ≥ 1 (the
-      test reads the expected count from the source XML — counting
-      `xl/charts/chart{N}.xml` files inside the zip — and asserts
-      equality).
-2. **`tests/m12ImportRecovery.test.ts:84`** is the ONLY content edit
-   to the second flipped test. Same shape as criterion 1 but for
-   `LargeWorkbook.xlsx`.
-3. **No other content edit to `m12ImportRecovery.test.ts`.** The
-   `FormulasAndStructuredRefs.xlsx` test stays untouched. The
-   importable-fixtures `test.each` block stays untouched. (Note:
-   if `MultiSheet.xlsx` and `LargeWorkbook.xlsx` are still listed
-   in the importable-fixtures array, they CAN be added; this is a
-   structural addition, not a content edit. But typical placement
-   is to leave them in the crashing-fixtures `describe` and just
-   flip the test bodies.)
-4. **Test count gate (with cardinality floor — count alone is not
-   enough).** Before the M17 cycle starts, the generator records
-   the baseline `npm test` count (operator says 267 is the
-   M16-shipping baseline; verify with a clean checkout). After all
-   M17 features land, `npm test` reports ≥ 290 tests, all green.
-   No skipped tests beyond M15's existing `excelCanvasFidelity`
-   describe-skip-when-reference-PNG-absent block. **The count
-   alone is reachable trivially via `test.each([fixture1...10])`
-   expansion (10 fixtures × 2 assertions = 20 "tests" before any
-   substantive feature work).** So the count floor is paired with
-   a **cardinality floor on distinct surfaces**:
-    - feature-1's test file has at least one `test()` call covering
-      each of: bar / line / pie / doughnut chart types + the
-      multi-anchor case (06) + the cross-sheet case (07) + the
-      missing-chart-target synthetic + the oneCellAnchor synthetic
-        - the no-`<c:cat>` synthetic = **at least 9 distinct cases**.
-    - feature-2 has at least 1 positive case per chart type
-      (4 cases) + at least 1 fallback case = **5 distinct cases**.
-    - feature-4 has the 5 distinct asserts in criterion 1, 2, 3, 4,
-      5 = **5 distinct test cases minimum**.
-    - feature-5 has at least 1 round-trip case per chart type +
-      the cross-sheet-survives case = **5 distinct cases minimum**.
-    - feature-6's programmatic round-trip pack = **at least 5
-      distinct cases** (operator brief says 5–7).
-    - feature-7's SVG export = **5 distinct cases** (bar / line /
-      pie / no-charts-fall-through / CF-plus-chart).
-      The evaluator counts distinct `test()` calls per file and
-      confirms each minimum.
-5. **`git diff tests/` shows ONLY a strict subset of the
-   following.** No other addition or deletion is permitted in
-   `tests/`: - **NEW files matching `tests/m17*.test.ts`** (the seven new
-   test files from features 1, 2, 4, 5, 6, 7). - **NEW files at `tests/util/m17*.ts`** (helpers shared
-   between the m17 tests, e.g. `m17ChartPaletteSync.ts`,
-   `m17BuildChartSnapshot.ts`). - **The two flipped lines in
-   `tests/m12ImportRecovery.test.ts:59,84`** (specifically: the
-   `expect(e.code).toBe('xlsx-charts-unsupported')` assertions
-   replaced with the positive `MultiSheet.xlsx → snapshot with
-N charts` / `LargeWorkbook.xlsx → ...` assertions; line
-   numbers may shift slightly as the test bodies grow). - **No content edit to any other existing test file in
-   `tests/`** — including `tests/util/`, `tests/__mocks__/`,
-   and `tests/fixtures/` (formatting-testdata + charts). The
-   mock/util constraint is load-bearing: silently changing what
-   a mock returns or what a test util computes shifts existing
-   tests' actual values to match new expected values, which is
-   the M13/E silent-modify failure mode wearing a disguise. - **No new file at any path that LOOKS like an existing
-   untouchable file's name** — specifically forbidden: any new
-   file named `tests/m15*.test.ts`, `tests/borders.test.ts`,
-   `tests/hyperlinks.test.ts`, `tests/numberFormats.test.ts`,
-   `tests/mergedCells.test.ts`, `tests/themeFonts.test.ts`,
-   `tests/m13*.test.ts` other than what already exists. (These
-   names appear in the operator's untouchable list but several
-   don't exist on disk yet — adding them now under the M17
-   namespace would muddy the gate. Use `tests/m17*.test.ts`
-   for everything M17.)
-   The evaluator runs `git diff --name-status tests/` at gate
-   time and confirms each line in the output matches one of the
-   four allowed shapes above. Any other line fails the gate.
+1. **New fixture** `tests/fixtures/formatting-testdata/ThemeTintedBorders-Aptos.xlsx`.
+   Its theme differs from exceljs's default: copy the Aptos `theme1.xml` from
+   `FormattingSmorgasboard.xlsx` (accent1 `#156082`). It has borders using
+   `<color theme="4" tint="0.39997558519241921"/>`, `theme="5" tint="-0.249977111117893"`,
+   and `theme="1"` with no tint. Build it by zip surgery or openpyxl, with a
+   committed script, and add a README row.
+2. **Jest import fidelity (anchor = fixture XML + its own theme1.xml).** New
+   `tests/m19ThemeTintedBorders.test.ts`. Expected RGB is computed **in the
+   test** from the fixture's `theme1.xml` `<a:clrScheme>` and the ECMA-376
+   Part 1 §18.8.19 / §20.1.2.3.33 HSL-luminance tint formula, written
+   independently in the test. It does **not** import `applyOoxmlTint`. The
+   snapshot border RGB matches within Δ ≤ 1 per channel. If this already passes
+   on `main`, record it as a regression pin. The failing-first test for this
+   feature is criterion 3.
+3. **Jest export fidelity, written failing first.** `snapshotToXlsxBuffer` of
+   the imported fixture produces `xl/styles.xml` whose border entry for each
+   themed cell carries `theme="4"` and a tint equal to the source's to 1e-6,
+   `theme="5"` with the negative tint, and `theme="1"`, with no `rgb`
+   attribute. Map cell → `s` → `borderId` in both source and export XML. The
+   exported `xl/theme/theme1.xml` `<a:clrScheme>` equals the source (already
+   handled by `patchThemeClrScheme`; asserted here as a guard).
+4. **Jest edit invalidation.** After setting one themed side's RGB to `#FF0000`
+   in the snapshot (simulating an editor change), the export writes `rgb="FFFF0000"`
+   for that side and keeps theme refs on the untouched sides.
+5. **Jest re-import.** Re-importing the exported file yields the same border
+   RGBs as the first import (bidirectional, M17 pattern).
+6. **Live export file-content check (HARD RULE)** via `scripts/pge/eval-export.js`
+   on the fixture imported into the running Joplin. The **exported artifact's**
+   `xl/styles.xml` contains the `theme="4" tint="0.39997…"` border colour for
+   the themed cell. Attach the eval-export JSON.
+7. **Live screenshot** `screenshots/feature-8-m19-theme-tinted-borders-roundtrip/eval-*.png`
+   of the editor canvas for the fixture. The themed-border cells show the Aptos
+   accent-derived hue (a teal-blue family from `#156082`), not the Office-2007
+   `#4F81BD` family. Pixel-sample the border strip against the test-computed RGB
+   within Δ ≤ 23, since Univer's canvas anti-aliases colours by Δ14–23 (M16
+   note).
+8. **Pin flip and docs.** `m12FixtureRoundTrip.test.ts:194` `KNOWN SHORTCOMING`
+   is flipped per the allowed-edit table. The README "Known gaps → .xlsx import
+   / export" theme-tinted-borders bullet is removed or reduced to what's left
+   (edited colours export as RGB). `BACKLOG.md` E2 is updated.
 
 **Out of scope**
 
-- Removing the `xlsx-charts-unsupported` error class itself. It
-  stays defined for future drawing-related crash classes. (Operator
-  criterion #9 is explicit: the error class itself stays defined;
-  only the two pin-down ASSERTIONS flip.)
-- README "Known shortcomings" entries' update — punted to a follow-
-  up docs PR per the M13/C, M13/D, M13/E, M15, M16 precedent. The
-  evaluator does NOT penalise if the docs edit is deferred.
-- Touching the `m12FixtureRoundTrip.test.ts` file — it has its own
-  separate set of pin-downs that are NOT chart-related; M17 does
-  NOT modify them.
+- Theme references on **font** and **fill** colours. These have the same loss on export and are a follow-up candidate; the operator decides the milestone.
+- Workbooks with no theme part (the palette is null). Themed borders stay dropped as today. Document it.
+- Live re-theming inside Joplin (there is no UI for changing the theme).
+- Table-style synthesized borders (`synthesizeTableStyleAssignments`). They're synthesized, not source cell borders, and must not get theme refs.
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/formatting-testdata/MultiSheet.xlsx`
-- `tests/fixtures/formatting-testdata/LargeWorkbook.xlsx`
-  (currently throws same error class)
+New `ThemeTintedBorders-Aptos.xlsx`. `BordersAndCellColors.xlsx` row 15 as a
+regression check.
 
 **Related risks**
 
-- This feature is the LAST one to land in the cycle, after features
-  1–8 are all green. It depends on every M17 import-side feature
-  working correctly — a partial M17 ship would fail this feature's
-  `MultiSheet.xlsx → snapshot with N charts` assertion.
-- **Untouchable test files**: see operator criterion #10. The
-  evaluator runs `git diff tests/` post-implementation. The ONLY
-  changes allowed in `tests/` are: NEW files in the
-  `tests/m17*.test.ts` family AND the two flipped lines in
-  `tests/m12ImportRecovery.test.ts`. NO content edit to any other
-  existing test file. This is load-bearing — it prevents the "262 →
-  287 by deleting 5 existing tests and adding 30 new ones" failure
-  mode.
+- The synth-styles sidecar (`readSynthStylesSidecar`, ~L3193) and the `skip` set in `applyStyleToCell` (~L3136). Theme-ref emit must not apply to synthesized table-style borders.
+- Univer re-keys style IDs on save. Don't key the side resource on style ID. Key it on cell position plus side, and guard with the RGB-equality check.
+- Row/column insert or delete in the editor moves cells. A stale position key then hits a different cell. The RGB-equality guard makes the worst case "emit argb", never a wrong colour. State this in a code comment and cover it with a Jest case (insert a row above, then export: no wrong theme refs).
+
+**Files likely touched**
+
+`src/xlsx.ts`, new fixture plus builder script plus README row, new
+`tests/m19ThemeTintedBorders.test.ts`, `tests/m12FixtureRoundTrip.test.ts`
+(allowed flip only), `scripts/pge/eval-screenshot.js`, `README.md`,
+`BACKLOG.md`, `CHANGELOG.md`.
+
+---
+
+### feature-9-m19-closeout-docs-and-regression
+
+**Spec**
+
+With all M19 features merged on the branch, the docs say what the plugin now
+does, and the full suite and the live smoke sweep are green. This feature adds
+no new behaviour. It is the gate that the README, BACKLOG, CHANGELOG, and test
+inventory agree with the shipped code.
+
+**Acceptance criteria**
+
+1. **File-content checks on docs.**
+    - README "Known gaps" no longer lists anything fixed in features 1–8. The remaining residuals are listed exactly once: Cmd/Ctrl+K owned by Joplin, unsupported icon sets, `*X` non-space fill, `[$…]` currency tags, theme refs on fonts/fills, unresolvable table parts.
+    - `BACKLOG.md` groups D–E reflect done or residual status.
+    - CHANGELOG has an M19 entry.
+    - The README milestone row is **not** flipped to ✅ by the generator. Proposing that is fine; the operator decides.
+2. **Every pin flip accounted for.** `git diff main -- tests/` shows only the
+   allowed edits in the table at the top of this plan, plus new files.
+3. **Gate.** `npm run typecheck && npm run lint && npm test` all pass. The test
+   count is ≥ the `main` count plus the new m19 tests (nothing deleted except the
+   pins the allowed-edit table permits).
+4. **Live sweep.** `scripts/pge/bulk-import-check.cjs` over every fixture under
+   `tests/fixtures/` reports zero import failures. Attach the output. A
+   preview-pane screenshot of `FormattingSmorgasboard.xlsx` and of
+   `ConditionalFormatting-Variants.xlsx` shows no regression against their M18
+   evaluator captures (same table bands, CF fills, and chart SVGs where present).
+5. **No employer / company-specific references** anywhere in the diff (public
+   repo): no corporate hostnames, internal tool names, work aliases, or work
+   e-mail addresses. Commits use the repo-local noreply identity.
+
+**Out of scope**
+
+- Release tagging and npm publishing (operator's call, separate PR).
+
+**Related risks**
+
+- Doc drift between README "Known gaps" and the `KNOWN SHORTCOMING` Jest pins.
+
+**Files likely touched**
+
+`README.md`, `BACKLOG.md`, `CHANGELOG.md`, `PROGRESS.md`.
 
 ---
 
 ## How the planner agent should fill out future BUILD_PLAN.md files
 
-Use this file (and the prior M13/C, M13/D, M13/E, M15, M16
-BUILD_PLAN.md files preserved in git history) as templates. Each
-feature gets:
-
-- `### feature-N-<kebab-id>` heading (stable; never renamed once
-  written).
-- **Spec**: one paragraph naming the user-observable change.
-- **Acceptance criteria**: numbered list of observable evidence
-  (HTML content, pixel-sidecar, Jest, runtime). Tests anchored
-  UPSTREAM of our code (source XML for snapshot fidelity; original
-  in-memory snapshot for round-trip; structural SVG element counts
-  for HTML export; CHART_PALETTE source-of-truth for colour parity).
-  NO assertions pinned to our own emit; NO "code does X" — only
-  outcomes the evaluator can inspect from a fresh context.
-- **Out of scope**: explicit non-goals so the evaluator does not
-  penalise for them.
-- **Suggested fixture(s)**: which file(s) under
-  `tests/fixtures/charts/` or
-  `tests/fixtures/formatting-testdata/` exercise this.
-- **Related risks**: regression hot-spots and prior-bug pointers,
-  including pointers into prior PR / commit hashes when prior
-  work is the starting point. ALWAYS include the **Untouchable
-  test files** sentinel for cycles where structural-integrity is
-  load-bearing (anything past M13).
-
-The lowest-numbered feature with `passes: false` in
-`test-results.json` is what the generator works on next.
+Use this file and its predecessors in git history as templates. Each feature
+gets a stable `### feature-N-<kebab-id>` heading, a one-paragraph **Spec**, and
+**Acceptance criteria** phrased as observable evidence. The criteria are
+anchored to external ground truth: source XML, a cited spec, or a real-Excel
+reference PNG. They are never anchored to our own emit, and any export outcome
+gets a file-content check on the exported artifact. Each feature also gets
+**Out of scope**, **Suggested fixture(s)**, and **Related risks**, plus the
+allowed-edit table for existing tests. The generator works on the
+lowest-numbered feature with `passes: false` in `test-results.json`.

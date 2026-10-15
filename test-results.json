@@ -1,56 +1,56 @@
 {
-    "feature-1-m17-chart-import-no-crash": {
-        "passes": true,
-        "evidence": "screenshots/feature-1-m17-chart-import-no-crash/eval-2026-06-09T06-59-29-150Z.png",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-09T07:02:20Z"
+    "feature-1-m19-arrow-keys-clamp-at-sheet-edge": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-2-m17-chart-type-fidelity": {
-        "passes": true,
-        "evidence": "tests/m17ChartTypeFidelity.test.ts (5 tests, anchored to source XML)",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-09T20:42:00Z"
+    "feature-2-m19-insert-link-alt-shortcut": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-3-m17-multisheet-import-editor-canvas": {
-        "passes": true,
-        "evidence": "screenshots/feature-3-m17-multisheet-import-editor-canvas/generator-evidence.png",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-09T20:42:00Z"
+    "feature-3-m19-rich-text-runs-in-html": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-4-m17-live-update-data-bus": {
-        "passes": true,
-        "evidence": "tests/m17ChartImportLiveUpdate.test.ts (5 tests; bus contract + trackedCharts hydration + extractDataFromSnapshot end-to-end + no second renderer code path)",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-09T20:42:00Z"
+    "feature-4-m19-accounting-symbol-position": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-5-m17-bidirectional-roundtrip-excel-fixtures": {
-        "passes": true,
-        "evidence": "tests/m17ChartBidirectionalRoundTrip.test.ts (5 tests; 4 type fixtures + cross-sheet survives via sourceSheetName plumbing)",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-09T20:42:00Z"
+    "feature-5-m19-accounting-fill-and-padding-width": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-6-m17-programmatic-roundtrip-pack": {
-        "passes": true,
-        "evidence": "tests/m17ChartProgrammaticRoundTrip.test.ts (8 tests: 7 in-memory round-trip cases A-G + lint sentinel; screenshots/feature-6-m17-programmatic-roundtrip-pack/jest-result.txt)",
-        "evaluator_verdict": "PENDING",
-        "last_attempted_at": "2026-06-10T12:00:00Z"
+    "feature-6-m19-iconset-glyphs-in-html": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-7-m17-chart-svg-html-export-jest": {
-        "passes": true,
-        "evidence": "screenshots/feature-7-m17-chart-svg-html-export-jest/eval-2026-06-28T11-16-53-565Z.png",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-28T11:16:53Z"
+    "feature-7-m19-table-parts-canonicalized-on-import": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-8-m17-chart-preview-pane-pge-smoke": {
-        "passes": true,
-        "evidence": "screenshots/feature-8-m17-chart-preview-pane-pge-smoke/eval-2026-06-13T03-35-58-158Z.png",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-13T03:35:58Z"
+    "feature-8-m19-theme-tinted-borders-roundtrip": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     },
-    "feature-9-m17-flip-pin-downs-and-test-count": {
-        "passes": true,
-        "evidence": "tests/m12ImportRecovery.test.ts:55,89 (both pin-downs flipped to positive imports — MultiSheet → N charts, LargeWorkbook → clean 2-sheet import; FormulasAndStructuredRefs also now imports via the M18 abs-rel-target fix); full suite 457 tests (gate was 267 → ≥290)",
-        "evaluator_verdict": "PASS",
-        "last_attempted_at": "2026-06-28T11:18:00Z"
+    "feature-9-m19-closeout-docs-and-regression": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
     }
 }

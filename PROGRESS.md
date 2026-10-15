@@ -940,6 +940,11 @@ every feature.
   D4+D5, E1, E2, E3, E4 (all seven). D1 dataBar already shipped in M18.
   E3 is OURS now: upstream closed Univer #6988 as by-design (2026-06-05) and
   advises overriding the shortcut.
+  **Plan: `BUILD_PLAN.md`** (9 features, `feature-1-m19-…` → `feature-9-m19-…`;
+  per-feature rows in `test-results.json`, all defaulted FAIL). Work the
+  lowest-numbered `passes: false` row. Operator inputs the plan depends on
+  (Excel reference PNGs for D4/D5 + non-3Arrows icon sets; E4 accelerator
+  verification) are listed at the top of `BUILD_PLAN.md`.
 
 ## Next
 
