@@ -31,7 +31,7 @@ import {
     defaultTheme,
     merge,
 } from '@univerjs/presets';
-import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
+import { JumpOver, UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
@@ -953,7 +953,7 @@ function bootUniver(snapshot: Record<string, unknown>): void {
 // `executeCommand` catches and turns into `false` — nothing reaches the console.
 // The decision lives in src/editor/arrowEdgeClamp.ts (pure, Jest-tested).
 // Univer 1.x (BACKLOG F5): re-verify BeforeCommandExecute + `cancel` semantics.
-const shouldClampArrowMove = makeArrowEdgeClamp(Direction);
+const shouldClampArrowMove = makeArrowEdgeClamp(Direction, JumpOver.moveGap);
 
 interface ArrowClampApi {
     addEvent?: (event: string, cb: (e: ArrowClampEvent) => void) => unknown;

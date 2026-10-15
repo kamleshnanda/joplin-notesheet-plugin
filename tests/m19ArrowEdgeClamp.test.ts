@@ -21,6 +21,8 @@
 // here hard-codes 0..3.
 
 import { execFileSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
+import { dirname, join } from 'path';
 import {
     MOVE_SELECTION_COMMAND_ID,
     makeArrowEdgeClamp,
@@ -41,7 +43,39 @@ const Direction: DirectionEnum = JSON.parse(
     ),
 );
 type Direction = number;
-const shouldClampArrowMove = makeArrowEdgeClamp(Direction);
+
+// `JumpOver.moveGap` lives in @univerjs/sheets-ui, which can't be imported in
+// plain Node (it pulls in CSS). Read the value from the installed build instead,
+// so an upgrade that renumbers the enum fails the contract test below rather
+// than silently changing what the clamp exempts. editorView injects the real
+// enum value from @univerjs/preset-sheets-core.
+// Package root of an installed dependency, resolved from `fromDir` the way Node
+// does (main entry, then walk up to the package.json whose name matches). These
+// packages' `exports` maps don't expose ./package.json. Resolving sheets-ui
+// from @univerjs/preset-sheets-core (a direct dependency) avoids relying on npm
+// hoisting a transitive package to the top level.
+function packageRoot(name: string, fromDir: string): string {
+    let dir = dirname(require.resolve(name, { paths: [fromDir] }));
+    for (;;) {
+        const pj = join(dir, 'package.json');
+        if (existsSync(pj) && JSON.parse(readFileSync(pj, 'utf8')).name === name) return dir;
+        const up = dirname(dir);
+        if (up === dir) throw new Error(`no package root for ${name}`);
+        dir = up;
+    }
+}
+const SHEETS_UI_ES = readFileSync(
+    join(
+        packageRoot('@univerjs/sheets-ui', packageRoot('@univerjs/preset-sheets-core', __dirname)),
+        'lib',
+        'es',
+        'index.js',
+    ),
+    'utf8',
+);
+const jumpOverMatch = /JumpOver\[JumpOver\["moveGap"\] = (\d+)\]/.exec(SHEETS_UI_ES);
+const JUMP_OVER_GAP = jumpOverMatch ? Number(jumpOverMatch[1]) : NaN;
+const shouldClampArrowMove = makeArrowEdgeClamp(Direction, JUMP_OVER_GAP);
 
 interface FakeSheetOpts {
     rows?: number;
@@ -111,6 +145,11 @@ describe('M19 arrow edge clamp — Univer contract', () => {
         expect(new Set([Direction.UP, Direction.RIGHT, Direction.DOWN, Direction.LEFT]).size).toBe(
             4,
         );
+    });
+    it('reads JumpOver.moveGap from the installed @univerjs/sheets-ui (Ctrl/Cmd+arrow)', () => {
+        expect(JUMP_OVER_GAP).toBe(1);
+        // MoveSelectionCommand only takes the non-wrapping gap path for moveGap.
+        expect(SHEETS_UI_ES).toContain('jumpOver === 1 ? findNextGapRange');
     });
     it('targets the Univer 0.23 MoveSelectionCommand id', () => {
         expect(MOVE_SELECTION_COMMAND_ID).toBe('sheet.command.move-selection');
@@ -232,14 +271,34 @@ describe('M19 arrow edge clamp — merge-aware (outer edge on the movement side)
     });
 });
 
-describe('M19 arrow edge clamp — never veto Ctrl/Cmd+arrow, formula-editor or malformed calls', () => {
+describe('M19 arrow edge clamp — jumpOver, formula-editor and malformed calls', () => {
     it.each<[string, Record<string, unknown>]>([
-        ['jumpOver = 1 (Ctrl/Cmd+arrow)', { direction: Direction.LEFT, jumpOver: 1 }],
-        ['jumpOver = 0 (any jumpOver param)', { direction: Direction.LEFT, jumpOver: 0 }],
+        [
+            'jumpOver = moveGap (Ctrl/Cmd+arrow)',
+            { direction: Direction.LEFT, jumpOver: JUMP_OVER_GAP },
+        ],
         ['extra = formula-editor', { direction: Direction.LEFT, extra: 'formula-editor' }],
         ['extra = any string', { direction: Direction.LEFT, extra: 'something' }],
     ])('A1 with %s → allow', (_label, params) => {
         expect(shouldClampArrowMove(params, cell('A1'), sheet)).toBe(false);
+    });
+
+    // Univer only skips the wrapping findNextRange for jumpOver === moveGap;
+    // moveStopeOne (0), moveStepPage (2) and moveStepEnd (3) still wrap, so
+    // they must be vetoed at the edge like a plain arrow.
+    it.each<[string, number]>([
+        ['moveStopeOne', 0],
+        ['moveStepPage', 2],
+        ['moveStepEnd', 3],
+    ])('A1 Left with jumpOver = %s (%i) → cancel (still wraps in Univer)', (_n, jumpOver) => {
+        expect(
+            shouldClampArrowMove({ direction: Direction.LEFT, jumpOver }, cell('A1'), sheet),
+        ).toBe(true);
+    });
+    it('B5 Left with jumpOver = 0 → allow (not at the edge)', () => {
+        expect(
+            shouldClampArrowMove({ direction: Direction.LEFT, jumpOver: 0 }, cell('B5'), sheet),
+        ).toBe(false);
     });
 
     it('no params → allow (the command itself returns false)', () => {

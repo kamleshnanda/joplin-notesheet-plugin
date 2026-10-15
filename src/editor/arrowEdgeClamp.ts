@@ -23,12 +23,18 @@
 //   - findNextRange steps one row/column past that edge and skips hidden
 //     rows/columns. If it runs off the sheet (no visible cell beyond), the
 //     `isGoBack` branch wraps — that is exactly the case we veto.
-//   - `jumpOver` (Ctrl/Cmd+arrow → findNextGapRange, already clamps) and
-//     `extra` (the formula editor's ref-selection moves) are never vetoed.
+//   - MoveSelectionCommand takes the non-wrapping findNextGapRange path ONLY
+//     for `jumpOver === JumpOver.moveGap` (Ctrl/Cmd+arrow; sheets-ui 0.23
+//     lib/es ~L6686). Every other `jumpOver` value (moveStopeOne 0,
+//     moveStepPage 2, moveStepEnd 3) still goes through findNextRange and
+//     wraps, so only moveGap is exempt here. `extra` (the formula editor's
+//     ref-selection moves) is never vetoed.
 //
-// Pure: no Univer import. `Direction` is injected (editorView passes the real
-// enum from `@univerjs/presets`, which re-exports `@univerjs/core`), so no enum
-// value is hard-coded here and Jest can drive it without booting Univer.
+// Pure: no Univer import. `Direction` and `JumpOver.moveGap` are injected
+// (editorView passes the real `Direction` from `@univerjs/presets`, which
+// re-exports `@univerjs/core`, and the real `JumpOver` from
+// `@univerjs/preset-sheets-core`, which re-exports `@univerjs/sheets-ui`), so no
+// enum value is hard-coded here and Jest can drive it without booting Univer.
 //
 // Univer 1.x upgrade (BACKLOG F5) checklist: this depends on the facade's
 // `BeforeCommandExecute` event + `event.cancel`, on the command id below and
@@ -119,13 +125,15 @@ function expandByMerges(range: ArrowEdgeRange, merges: ArrowEdgeRange[]): ArrowE
     return out;
 }
 
-export function makeArrowEdgeClamp(direction: DirectionEnum): ArrowEdgeClamp {
+export function makeArrowEdgeClamp(direction: DirectionEnum, jumpOverGap: number): ArrowEdgeClamp {
     return (params, range, sheet) => {
         if (!params || typeof params !== 'object' || !range) return false;
         const p = params as MoveSelectionParamsLike;
-        // Ctrl/Cmd+arrow (findNextGapRange) and formula-editor moves keep
-        // Univer's own behaviour. Any presence of the key counts.
-        if (p.jumpOver !== undefined && p.jumpOver !== null) return false;
+        // Ctrl/Cmd+arrow (JumpOver.moveGap → findNextGapRange, which never
+        // wraps) and formula-editor moves keep Univer's own behaviour. Any
+        // other jumpOver value goes through findNextRange and can wrap, so it
+        // is clamped like a plain arrow.
+        if (p.jumpOver === jumpOverGap) return false;
         if (p.extra !== undefined && p.extra !== null) return false;
 
         const r = expandByMerges(range, sheet.getMergeData() ?? []);
