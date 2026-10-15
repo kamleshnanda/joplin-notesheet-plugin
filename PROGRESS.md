@@ -946,6 +946,28 @@ every feature.
   (Excel reference PNGs for D4/D5 + non-3Arrows icon sets; E4 accelerator
   verification) are listed at the top of `BUILD_PLAN.md`.
 
+- **feature-1-m19-arrow-keys-clamp-at-sheet-edge — code done, live proof
+  BLOCKED (2026-10-14).** Commits `174e669` (failing-first jest against a
+  never-veto stub: 15 cancel cases fail) and `cbe836e` (fix). Jest
+  `tests/m19ArrowEdgeClamp.test.ts` 35/35; full suite 62 suites / 564 tests;
+  typecheck + lint green; `npm run dist` build #37 contains the veto (grep
+  `arrow edge clamp check failed` in the unpacked `editorView.js`).
+  **Blocker:** a regular-profile Joplin (`~/Library/Application Support/Joplin`,
+  no `--env dev`) was running. The session rules forbid touching it,
+  `install-plugin.sh` refuses while any Joplin runs, and `open joplin://…`
+  would route to that instance. Row left `passes: false`, no evidence.
+  **Still to do next session** (once only the dev profile can run):
+  1. Write `scripts/pge/arrow-edge-probe.js` (real `keyboard.press` keystrokes,
+     before/after `getActiveRange().getA1Notation()`, JSON to
+     `screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-*.json`).
+     Record the `main` baseline FIRST: `git stash` / check out `src/editorView.tsx`
+     from `b62ea8f`, dist, install, probe, then restore and re-probe.
+  2. Register the feature in `scripts/pge/eval-screenshot.js`
+     (`TITLE_PREFIX_BY_FEATURE` + `REGION_BY_FEATURE`, editor canvas; the
+     capture needs a pre-step: click the canvas, activate A1, press Left).
+  3. Docs (criterion 5): README "Known gaps → Editor" bullet, CHANGELOG,
+     `BACKLOG.md` E3. Deliberately NOT done before the live proof.
+
 ## Next
 
 1. **M21 — in-cell (rich-value) image round-trip** (`richData` /
@@ -955,6 +977,41 @@ every feature.
 Order and per-item scope are the operator's call at planning time.
 
 ## Notes
+
+- **M19 feature-1 (arrow edge clamp) — Univer 0.23 facts verified in
+  `node_modules` (2026-10-14).**
+  - `MoveSelectionCommand` (`sheet.command.move-selection`, sheets-ui
+    lib/es ~L6660) computes `startRange = getStartRange(range, primary,
+    direction)`, which keeps the selection RANGE's extent on the movement
+    axis. So a multi-cell selection moves from its edge, not the active cell,
+    and for a merged cell the range is the merge. `findNextRange` (~L5060)
+    steps past that edge, skips hidden rows/cols, and wraps
+    (`isGoBack = true`) when it runs off the sheet. `arrowEdgeClamp.ts`
+    mirrors exactly that condition.
+  - Params: `{ direction }` for plain arrows (shortcut `staticParameters`),
+    `{ direction, jumpOver: 1 }` for Ctrl/Cmd+arrow, `extra: 'formula-editor'`
+    (+ `fromCurrentSelection`) from sheets-formula-ui ref selection (~L3308).
+    The arrow-commit path is editor-bridge `_moveSelection` (~L10744), which
+    calls `executeCommand(MoveSelectionCommand.id, { direction })` directly.
+    The drawing nudge is a different command (`sheet.command.move-drawing`,
+    sheets-drawing-ui ~L5770), so the veto can't swallow it by id.
+  - Facade cancel: core `facade.js` ~L1258 fires `BeforeCommandExecute` from
+    `commandService.beforeCommandExecuted` and throws `CanceledError` when
+    `event.cancel`. Core `executeCommand` (~L3354) catches
+    `CustomCommandExecutionError` and returns `false`. **Upstream quirk:** the
+    throw skips `stackItemDisposable.dispose()`, so each vetoed keystroke leaves
+    one stale entry in `CommandService._commandExecutionStack`. Effect: a
+    mutation dispatched outside any command later gets
+    `params.trigger = 'sheet.command.move-selection'`. Every `trigger` consumer
+    found (sheets-formula, sheets-ui L8696, docs-ui) compares against specific
+    other ids, so this looks benign, but it is a small per-keystroke leak.
+    It affects every `cancel` user, not just us.
+  - Jest can't load `@univerjs/core` / `@univerjs/presets` CJS in-process: they
+    `require('lodash-es')` / `nanoid@5`, which are ESM-only. That's why other
+    suites `jest.mock` Univer. `tests/m19ArrowEdgeClamp.test.ts` reads the real
+    `Direction` enum in a child process
+    (`node --input-type=module -e "await import('@univerjs/core')"`, so it works on
+    Node 20/22 too) and injects it into `makeArrowEdgeClamp(Direction)`.
 
 - **M20 dependency / bundling lessons (2026-10-13).**
   - npm 11 re-writes `package-lock.json` at `package.json`'s 4-space
