@@ -1,0 +1,802 @@
+{
+  "label": "branch-corners",
+  "generatedAt": "2026-10-15T05:35:24.648Z",
+  "platform": "darwin",
+  "modifierKey": "Meta",
+  "sheet": {
+    "rows": 1000,
+    "cols": 20,
+    "lastColCell": "T5",
+    "lastRowCell": "C1000",
+    "bottomRight": "T1000"
+  },
+  "noteId": "4634aef8ed8b48659f4f2214434c19f1",
+  "drawingNoteId": "11986fe78a5a40efae6c456b1094a4f7",
+  "allPass": true,
+  "passCount": 20,
+  "scoredCount": 20,
+  "commandStackDepthAtEnd": 13,
+  "consoleRelevant": [],
+  "consoleAllErrorsAndWarnings": [],
+  "results": [
+    {
+      "id": "A5-left",
+      "key": "ArrowLeft",
+      "before": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 0
+      },
+      "after": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 1
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays A5"
+    },
+    {
+      "id": "C1-up",
+      "key": "ArrowUp",
+      "before": {
+        "range": "C1",
+        "current": "C1",
+        "selections": [
+          "C1"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 1
+      },
+      "after": {
+        "range": "C1",
+        "current": "C1",
+        "selections": [
+          "C1"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 2
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 0
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays C1"
+    },
+    {
+      "id": "A1-left",
+      "key": "ArrowLeft",
+      "before": {
+        "range": "A1",
+        "current": "A1",
+        "selections": [
+          "A1"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 2
+      },
+      "after": {
+        "range": "A1",
+        "current": "A1",
+        "selections": [
+          "A1"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 3
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays A1"
+    },
+    {
+      "id": "A1-up",
+      "key": "ArrowUp",
+      "before": {
+        "range": "A1",
+        "current": "A1",
+        "selections": [
+          "A1"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 3
+      },
+      "after": {
+        "range": "A1",
+        "current": "A1",
+        "selections": [
+          "A1"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 4
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 0
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays A1"
+    },
+    {
+      "id": "lastcol-right",
+      "key": "ArrowRight",
+      "before": {
+        "range": "T5",
+        "current": "T5",
+        "selections": [
+          "T5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 4
+      },
+      "after": {
+        "range": "T5",
+        "current": "T5",
+        "selections": [
+          "T5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 5
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 1
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays T5"
+    },
+    {
+      "id": "lastrow-down",
+      "key": "ArrowDown",
+      "before": {
+        "range": "C1000",
+        "current": "C1000",
+        "selections": [
+          "C1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 5
+      },
+      "after": {
+        "range": "C1000",
+        "current": "C1000",
+        "selections": [
+          "C1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 2
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays C1000"
+    },
+    {
+      "id": "B5-left",
+      "key": "ArrowLeft",
+      "before": {
+        "range": "B5",
+        "current": "B5",
+        "selections": [
+          "B5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "after": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-selection"
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "moves to A5"
+    },
+    {
+      "id": "A5-right",
+      "key": "ArrowRight",
+      "before": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "after": {
+        "range": "B5",
+        "current": "B5",
+        "selections": [
+          "B5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 1
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-selection"
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "moves to B5"
+    },
+    {
+      "id": "A5-shift-left",
+      "key": "Shift+ArrowLeft",
+      "before": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "after": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "commands": [],
+      "startOk": true,
+      "pass": true,
+      "expected": "selection unchanged (already clamped upstream)"
+    },
+    {
+      "id": "D5-mod-left",
+      "key": "Meta+ArrowLeft",
+      "before": {
+        "range": "D5",
+        "current": "D5",
+        "selections": [
+          "D5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "after": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3,
+            "jumpOver": 1
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-selection"
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "jumps to the data edge A5 (same as main)"
+    },
+    {
+      "id": "A5-mod-left",
+      "key": "Meta+ArrowLeft",
+      "before": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "after": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3,
+            "jumpOver": 1
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-selection"
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays A5 (findNextGapRange already clamps)"
+    },
+    {
+      "id": "multi-A5C5-activeC5-left",
+      "key": "ArrowLeft",
+      "before": {
+        "range": "A5:C5",
+        "current": "C5",
+        "selections": [
+          "A5:C5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 6
+      },
+      "after": {
+        "range": "A5:C5",
+        "current": "C5",
+        "selections": [
+          "A5:C5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 7
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "OBSERVATION ONLY (operator undecided): Excel would move to B5; record what happens"
+    },
+    {
+      "id": "hiddenA-B5-left",
+      "key": "ArrowLeft",
+      "before": {
+        "range": "B5",
+        "current": "B5",
+        "selections": [
+          "B5"
+        ],
+        "colAVisible": false,
+        "commandStackDepth": 7
+      },
+      "after": {
+        "range": "B5",
+        "current": "B5",
+        "selections": [
+          "B5"
+        ],
+        "colAVisible": false,
+        "commandStackDepth": 8
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays B5 (column A hidden)"
+    },
+    {
+      "id": "bottomright-right",
+      "key": "ArrowRight",
+      "before": {
+        "range": "T1000",
+        "current": "T1000",
+        "selections": [
+          "T1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 8
+      },
+      "after": {
+        "range": "T1000",
+        "current": "T1000",
+        "selections": [
+          "T1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 9
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 1
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays T1000 (last row AND last column)"
+    },
+    {
+      "id": "bottomright-down",
+      "key": "ArrowDown",
+      "before": {
+        "range": "T1000",
+        "current": "T1000",
+        "selections": [
+          "T1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 9
+      },
+      "after": {
+        "range": "T1000",
+        "current": "T1000",
+        "selections": [
+          "T1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 10
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 2
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays T1000 (last row AND last column)"
+    },
+    {
+      "id": "wide-lastcol-right",
+      "key": "ArrowRight",
+      "before": {
+        "range": "AX5",
+        "current": "AX5",
+        "selections": [
+          "AX5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 10
+      },
+      "after": {
+        "range": "AX5",
+        "current": "AX5",
+        "selections": [
+          "AX5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 11
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 1
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays AX5 (50-column sheet)"
+    },
+    {
+      "id": "wide-bottomright-down",
+      "key": "ArrowDown",
+      "before": {
+        "range": "AX1000",
+        "current": "AX1000",
+        "selections": [
+          "AX1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 11
+      },
+      "after": {
+        "range": "AX1000",
+        "current": "AX1000",
+        "selections": [
+          "AX1000"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 12
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 2
+          },
+          "cancel": true
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "stays AX1000 (50-column sheet)"
+    },
+    {
+      "id": "wide-T5-right",
+      "key": "ArrowRight",
+      "before": {
+        "range": "T5",
+        "current": "T5",
+        "selections": [
+          "T5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 12
+      },
+      "after": {
+        "range": "U5",
+        "current": "U5",
+        "selections": [
+          "U5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 12
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 1
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-selection"
+        }
+      ],
+      "startOk": true,
+      "pass": true,
+      "expected": "moves to U5 (old last column is no longer the edge)"
+    },
+    {
+      "id": "A5-type-x-then-left",
+      "key": "ArrowLeft",
+      "before": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 12
+      },
+      "after": {
+        "range": "A5",
+        "current": "A5",
+        "selections": [
+          "A5"
+        ],
+        "colAVisible": true,
+        "commandStackDepth": 13
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-selection",
+          "params": {
+            "direction": 3
+          },
+          "cancel": true
+        }
+      ],
+      "a5Value": "x",
+      "startOk": true,
+      "pass": true,
+      "expected": "edit commits (A5 = \"x\") and active cell stays A5"
+    },
+    {
+      "id": "sheet-width-restored",
+      "pass": true,
+      "expected": "column count back to 20",
+      "colsAtEnd": 20
+    },
+    {
+      "id": "drawing-nudge",
+      "desc": "drawing selected (TwoImages-MultiSheet.xlsx) → ArrowRight x2 then ArrowLeft x2 nudges it",
+      "clickAt": {
+        "x": 214,
+        "y": 80
+      },
+      "image": {
+        "id": "image-imported-1-0",
+        "left": 128,
+        "top": 20,
+        "width": 408,
+        "height": 373,
+        "rowHeaderWidth": 46,
+        "columnHeaderHeight": 20
+      },
+      "transformLeft": {
+        "before": 128,
+        "afterRightX2": 130,
+        "afterLeftX2": 128
+      },
+      "activeCell": {
+        "before": {
+          "range": "A1",
+          "current": "A1",
+          "selections": [
+            "A1"
+          ],
+          "colAVisible": true,
+          "commandStackDepth": 0
+        },
+        "after": {
+          "range": "A1",
+          "current": "A1",
+          "selections": [
+            "A1"
+          ],
+          "colAVisible": true,
+          "commandStackDepth": 0
+        }
+      },
+      "commands": [
+        {
+          "phase": "before",
+          "id": "sheet.command.move-drawing",
+          "params": {
+            "direction": 1
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-drawing"
+        },
+        {
+          "phase": "before",
+          "id": "sheet.command.move-drawing",
+          "params": {
+            "direction": 1
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-drawing"
+        },
+        {
+          "phase": "before",
+          "id": "sheet.command.move-drawing",
+          "params": {
+            "direction": 3
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-drawing"
+        },
+        {
+          "phase": "before",
+          "id": "sheet.command.move-drawing",
+          "params": {
+            "direction": 3
+          },
+          "cancel": false
+        },
+        {
+          "phase": "executed",
+          "id": "sheet.command.move-drawing"
+        }
+      ],
+      "expected": "transform.left increases on Right and returns on Left; no vetoed move-selection",
+      "pass": true
+    }
+  ]
+}

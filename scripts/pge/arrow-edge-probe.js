@@ -44,6 +44,20 @@ const CDP_URL = `http://localhost:${process.env.PGE_CDP_PORT || '8315'}`;
 const CANVAS = 'canvas[id^="univer-sheet-main-canvas"]';
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const SETTLE_MS = 250;
+// Width used by the "different column count" cases (default sheets have 20).
+const WIDE_COLS = 50;
+
+// 0-based column index → A1 letters (0 → A, 25 → Z, 49 → AX).
+function colA1(col) {
+    let s = '';
+    let c = col + 1;
+    while (c > 0) {
+        const m = (c - 1) % 26;
+        s = String.fromCharCode(65 + m) + s;
+        c = Math.floor((c - 1) / 26);
+    }
+    return s;
+}
 
 async function openNote(page, id) {
     execFileSync('open', [`joplin://x-callback-url/openNote?id=${id}`], {
@@ -417,6 +431,67 @@ async function main() {
                 expect: stays,
                 expectText: 'stays B5 (column A hidden)',
             },
+            // Corner: both edges at once (operator-requested corner-case run).
+            {
+                id: 'bottomright-right',
+                start: refs.bottomRight,
+                key: 'ArrowRight',
+                expect: stays,
+                expectText: `stays ${refs.bottomRight} (last row AND last column)`,
+            },
+            {
+                id: 'bottomright-down',
+                start: refs.bottomRight,
+                key: 'ArrowDown',
+                expect: stays,
+                expectText: `stays ${refs.bottomRight} (last row AND last column)`,
+            },
+            // A sheet with a different column count: the clamp must follow the
+            // sheet's real width, not assume 20. setup widens the sheet, teardown
+            // restores the original width.
+            ...[
+                {
+                    id: 'wide-lastcol-right',
+                    start: `${colA1(WIDE_COLS - 1)}5`,
+                    key: 'ArrowRight',
+                    expect: stays,
+                    expectText: `stays ${colA1(WIDE_COLS - 1)}5 (${WIDE_COLS}-column sheet)`,
+                },
+                {
+                    id: 'wide-bottomright-down',
+                    start: `${colA1(WIDE_COLS - 1)}${refs.rows}`,
+                    key: 'ArrowDown',
+                    expect: stays,
+                    expectText: `stays ${colA1(WIDE_COLS - 1)}${refs.rows} (${WIDE_COLS}-column sheet)`,
+                },
+                {
+                    id: 'wide-T5-right',
+                    start: `${colA1(refs.cols - 1)}5`,
+                    key: 'ArrowRight',
+                    expect: at(`${colA1(refs.cols)}5`),
+                    expectText: `moves to ${colA1(refs.cols)}5 (old last column is no longer the edge)`,
+                },
+            ].map((c) => ({
+                ...c,
+                setup: () =>
+                    frame.evaluate(
+                        (n) =>
+                            window.__notesheetUniverAPI
+                                .getActiveWorkbook()
+                                .getActiveSheet()
+                                .setColumnCount(n),
+                        WIDE_COLS,
+                    ),
+                teardown: () =>
+                    frame.evaluate(
+                        (n) =>
+                            window.__notesheetUniverAPI
+                                .getActiveWorkbook()
+                                .getActiveSheet()
+                                .setColumnCount(n),
+                        refs.cols,
+                    ),
+            })),
             {
                 id: 'A5-type-x-then-left',
                 start: 'A5',
@@ -448,6 +523,23 @@ async function main() {
             window.__notesheetUniverAPI.getActiveWorkbook().getActiveSheet().getRange('A5').clear(),
         );
         const finalState = await state(frame);
+        // The wide-sheet cases resize the note's sheet; prove teardown restored it.
+        const colsAtEnd = await frame.evaluate(() =>
+            window.__notesheetUniverAPI
+                .getActiveWorkbook()
+                .getActiveSheet()
+                .getSheet()
+                .getColumnCount(),
+        );
+        results.push({
+            id: 'sheet-width-restored',
+            pass: colsAtEnd === refs.cols,
+            expected: `column count back to ${refs.cols}`,
+            colsAtEnd,
+        });
+        console.error(
+            `${colsAtEnd === refs.cols ? 'PASS' : 'FAIL'} sheet-width-restored: ${colsAtEnd}`,
+        );
 
         if (DRAWING_NOTE_ID) {
             const d = await drawingCase(page);

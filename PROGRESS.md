@@ -947,7 +947,7 @@ every feature.
   verification) are listed at the top of `BUILD_PLAN.md`.
 
 - **RESUME HERE (handoff 2026-10-15, operator left for the day):**
-  1. **Pending (operator approved, "do it later"):** extra corner-case probe
+  1. **DONE 2026-10-15 (20/20 ×2, `probe-branch-corners-*.json`):** extra corner-case probe
      runs for feature-1, branch only (~10 min). Add to
      `scripts/pge/arrow-edge-probe.js`: bottom-right T1000+Right and
      T1000+Down, plus a sheet resized to a different width (e.g. 50 columns:

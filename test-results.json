@@ -2,6 +2,8 @@
     "feature-1-m19-arrow-keys-clamp-at-sheet-edge": {
         "passes": true,
         "evidence": [
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-branch-corners-2026-10-15T05-35-24-648Z.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-branch-corners-2026-10-15T05-35-48-526Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-branch-jumpover-fix-2026-10-15T05-22-36-984Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-branch-jumpover-fix-2026-10-15T05-22-55-674Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T02-02-56-854Z.png",
@@ -16,8 +18,8 @@
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-52-59-327Z.json",
             "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-53-18-327Z.json"
         ],
-        "evaluator_verdict": "PASS (2026-10-15): own screenshot A1 stays on A1, no scroll; own probe 14/14 scored real-keystroke cases; main baseline reproduces the wrap; jest failing-first confirmed. 3 LOW findings fixed in 97c1cac. Cancel leak accepted + documented (upstream; harmless). | Re-verified 2026-10-15 after review fix afd75a5 (jumpOver === JumpOver.moveGap only): build #40 installed, live probe 14/14 on two runs, Cmd+Left D5→A5 still jumps.",
-        "last_attempted_at": "2026-10-15T05:23:00Z"
+        "evaluator_verdict": "PASS (2026-10-15): own screenshot A1 stays on A1, no scroll; own probe 14/14 scored real-keystroke cases; main baseline reproduces the wrap; jest failing-first confirmed. 3 LOW findings fixed in 97c1cac. Cancel leak accepted + documented (upstream; harmless). | Re-verified 2026-10-15 after review fix afd75a5 (jumpOver === JumpOver.moveGap only): build #40 installed, live probe 14/14 on two runs, Cmd+Left D5→A5 still jumps. | Corner cases 2026-10-15 (operator-requested): bottom-right T1000 Right/Down vetoed; 50-column sheet AX5 Right + AX1000 Down vetoed and T5 Right → U5 (clamp follows real width); sheet width restored; 20/20 on two runs, build #40.",
+        "last_attempted_at": "2026-10-15T05:36:00Z"
     },
     "feature-2-m19-insert-link-alt-shortcut": {
         "passes": false,
