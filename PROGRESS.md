@@ -946,8 +946,33 @@ every feature.
   (Excel reference PNGs for D4/D5 + non-3Arrows icon sets; E4 accelerator
   verification) are listed at the top of `BUILD_PLAN.md`.
 
-- **feature-1-m19-arrow-keys-clamp-at-sheet-edge — live-proven, awaiting the
-  evaluator (2026-10-15).** Fix: `cbe836e` (BeforeCommandExecute veto,
+- **RESUME HERE (handoff 2026-10-15, operator left for the day):**
+  1. **Pending (operator approved, "do it later"):** extra corner-case probe
+     runs for feature-1, branch only (~10 min). Add to
+     `scripts/pge/arrow-edge-probe.js`: bottom-right T1000+Right and
+     T1000+Down, plus a sheet resized to a different width (e.g. 50 columns:
+     AX5+Right, AX1000+Down). Run it twice against the installed branch build
+     and commit the JSONs. A `main` baseline for these is optional (+~10 min);
+     the recommendation was to skip it, since the per-edge wrap is already
+     reproduced. If any case fails, set feature-1 back to `passes: false`.
+  2. **Then feature-2** (E4 alt-shortcut insert-link): generator → evaluator,
+     same flow. First verify the accelerator is free in Joplin's default
+     keymap.
+  3. **State:** branch `m19-render-import-gaps` is local only (NOT pushed).
+     The dev-profile Joplin may still be running with the feature-1 branch
+     build. Before any install: quit → install → launch, and never touch a
+     regular-profile Joplin. Commit identity is the repo-local noreply
+     address; check `git config --local user.email` first.
+  4. **Harness fix `a53b4d8`:** hooks are now anchored at
+     `$CLAUDE_PROJECT_DIR`. Still don't lead commands with `cd` into
+     subdirectories.
+
+- **feature-1-m19-arrow-keys-clamp-at-sheet-edge — ✅ evaluator PASS
+  (2026-10-15, `3cc78f2`).** The evaluator used its own screenshot and probe
+  (14/14). Its 3 LOW findings were fixed in `97c1cac`: a multi-cell KNOWN
+  SHORTCOMING test; `Direction` read from `@univerjs/presets`; the cancel
+  stack leak documented in the F5 checklist and BACKLOG F5. The leak is
+  accepted (upstream, harmless). History before the evaluator ran: Fix: `cbe836e` (BeforeCommandExecute veto,
   `src/editor/arrowEdgeClamp.ts`). Failing-first jest: `174e669`. Live proof
   on the dev profile with real CDP keystrokes, `scripts/pge/arrow-edge-probe.js`.
   A `main` baseline `.jpl` was built from `b62ea8f`'s `src/editorView.tsx`.
