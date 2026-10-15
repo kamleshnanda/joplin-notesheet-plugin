@@ -1,16 +1,20 @@
 // M19 feature-2 (BACKLOG E4) — open Univer's insert-link panel from a
 // plugin-owned shortcut.
 //
-// Cmd/Ctrl+K can't reach the Univer iframe: Joplin's default keymap binds it
-// to `textLink` (laurent22/joplin @ v3.7.21, packages/lib/services/
-// KeymapService.ts L38 darwin / L94 default), registered as an Electron
+// Cmd/Ctrl+K is not reliable inside a Notesheet: Joplin's default keymap
+// binds it to `textLink` (laurent22/joplin @ v3.7.21, packages/lib/services/
+// KeymapService.ts L39 darwin / L94 default), registered as an Electron
 // app-menu accelerator (packages/app-desktop/gui/MenuBar.tsx L732) that
-// `editorCommandDeclarations.ts` L25-28 enables for plugin editors via
-// `hasActivePluginEditor`. The app menu consumes the keystroke, and Joplin
-// then logs "Received command, but editor is gone textLink". So src/index.ts
-// registers `notesheetInsertLink` with its own accelerator; when it runs it
-// posts INSERT_LINK_MESSAGE to the active editor view, and editorView.tsx
-// hands it to `openUniverInsertLink` here.
+// `editorCommandDeclarations.ts` L24-28 enables for plugin editors via
+// `hasActivePluginEditor`. Observed live on macOS (M19 feature-2 probe, same on
+// `main`): when the grid itself has keyboard focus, Univer's own Cmd+K shortcut
+// handles the keydown first and its panel opens; while a cell is being edited,
+// or when focus is outside the editor iframe, the keystroke reaches Joplin's
+// menu instead, which logs "Received command, but editor is gone textLink" and
+// nothing opens. So src/index.ts registers `notesheetInsertLink` with its own
+// accelerator (works in every focus state); when it runs it posts
+// INSERT_LINK_MESSAGE to the active editor view, and editorView.tsx hands it to
+// `openUniverInsertLink` here.
 //
 // Pure: no Univer import. editorView injects the command id from
 // `InsertLinkShortcut.id` (@univerjs/preset-sheets-hyper-link re-exports

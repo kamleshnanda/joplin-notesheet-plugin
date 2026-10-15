@@ -5,6 +5,7 @@ All notable changes will be documented here. Versioning follows [SemVer](https:/
 ## Unreleased (M19)
 
 - **Arrow keys stop at the sheet edge, as in Excel.** Left in column A, Up in row 1, Right in the last column and Down in the last row now leave the active cell where it is. Previously the cursor wrapped to the other side of the sheet (Left or Up at A1 jumped to the bottom-right cell). This also applies when an arrow key commits a cell edit, and hidden rows and columns at the edge are skipped. Shift+arrow, Cmd/Ctrl+arrow and arrow-key nudging of images are unchanged. Upstream Univer closed [dream-num/univer#6988](https://github.com/dream-num/univer/issues/6988) as by-design, so Notesheet overrides the behaviour itself.
+- **New: Tools → Insert link in spreadsheet (Cmd+Option+K on macOS, Ctrl+Alt+K on Windows/Linux).** It opens Univer's link panel for the selected cell, including while you're typing in the cell, and is greyed out in normal notes. Cmd/Ctrl+K belongs to Joplin's own Hyperlink command, so inside a spreadsheet it opens Univer's panel only when the grid itself has focus. The README's Known gaps explains how to rebind Cmd/Ctrl+K in Keyboard Shortcuts if you want it to do this instead.
 
 ## 1.0.1
 

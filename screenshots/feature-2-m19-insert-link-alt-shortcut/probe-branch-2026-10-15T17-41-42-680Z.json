@@ -1,0 +1,358 @@
+{
+  "label": "branch",
+  "generatedAt": "2026-10-15T17:41:42.680Z",
+  "platform": "darwin",
+  "joplinPid": 52866,
+  "noteId": "c3f5b13b17aa4c24858b4dc8a09d20f5",
+  "markdownNoteId": "c31b02720c174c76a7b0ab9a454755fd",
+  "univer": {
+    "version": "0.23.0",
+    "openPanelId": "sheet.operation.open-hyper-link-edit-panel",
+    "closePopupId": "sheet.operation.close-hyper-link-popup",
+    "toolbarOpId": "sheet.operation.insert-hyper-link-toolbar",
+    "linkPlaceholder": "Enter link"
+  },
+  "allPass": true,
+  "passCount": 8,
+  "scoredCount": 8,
+  "consoleRelevant": [],
+  "consoleEditorGone": [
+    {
+      "type": "warning",
+      "text": "10:41:27: Received command, but editor is gone textLink"
+    },
+    {
+      "type": "warning",
+      "text": "10:41:31: Received command, but editor is gone textLink"
+    }
+  ],
+  "results": [
+    {
+      "id": "menu-enabled-on-notesheet",
+      "menu": {
+        "enabled": true,
+        "cmdChar": "K",
+        "modifiers": 2,
+        "accelerator": "Cmd+Option+K"
+      },
+      "pass": true,
+      "expected": "menu item enabled; AX accelerator Cmd+Option+K",
+      "summary": "enabled=true accelerator=Cmd+Option+K"
+    },
+    {
+      "id": "keystroke-cmd-option-k-canvas",
+      "focusMode": "canvas",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "IFRAME",
+      "startOk": true,
+      "panelOpenedAfterMs": 104,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": true,
+        "panelInputFocused": true,
+        "panelRoot": {
+          "tag": "DIV",
+          "className": "univer-box-border univer-w-[296px] univer-rounded-xl univer-bg-white univer-p-4 univer-shadow-md dark:!univer-bg-gray-900 univer-border-gray-200 dark:!univer-border-gray-600 univer-border-solid univer",
+          "rect": {
+            "x": 134,
+            "y": 172,
+            "w": 296,
+            "h": 254
+          }
+        },
+        "commandLog": [
+          "sheet.operation.open-hyper-link-edit-panel",
+          "sheet.operation.insert-hyper-link-toolbar"
+        ]
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [],
+      "outcome": "univer-panel",
+      "pass": true,
+      "expected": "Univer panel open (input \"Enter link\"), sheet.operation.open-hyper-link-edit-panel executed, no Joplin \"Insert Hyperlink\" prompt",
+      "summary": "mode=canvas startOk=true outcome=univer-panel panelMs=104 log=[\"sheet.operation.open-hyper-link-edit-panel\",\"sheet.operation.insert-hyper-link-toolbar\"]"
+    },
+    {
+      "id": "keystroke-cmd-option-k-editing",
+      "focusMode": "editing",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "IFRAME",
+      "startOk": true,
+      "panelOpenedAfterMs": 105,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": true,
+        "panelInputFocused": true,
+        "panelRoot": {
+          "tag": "DIV",
+          "className": "univer-box-border univer-w-[296px] univer-rounded-xl univer-bg-white univer-p-4 univer-shadow-md dark:!univer-bg-gray-900 univer-border-gray-200 dark:!univer-border-gray-600 univer-border-solid univer",
+          "rect": {
+            "x": 136,
+            "y": 170,
+            "w": 296,
+            "h": 182
+          }
+        },
+        "commandLog": [
+          "sheet.operation.open-hyper-link-edit-panel",
+          "sheet.operation.insert-hyper-link-toolbar"
+        ]
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [],
+      "outcome": "univer-panel",
+      "pass": true,
+      "expected": "Univer panel open (input \"Enter link\"), sheet.operation.open-hyper-link-edit-panel executed, no Joplin \"Insert Hyperlink\" prompt",
+      "summary": "mode=editing startOk=true outcome=univer-panel panelMs=105 log=[\"sheet.operation.open-hyper-link-edit-panel\",\"sheet.operation.insert-hyper-link-toolbar\"]"
+    },
+    {
+      "id": "keystroke-cmd-option-k-blurred",
+      "focusMode": "blurred",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "BODY",
+      "startOk": true,
+      "panelOpenedAfterMs": 106,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": true,
+        "panelInputFocused": true,
+        "panelRoot": {
+          "tag": "DIV",
+          "className": "univer-box-border univer-w-[296px] univer-rounded-xl univer-bg-white univer-p-4 univer-shadow-md dark:!univer-bg-gray-900 univer-border-gray-200 dark:!univer-border-gray-600 univer-border-solid univer",
+          "rect": {
+            "x": 134,
+            "y": 172,
+            "w": 296,
+            "h": 254
+          }
+        },
+        "commandLog": [
+          "sheet.operation.open-hyper-link-edit-panel",
+          "sheet.operation.insert-hyper-link-toolbar"
+        ]
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [],
+      "outcome": "univer-panel",
+      "pass": true,
+      "expected": "Univer panel open (input \"Enter link\"), sheet.operation.open-hyper-link-edit-panel executed, no Joplin \"Insert Hyperlink\" prompt",
+      "summary": "mode=blurred startOk=true outcome=univer-panel panelMs=106 log=[\"sheet.operation.open-hyper-link-edit-panel\",\"sheet.operation.insert-hyper-link-toolbar\"]"
+    },
+    {
+      "id": "menu-click-opens-panel",
+      "action": "menu",
+      "focusMode": "canvas",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "IFRAME",
+      "startOk": true,
+      "panelOpenedAfterMs": 8,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": true,
+        "panelInputFocused": true,
+        "panelRoot": {
+          "tag": "DIV",
+          "className": "univer-box-border univer-w-[296px] univer-rounded-xl univer-bg-white univer-p-4 univer-shadow-md dark:!univer-bg-gray-900 univer-border-gray-200 dark:!univer-border-gray-600 univer-border-solid univer",
+          "rect": {
+            "x": 134,
+            "y": 172,
+            "w": 296,
+            "h": 254
+          }
+        },
+        "commandLog": [
+          "sheet.operation.open-hyper-link-edit-panel",
+          "sheet.operation.insert-hyper-link-toolbar"
+        ]
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [],
+      "outcome": "univer-panel",
+      "pass": true,
+      "expected": "Univer panel open (input \"Enter link\"), sheet.operation.open-hyper-link-edit-panel executed, no Joplin \"Insert Hyperlink\" prompt",
+      "summary": "mode=canvas startOk=true outcome=univer-panel panelMs=8 log=[\"sheet.operation.open-hyper-link-edit-panel\",\"sheet.operation.insert-hyper-link-toolbar\"]"
+    },
+    {
+      "id": "observe-cmd-k-canvas",
+      "focusMode": "canvas",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "IFRAME",
+      "startOk": true,
+      "panelOpenedAfterMs": 105,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": true,
+        "panelInputFocused": true,
+        "panelRoot": {
+          "tag": "DIV",
+          "className": "univer-box-border univer-w-[296px] univer-rounded-xl univer-bg-white univer-p-4 univer-shadow-md dark:!univer-bg-gray-900 univer-border-gray-200 dark:!univer-border-gray-600 univer-border-solid univer",
+          "rect": {
+            "x": 134,
+            "y": 172,
+            "w": 296,
+            "h": 254
+          }
+        },
+        "commandLog": [
+          "sheet.operation.open-hyper-link-edit-panel",
+          "sheet.operation.insert-hyper-link-toolbar"
+        ]
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [],
+      "outcome": "univer-panel",
+      "pass": true,
+      "expected": "OBSERVATION (not scored): plain Cmd+K is not ours (Joplin's textLink accelerator vs Univer's own Cmd+K); record who handles it",
+      "summary": "mode=canvas startOk=true outcome=univer-panel panelMs=105 log=[\"sheet.operation.open-hyper-link-edit-panel\",\"sheet.operation.insert-hyper-link-toolbar\"]"
+    },
+    {
+      "id": "observe-cmd-k-editing",
+      "focusMode": "editing",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "IFRAME",
+      "startOk": true,
+      "panelOpenedAfterMs": null,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [
+        {
+          "type": "warning",
+          "text": "10:41:27: Received command, but editor is gone textLink"
+        }
+      ],
+      "outcome": "joplin-textLink-editor-gone",
+      "pass": true,
+      "expected": "OBSERVATION (not scored): plain Cmd+K is not ours (Joplin's textLink accelerator vs Univer's own Cmd+K); record who handles it",
+      "summary": "mode=editing startOk=true outcome=joplin-textLink-editor-gone panelMs=null log=[]"
+    },
+    {
+      "id": "observe-cmd-k-blurred",
+      "focusMode": "blurred",
+      "before": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "promptBefore": false,
+      "frontmost": true,
+      "mainActiveElement": "BODY",
+      "startOk": true,
+      "panelOpenedAfterMs": null,
+      "after": {
+        "activeRange": "B2",
+        "panelOpen": false,
+        "panelInputFocused": false,
+        "panelRoot": null,
+        "commandLog": []
+      },
+      "joplinPromptAfter": false,
+      "editorGoneLogs": [
+        {
+          "type": "warning",
+          "text": "10:41:31: Received command, but editor is gone textLink"
+        }
+      ],
+      "outcome": "joplin-textLink-editor-gone",
+      "pass": true,
+      "expected": "OBSERVATION (not scored): plain Cmd+K is not ours (Joplin's textLink accelerator vs Univer's own Cmd+K); record who handles it",
+      "summary": "mode=blurred startOk=true outcome=joplin-textLink-editor-gone panelMs=null log=[]"
+    },
+    {
+      "id": "menu-disabled-on-markdown-note",
+      "mdState": {
+        "codeMirrorVisible": true
+      },
+      "menu": {
+        "enabled": false,
+        "cmdChar": "K",
+        "modifiers": 2,
+        "accelerator": "Cmd+Option+K"
+      },
+      "startOk": true,
+      "pass": true,
+      "expected": "markdown editor visible; menu item disabled (enabledCondition false)",
+      "summary": "startOk=true enabled=false"
+    },
+    {
+      "id": "markdown-cmd-k-opens-joplin-link-dialog",
+      "key": "Cmd+K",
+      "promptBefore": false,
+      "frontmost": true,
+      "startOk": true,
+      "promptOpenedAfterMs": 103,
+      "joplinPromptAfter": true,
+      "pass": true,
+      "promptCancelled": true,
+      "expected": "Joplin's \"Insert Hyperlink\" prompt opens",
+      "summary": "startOk=true joplinPrompt=true"
+    },
+    {
+      "id": "markdown-cmd-option-k-is-noop",
+      "key": "Cmd+Option+K",
+      "promptBefore": false,
+      "frontmost": true,
+      "startOk": true,
+      "joplinPromptAfter": false,
+      "bodyUnchanged": true,
+      "pass": true,
+      "expected": "nothing happens: no prompt, markdown body unchanged",
+      "summary": "startOk=true joplinPrompt=false bodyUnchanged=true"
+    }
+  ]
+}

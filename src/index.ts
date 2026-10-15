@@ -225,11 +225,12 @@ joplin.plugins.register({
             });
 
             // ── "Insert link in spreadsheet" (M19 E4) ──
-            // Cmd/Ctrl+K belongs to Joplin's `textLink` app-menu accelerator and
-            // never reaches the editor iframe, so this command has its own
-            // accelerator (menu item below) and posts to the webview, which runs
-            // Univer's insert-link operation. Never re-register `textLink`: it
-            // would break the markdown editors.
+            // Cmd/Ctrl+K is Joplin's `textLink` app-menu accelerator; it only
+            // reaches Univer when the grid itself has focus (see
+            // src/editor/insertLink.ts). This command has its own accelerator
+            // (menu item below) and posts to the webview, which runs Univer's
+            // insert-link operation. Never re-register `textLink`: it would
+            // break the markdown editors.
             await joplin.commands.register({
                 name: INSERT_LINK_COMMAND,
                 label: INSERT_LINK_LABEL,

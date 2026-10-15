@@ -3,11 +3,12 @@
 //
 // Why not Cmd/Ctrl+K: Joplin's default keymap binds it to `textLink`
 // (laurent22/joplin @ v3.7.21 e41516e6, packages/lib/services/KeymapService.ts
-// L38 darwin / L94 default), exposed as an Electron app-menu accelerator
-// (packages/app-desktop/gui/MenuBar.tsx L732) and enabled for plugin editors
-// via `hasActivePluginEditor` (packages/app-desktop/gui/NoteEditor/
-// editorCommandDeclarations.ts L25-28). The keystroke is consumed by the app
-// menu and never reaches the plugin iframe, so the plugin registers its own
+// L39 darwin / L94 default), an Electron app-menu accelerator
+// (packages/app-desktop/gui/MenuBar.tsx L732) enabled for plugin editors via
+// `hasActivePluginEditor` (packages/app-desktop/gui/NoteEditor/
+// editorCommandDeclarations.ts L24-28). Live (macOS) it only reaches Univer
+// when the grid has focus; while editing a cell or with focus elsewhere it
+// goes to Joplin's menu and nothing opens. So the plugin registers its own
 // command + accelerator instead and must never touch `textLink`.
 //
 // `CmdOrCtrl+Alt+K` is unbound in both default keymap tables at v3.7.21
