@@ -1,9 +1,18 @@
 {
     "feature-1-m19-arrow-keys-clamp-at-sheet-edge": {
         "passes": false,
-        "evidence": null,
+        "evidence": [
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T01-56-32-620Z.png",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/eval-2026-10-15T01-56-32-620Z.pixels.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/main-baseline-a1-left.png",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/main-baseline-a1-left.pixels.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-branch-2026-10-15T01-55-47-417Z.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-branch-2026-10-15T01-56-06-119Z.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-52-59-327Z.json",
+            "screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-main-2026-10-15T01-53-18-327Z.json"
+        ],
         "evaluator_verdict": null,
-        "last_attempted_at": null
+        "last_attempted_at": "2026-10-15T01:57:00Z"
     },
     "feature-2-m19-insert-link-alt-shortcut": {
         "passes": false,

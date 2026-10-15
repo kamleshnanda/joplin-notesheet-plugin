@@ -51,7 +51,7 @@ The Markdown-It renderer reads the snapshot without booting Univer; these have n
 
 - **E1 — Multi-sheet workbooks with a named table on each sheet** trip exceljs's table-reduce (`xlsx-multi-table-unsupported`). Workaround: one sheet for all tables. A real import blocker for some workbooks. _Source: README._
 - **E2 — Theme-tinted borders** (`{theme, tint}`) re-resolve against the active clrScheme on round-trip, not the source workbook theme. _Source: README._
-- **E3 — Left-arrow in col A / Up-arrow in row 1** jumps cursor to bottom-right. Upstream closed [#6988](https://github.com/dream-num/univer/issues/6988) as **by design** (2026-06-05) and advises overriding the shortcut, so this is ours to fix. _Source: README._
+- ~~**E3 — Left-arrow in col A / Up-arrow in row 1** jumps cursor to bottom-right.~~ **Fixed in M19** (feature-1): a `BeforeCommandExecute` veto on `sheet.command.move-selection` (`src/editor/arrowEdgeClamp.ts`) stops arrow keys at every sheet edge, including the arrow-key commit of a cell edit. Upstream closed [#6988](https://github.com/dream-num/univer/issues/6988) as **by design** (2026-06-05) and advises overriding. Known difference left open: a multi-cell selection moves from its edge, not the active cell (README "Known gaps → Editor"). _Source: README._
 - **E4 — Cmd/Ctrl+K** opens Joplin's markdown-link dialog instead of Univer's. Host keybinding conflict. _Source: README._
 
 ## F. Codebase health (non-functional — first-class delivery) — M20

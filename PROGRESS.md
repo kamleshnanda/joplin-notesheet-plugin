@@ -946,27 +946,20 @@ every feature.
   (Excel reference PNGs for D4/D5 + non-3Arrows icon sets; E4 accelerator
   verification) are listed at the top of `BUILD_PLAN.md`.
 
-- **feature-1-m19-arrow-keys-clamp-at-sheet-edge — code done, live proof
-  BLOCKED (2026-10-14).** Commits `174e669` (failing-first jest against a
-  never-veto stub: 15 cancel cases fail) and `cbe836e` (fix). Jest
-  `tests/m19ArrowEdgeClamp.test.ts` 35/35; full suite 62 suites / 564 tests;
-  typecheck + lint green; `npm run dist` build #37 contains the veto (grep
-  `arrow edge clamp check failed` in the unpacked `editorView.js`).
-  **Blocker:** a regular-profile Joplin (`~/Library/Application Support/Joplin`,
-  no `--env dev`) was running. The session rules forbid touching it,
-  `install-plugin.sh` refuses while any Joplin runs, and `open joplin://…`
-  would route to that instance. Row left `passes: false`, no evidence.
-  **Still to do next session** (once only the dev profile can run):
-  1. Write `scripts/pge/arrow-edge-probe.js` (real `keyboard.press` keystrokes,
-     before/after `getActiveRange().getA1Notation()`, JSON to
-     `screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-*.json`).
-     Record the `main` baseline FIRST: `git stash` / check out `src/editorView.tsx`
-     from `b62ea8f`, dist, install, probe, then restore and re-probe.
-  2. Register the feature in `scripts/pge/eval-screenshot.js`
-     (`TITLE_PREFIX_BY_FEATURE` + `REGION_BY_FEATURE`, editor canvas; the
-     capture needs a pre-step: click the canvas, activate A1, press Left).
-  3. Docs (criterion 5): README "Known gaps → Editor" bullet, CHANGELOG,
-     `BACKLOG.md` E3. Deliberately NOT done before the live proof.
+- **feature-1-m19-arrow-keys-clamp-at-sheet-edge — live-proven, awaiting the
+  evaluator (2026-10-15).** Fix: `cbe836e` (BeforeCommandExecute veto,
+  `src/editor/arrowEdgeClamp.ts`). Failing-first jest: `174e669`. Live proof
+  on the dev profile with real CDP keystrokes, `scripts/pge/arrow-edge-probe.js`.
+  A `main` baseline `.jpl` was built from `b62ea8f`'s `src/editorView.tsx`.
+  - main: 6/14. Every edge case wraps (A5 Left → T4, C1 Up → B1000, A1
+    Left/Up → T1000, T5 Right → A6, C1000 Down → D1, hidden-A B5 Left → T4,
+    typed-x A5 Left → T4).
+  - branch: 14/14 on two runs. Zero console errors or warnings.
+  - Results are in `screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-{main,branch}-*.json`.
+  - Eval capture `eval-*.png`: A1 stays highlighted. `main-baseline-a1-left.png`
+    shows the cursor at T1000.
+  - Docs updated (README Known gaps → Editor, CHANGELOG Unreleased, BACKLOG E3).
+  - `passes` is left false for the evaluator.
 
 ## Next
 
@@ -977,6 +970,24 @@ every feature.
 Order and per-item scope are the operator's call at planning time.
 
 ## Notes
+
+- **M19 feature-1 live-probe lessons (2026-10-15).**
+  - The first `FRange.activate()` right after the focusing canvas click can be
+    overridden by that click's pointer selection. The first case read `B:B`,
+    and later cases behaved inconsistently. Fix: warm up with activate H10 +
+    ArrowDown before the first case. Also guard every case with
+    `startOk = before.range === intended start`.
+  - The webview frame survives note switches, but Univer is re-booted with a
+    new facade. A `window.__x` listener registry has to be re-installed when
+    `window.__notesheetUniverAPI` changes. Otherwise it listens on a disposed
+    instance and logs nothing.
+  - The command-stack leak from `cancel` is MEASURED. `api._commandService._commandExecutionStack.length`
+    goes 0 → 9 after 9 vetoed keys on branch, and stays 0 on main. It resets on
+    every Univer boot (note open). See the notes below for impact.
+  - Drawing nudge = `sheet.command.move-drawing`, 1 px per arrow press
+    (left 128 → 130 → 128), unaffected by the veto.
+  - On macOS, Cmd+arrow is `Meta+ArrowLeft` in Playwright. With only D5
+    filled, Cmd+Left from D5 → A5, identical on main and branch.
 
 - **M19 feature-1 (arrow edge clamp) — Univer 0.23 facts verified in
   `node_modules` (2026-10-14).**
