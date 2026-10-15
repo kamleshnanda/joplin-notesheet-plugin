@@ -958,7 +958,9 @@ every feature.
   2. **Then feature-2** (E4 alt-shortcut insert-link): generator → evaluator,
      same flow. First verify the accelerator is free in Joplin's default
      keymap.
-  3. **State:** branch `m19-render-import-gaps` is local only (NOT pushed).
+  3. **State:** branch `m19-render-import-gaps` is pushed, with **draft PR #47**
+     open so CI runs (this branch name doesn't match the `m**/**` push trigger).
+     Check #47's CI result first.
      The dev-profile Joplin may still be running with the feature-1 branch
      build. Before any install: quit → install → launch, and never touch a
      regular-profile Joplin. Commit identity is the repo-local noreply
