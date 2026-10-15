@@ -55,6 +55,27 @@ and write a spec the generator can follow without ambiguity.
         is NOT acceptable for an export feature — the image can render
         fine yet export empty (Buffer undefined in the webview).
 
+    - **Acceptance checks (black-box)** — the scenarios the independent
+      evaluator will run, written BEFORE any implementation exists and
+      phrased only in user-visible terms:
+      `given <state> / when <user action> / then <observable result>`.
+        - Inputs are things a user does (key presses, shortcuts, menu or
+          toolbar clicks, importing a fixture file, exporting). Outputs are
+          things a user can see or get (what's on screen, the selected cell,
+          a dialog that opens, cell values, the exported file's contents).
+          Never name internal functions, commands or data structures.
+        - **Enumerate the boundaries**, don't leave them implied: edges AND
+          corners, empty / minimum / maximum, a non-default size or
+          dimension (e.g. a sheet wider than the default), repeated actions,
+          the action where the feature must NOT apply, and the neighbouring
+          behaviour that must stay unchanged. (M19 feature-1 lesson: the
+          bottom-right corner and a non-default sheet width were missed
+          until the operator asked.)
+        - Each check gets a stable id (`AC1`, `AC2`, …) and says which
+          acceptance criterion it evidences.
+        - These are the contract between operator and evaluator. **The
+          generator must not edit them**; if one is wrong or impossible,
+          the generator stops and reports, and the operator decides.
     - **Out of scope** — explicitly call out what this feature does NOT
       cover, so the evaluator doesn't penalize for it
     - **Suggested fixture(s)** — which file(s) under
@@ -78,6 +99,11 @@ and write a spec the generator can follow without ambiguity.
 ## Spec phrasing — DON'T
 
 - "Rich text works." (Not testable.)
+- An acceptance check like "`shouldClampArrowMove()` returns true at the
+  edge". It names an internal function, so it can only be checked by reading
+  or calling the implementation. Write instead: "given a cell in the last
+  column is selected / when the user presses Right / then the same cell
+  stays selected and the view does not scroll".
 - "cell.p.body.textRuns has the right shape." (Tests the data, not the
   user-visible outcome — this is the M13 failure mode.)
 - "Add support for X." (Implementation directive, not user outcome.)
