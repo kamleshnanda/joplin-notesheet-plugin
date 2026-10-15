@@ -965,6 +965,15 @@ every feature.
      build. Before any install: quit → install → launch, and never touch a
      regular-profile Joplin. Commit identity is the repo-local noreply
      address; check `git config --local user.email` first.
+  5. **Review fixes (2026-10-15):**
+     - `afd75a5`: the clamp exempts only `jumpOver === JumpOver.moveGap` (1).
+       Values 0, 2 and 3 still wrap in Univer, so they are vetoed.
+       `JumpOver.moveGap` is injected from `@univerjs/preset-sheets-core`, and
+       the tests pin it against the installed sheets-ui.
+     - `b3f9e90`: kill-switch and verify-gate fail CLOSED if the project-root
+       `cd` fails.
+     - Feature-1 was re-verified live on build #40: 14/14, two runs
+       (`probe-branch-jumpover-fix-*.json`).
   4. **Harness fix `a53b4d8`:** hooks are now anchored at
      `$CLAUDE_PROJECT_DIR`. Still don't lead commands with `cd` into
      subdirectories.
