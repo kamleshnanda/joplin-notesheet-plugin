@@ -801,9 +801,32 @@ which is already correct.
    / export" theme-tinted-borders bullet is removed or reduced to what's left
    (edited colours export as RGB). `BACKLOG.md` E2 is updated.
 
+**Scope extension — font and fill colours (operator, 2026-10-14: current
+milestone).** Font colours (`ff.cl`) and cell fills (`bg`) lose their
+`{theme, tint}` reference on export in exactly the same way. It's an existing
+bug with the same fix, so it ships in this feature. Use the same mechanism: the
+side resource records `{theme, tint, rgb}` per `r:c:<kind>`, where `<kind>` is
+a border side, `font` or `fill`. Each one re-emits the theme reference only
+while its RGB is unchanged. Fixing export also fixes re-import: an exported
+file then resolves its colours against its own theme again.
+
+9. **Jest export fidelity for font + fill, written failing first.** Extend
+   `ThemeTintedBorders-Aptos.xlsx` (or add a sibling fixture, and say which)
+   with a theme-coloured font (e.g. `theme="1" tint="0.249977111117893"`) and a
+   theme-coloured solid fill (e.g. `theme="4" tint="0.7999816888943144"`). The
+   exported `xl/styles.xml` `<font><color theme tint/>` and
+   `<fill><patternFill><fgColor theme tint/>` match the source to 1e-6, with
+   no `rgb`. Expected values come from the source XML, the same anchor rule as
+   criterion 3.
+10. **Edit invalidation + re-import for font + fill.** These are criteria 4 and
+    5 applied to font and fill: an edited colour exports as `rgb`, untouched
+    ones keep their theme reference, and re-importing gives the same RGBs.
+11. **Live check.** The criterion-6 export file-content check also asserts the
+    font and fill theme references. The criterion-7 screenshot shows the fill
+    in the Aptos accent family.
+
 **Out of scope**
 
-- Theme references on **font** and **fill** colours. These have the same loss on export and are a follow-up candidate; the operator decides the milestone.
 - Workbooks with no theme part (the palette is null). Themed borders stay dropped as today. Document it.
 - Live re-theming inside Joplin (there is no UI for changing the theme).
 - Table-style synthesized borders (`synthesizeTableStyleAssignments`). They're synthesized, not source cell borders, and must not get theme refs.
