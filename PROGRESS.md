@@ -1015,6 +1015,14 @@ every feature.
   item 2); evaluator pending. Operator FYI: Cmd/Ctrl+K behaviour is
   focus-dependent (README Known gaps bullet rewritten accordingly).
 
+- **Plan update 2026-10-15 (planner; supersedes RESUME HERE item 2's "Next: feature-3"):**
+  - **feature-2 scope extended.** It is now Part A (alt shortcut + Tools item, built) plus Part B (new): Cmd/Ctrl+K must open Univer's link panel in the grid, while typing in a cell, and in the formula bar. Outside the editor and in markdown notes it stays as on `main`.
+  - feature-2 Part B requires research first and has a STOP rule. The old "never reaches the iframe" premise is marked superseded in `BUILD_PLAN.md`. The row stays `passes: false`, and its evidence list is kept.
+  - **New feature-10-m19-new-spreadsheet-shortcut-conflict.** It replaces `CmdOrCtrl+Shift+S`, which clashes with Joplin's `focusElementSideBar`. It builds **before** feature-9; the build order is in the plan header, and the `test-results.json` row is placed before feature-9's.
+  - Every feature now has **Acceptance checks (black-box)**. Generators must not edit them; report instead.
+  - Evaluation is independent: `.claude/agents/evaluator.md`, `scripts/pge/deploy-build.sh`.
+  - Next for the generator: feature-2 Part B.
+
 ## Next
 
 1. **M21 — in-cell (rich-value) image round-trip** (`richData` /

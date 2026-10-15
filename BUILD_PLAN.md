@@ -11,6 +11,37 @@
 > assignment is the maintainer's call — always ask"). Generators do not
 > self-assign.
 
+> **Build order (explicit; it overrides "lowest-numbered first").**
+> feature-1 → feature-2 → … → feature-8 → **feature-10** → feature-9.
+> feature-10 was added on 2026-10-15, after the plan was written. It has to
+> ship **before** the close-out feature-9, because feature-9 checks the docs
+> for everything else. feature-9 keeps its id. In `test-results.json` the
+> feature-10 row sits before the feature-9 row, so `scripts/pge/run-cycle.sh`
+> (which takes the first `passes: false` key in file order) follows the same
+> order. Generators: work the first `passes: false` feature **in this order**.
+
+> **Evaluation is independent and black-box (since 2026-10-15).** The
+> evaluator (`.claude/agents/evaluator.md`) reads only this spec. It deploys
+> the commit under test itself with `scripts/pge/deploy-build.sh`, writes and
+> runs its **own** probes, and drives the product with user-visible inputs
+> only. It doesn't reuse the generator's tests, probes or screenshots, so
+> commit before handing off. Each feature's **Acceptance checks (black-box)**
+> section is the operator↔evaluator contract. **The generator must not edit
+> it.** If a check is wrong, impossible, or contradicted by the platform, the
+> generator stops, reports in `PROGRESS.md` `## In progress`, and the operator
+> decides. The generator's own live proof is a self-check, and it should cover
+> the same checks, boundaries included.
+>
+> Conventions in the Acceptance checks: **Mod** = Cmd on macOS, Ctrl on
+> Windows/Linux. "As on `main`" means the evaluator records a `main` baseline
+> for that exact action first and compares against it. A Windows/Linux variant
+> that can't be run live because no such machine is available is recorded as
+> `NOT RUN (platform unavailable)` in the evaluator's matrix. On its own it
+> doesn't block PASS, provided the feature's Jest criterion for the
+> Windows/Linux key mapping passes. The same applies to checks against an
+> operator-supplied Excel reference PNG that hasn't been committed yet:
+> `NOT RUN (reference missing)`.
+
 ## Cycle context
 
 M19 closes the documented gaps in `BACKLOG.md` groups D (PDF / HTML / preview
@@ -18,6 +49,10 @@ renderer) and E (editor + `.xlsx` import). D1 (dataBar in HTML) already
 shipped in M18. The operator approved all seven remaining items: D2, D3,
 D4, D5, E1, E2, E3, E4. Research findings that the operator supplied are
 folded into each feature's spec below.
+
+Added 2026-10-15 (operator): feature-2's scope is extended so that
+Cmd/Ctrl+K works everywhere inside the Notesheet editor, and feature-10 fixes the
+New Spreadsheet shortcut's clash with Joplin's Focus-sidebar default.
 
 Two different proof regimes apply:
 
@@ -70,12 +105,16 @@ and grep the unpacked bundle for a non-minified string token.
    feature-4 starts, the generator writes a `STEER`-style request to the operator
    in `PROGRESS.md` `## In progress` asking for both captures, so they can be
    done in one batch.
-2. **E4 accelerator choice.** The operator chose "alt shortcut + document".
-   The plan proposes `CmdOrCtrl+Alt+K` but requires the generator to verify,
-   against the upstream Joplin default keymap, that it is unbound. If it is
-   bound, the generator picks the first free candidate from the list in
-   feature-2 and records the citation. The choice is not open for debate after
-   that. It is recorded in README and CHANGELOG.
+2. **E4 accelerator choice — resolved.** `CmdOrCtrl+Alt+K` was verified free
+   in both default keymap tables at Joplin v3.7.21 and in every installed
+   Univer binding (feature-2 Part A, `PROGRESS.md` Notes). It is recorded in
+   README and CHANGELOG. On 2026-10-15 the operator extended E4: plain
+   Cmd/Ctrl+K must also work everywhere inside the Notesheet editor
+   (feature-2 Part B).
+3. **New Spreadsheet replacement accelerator (feature-10).** The planner
+   proposes candidates. The generator verifies them and picks the first one
+   that passes every check in feature-10. If none passes, it stops and the
+   operator picks.
 
 ### Test-suite no-regression discipline (all features)
 
@@ -94,15 +133,22 @@ Any other content edit to an existing test file is a NEEDS_WORK.
 `tests/m18AbsoluteRelTargets.test.ts` has to keep passing **unchanged**,
 because feature-7 replaces the normalizer that test was written for.
 
+`tests/m19*.test.ts` files created earlier on this branch (e.g.
+`tests/m19InsertLinkShortcut.test.ts` from feature-2 Part A) are new files
+relative to `main`. Later features (feature-2 Part B, feature-10) may extend
+them. Extending them must not weaken an assertion that an earlier, passing
+feature relied on.
+
 ---
 
 ## Features
 
 Order: isolated, low-risk editor items first (E3, E4). Then the renderer items,
 smallest first (D3 → D4 → D5 → D2). Then the two import/export items with the
-widest blast radius (E1, E2). Last is a closeout. Each feature is one PR-sized
-unit. feature-4 and feature-5 share a formatter and **may** ship in one PR, but
-they are graded separately.
+widest blast radius (E1, E2). Then feature-10 (New Spreadsheet shortcut
+conflict, added 2026-10-15). Last is the closeout, feature-9 (see "Build order"
+at the top). Each feature is one PR-sized unit. feature-4 and feature-5 share a
+formatter and **may** ship in one PR, but they are graded separately.
 
 ---
 
@@ -167,6 +213,25 @@ without Univer.
    updated to say it's fixed in M19, with the citation to upstream #6988's
    by-design closure.
 
+**Acceptance checks (black-box) — added 2026-10-15 for the record, after the
+evaluator PASS.** This list records what was verified, including the corner
+cases the operator asked for after the first PASS. It doesn't re-open the
+feature. Default sheet = 20 columns (A–T) × 1000 rows.
+
+- **AC1** (crit 2, 3): given A5 is selected / when the user presses Left / then A5 stays selected.
+- **AC2** (crit 2): given C1 / when Up / then C1 stays selected.
+- **AC3** (crit 2, 3): given A1 / when Left, and separately Up / then A1 stays selected, and the view doesn't scroll to the bottom-right.
+- **AC4** (crit 2): given T5 (last column) / when Right / then T5 stays selected. Given C1000 (last row) / when Down / then C1000 stays selected.
+- **AC5** (crit 2): given T1000 (bottom-right corner) / when Right, and separately Down / then T1000 stays selected.
+- **AC6** (crit 2): given a sheet resized to 50 columns / when AX5 Right, and AX1000 Down / then the selection doesn't move. When T5 Right / then U5 is selected (the clamp follows the real width).
+- **AC7** (crit 2): given B5 / when Left / then A5 is selected (normal movement unchanged).
+- **AC8** (crit 2): given A5 / when Shift+Left / then the selection is unchanged and doesn't wrap.
+- **AC9** (crit 2): given D5 with data to its left / when Mod+Left / then the selection jumps to the data edge, as on `main`.
+- **AC10** (crit 2): given A5 / when the user types `x` then presses Left / then A5 shows `x` and A5 stays selected.
+- **AC11** (crit 2): given column A hidden and B5 selected / when Left / then B5 stays selected.
+- **AC12** (crit 2): given an image selected in `TwoImages-MultiSheet.xlsx` / when an arrow key is pressed / then the image moves.
+- **AC13** (crit 4): during all of the above, the DevTools console has no uncaught `CanceledError` and no `[Notesheet]` error.
+
 **Out of scope**
 
 - Enter / Tab / Shift+Enter / Shift+Tab wrap behaviour (these use different commands).
@@ -195,85 +260,224 @@ without Univer.
 
 ### feature-2-m19-insert-link-alt-shortcut
 
-_Backlog E4. Operator decision: "Alt shortcut + document"._
+_Backlog E4. Operator decisions: "Alt shortcut + document" (2026-10-14).
+**Scope extended 2026-10-15: "Cmd/Ctrl+K must work everywhere" inside the
+Notesheet spreadsheet editor.** The id is unchanged; the feature now covers
+Part A (built) plus Part B (new)._
+
+**Status when the scope was extended (2026-10-15).** Part A (the alt shortcut,
+the Tools menu item, and the item being disabled for markdown notes) is built
+and the generator has self-checked it live, but the evaluator hasn't graded it.
+Commits: `d2bafb1` (failing-first tests), `1725529` (implementation), `fa8e033`
+(live proof + docs), `c18f673` (re-verify on build #42). Part B is not started.
+The `test-results.json` row stays `passes: false`, with its existing evidence
+list kept, until the evaluator grades **both** parts.
+
+**Superseded research premise (kept for the record).** The original spec said:
+_"At runtime Joplin finds no built-in editor and logs `Received command, but
+editor is gone textLink`, so the keystroke never reaches the plugin iframe. A
+plugin can't fix this."_ The generator's live probes contradict the first half
+of that (macOS, Joplin 3.7.21; `main` at `2edd4b6` behaves the same):
+
+- **Grid focused:** Univer's own `InsertLinkShortcut` (`@univerjs/sheets-hyper-link-ui`
+  0.23 `lib/es/index.js` ~L1627; binding `KeyCode.K | MetaKeys.CTRL_COMMAND`,
+  precondition `whenSheetEditorFocused`) handles the keydown first and opens its
+  link panel. Joplin's `textLink` does not run.
+- **In-cell editor focused (typing in a cell), or focus outside the editor:**
+  Univer doesn't handle the key. Joplin's `textLink` app-menu accelerator runs,
+  logs `Received command, but editor is gone textLink`, and nothing opens.
+- **Formula bar focused:** not yet probed.
+
+So the keydown **does** reach the editor webview whenever Univer is the focused
+target, and a keydown that Univer handles stops Joplin's accelerator, at least
+on macOS. Evidence: `screenshots/feature-2-m19-insert-link-alt-shortcut/probe-{main,branch}-*.json`
+and `PROGRESS.md` Notes, "M19 feature-2 (E4) live-harness notes". The rest of the
+original reasoning still holds: re-registering or overriding `textLink` would
+break the markdown editors, and the plugin must never do it.
 
 **Spec**
 
-A dedicated keyboard shortcut opens Univer's own insert-link panel for the
-selected cell while a Notesheet note is active. Cmd/Ctrl+K stays a documented
-known gap. Background from research: Joplin binds Cmd/Ctrl+K as an Electron
-app-menu accelerator to `textLink` (`laurent22/joplin`
-`packages/lib/services/KeymapService.ts` ~L39/L94;
-`packages/app-desktop/gui/MenuBar.tsx` ~L732).
-`editorCommandDeclarations.ts` enables that accelerator with
-`|| hasActivePluginEditor`. At runtime Joplin finds no built-in editor and logs
-`Received command, but editor is gone textLink`, so the keystroke never reaches
-the plugin iframe. A plugin can't fix this. Re-registering `textLink` would
-break the markdown editor, and duplicate accelerators have undefined behaviour.
-The fix:
+_Part A — built (keep as is)._ The command `notesheetInsertLink` ("Insert link
+in spreadsheet", `enabledCondition: 'hasActivePluginEditor'`) is exposed as a
+Tools menu item with the accelerator `CmdOrCtrl+Alt+K`. The accelerator was
+verified free in both default keymap tables at Joplin v3.7.21 and in every
+installed Univer binding. Running the command posts `{ type: 'insertLink' }` to
+the active, visible editor view, and the webview runs Univer's insert-link
+operation (`InsertLinkShortcut.id` = `sheet.operation.insert-hyper-link-toolbar`).
+In markdown notes the menu item is greyed out.
 
-- Register a plugin command (suggested name `notesheetInsertLink`, label "Insert link in spreadsheet") with `enabledCondition: 'hasActivePluginEditor'`.
-- Expose it as a `joplin.views.menuItems` entry with its own free accelerator. This follows the existing `CmdOrCtrl+Shift+S` pattern in `src/index.ts` ~L225.
-- When the command runs, check `joplin.views.editors.isActive(handle)` and send `joplin.views.editors.postMessage(handle, { type: 'insertLink' })`.
-- In the webview, the `onMessage` handler in `src/editorView.tsx` (~L1029) calls `univerAPI.executeCommand('sheet.operation.insert-hyper-link-toolbar')`. That command ID is verified present in `@univerjs/sheets-hyper-link-ui` 0.23 and is the one `InsertLinkShortcut` uses (~L1627).
+_Part B — new._ Inside the Notesheet spreadsheet editor, Cmd+K (macOS) or
+Ctrl+K (Windows/Linux) opens Univer's insert-link panel wherever keyboard focus
+is in the editor:
 
-**Accelerator verification (required before coding).** Confirm that
-`CmdOrCtrl+Alt+K` is not bound in Joplin's default keymap (`KeymapService.ts`,
-macOS and Windows/Linux tables) or in `MenuBar.tsx`, and cite the file and
-commit SHA in the PR. If it is bound, use the first free candidate from
-`CmdOrCtrl+Alt+L` → `CmdOrCtrl+Shift+Alt+K` and record why. Plugin menu items
-appear in Tools → Options → Keyboard Shortcuts, so users can rebind it.
+- the **grid** (already works through Univer; must keep working),
+- the **in-cell editor** while the user is typing in a cell,
+- the **formula bar**.
+
+Text typed into the cell or formula bar before the shortcut is pressed is never
+lost. Outside the editor (note list, sidebar, search box, note title) and in
+markdown notes (Markdown editor and Rich Text editor), Cmd/Ctrl+K behaves
+exactly as on `main`. The plugin never registers, overrides or rebinds Joplin's
+`textLink` command or its accelerator. The fix lives inside the editor webview.
+Cmd/Ctrl+Alt+K and the Tools menu item stay as the alternative entry points, and
+all three entry points (Mod+K, Mod+Alt+K, Tools menu) do the same thing in the
+same focus state.
+
+**What "insert link while editing a cell" does is decided by research, not
+assumed.** The candidates are:
+
+- **(i) Univer's in-editor link:** link the selected text, or insert a link at
+  the caret, inside the cell being edited. Univer 0.23's hyperlink UI has
+  editing-mode handling (`getEditingCustomRangePosition`, the `currentEditing`
+  popup paths in `sheets-hyper-link-ui` ~L1110–1200), which suggests the toolbar
+  operation already supports this.
+- **(ii) Commit then open:** commit the edit, then open the panel for the cell.
+
+The default is whatever Univer's own toolbar link button and Part A's Mod+Alt+K
+already do in that state, so the entry points agree. The generator records the
+choice, with evidence, in `PROGRESS.md` Notes and the PR. If research shows (i)
+and (ii) are both impossible or both lose text, the generator stops and reports
+(see below).
+
+**Required research before coding Part B** (AGENTS.md "Verify external-platform
+behavior with research"; cite file paths and doc URLs):
+
+1. How Univer 0.23 routes Mod+K when the **cell editor** (a docs unit) or the
+   **formula bar** has focus. Which shortcut preconditions apply there, whether
+   `docs-hyper-link-ui` is loaded by our presets and binds Mod+K, and what
+   `insert-hyper-link-toolbar` does when the cell editor is active.
+2. Whether a **capture-phase** `keydown` handler in the editor webview can
+   recognise Mod+K in those focus states, run Univer's insert-link for the
+   current cell (or text), and `preventDefault` so Joplin's `textLink`
+   accelerator doesn't also fire. This is observed for Univer's own handler on
+   macOS. For Windows/Linux, confirm the order in which Electron handles
+   app-menu accelerators relative to renderer/iframe keydown from Electron docs
+   or source, because it may differ from macOS.
+3. That the grid path, which already works through Univer, doesn't fire twice.
+   The operation toggles: a second dispatch closes the panel it just opened.
+4. That IME composition (`isComposing`) and auto-repeat don't trigger
+   unintended opens or toggles.
+
+**STOP rule.** If research or live probing shows Part B can't be done in some
+in-editor focus state without touching `textLink` (e.g. on Windows/Linux the
+accelerator fires before the webview sees the key), or only by losing typed
+text, the generator stops. It writes the evidence to `PROGRESS.md`
+`## In progress` and leaves the row `passes: false`. It doesn't ship a partial
+behaviour silently and doesn't rebind `textLink`. The operator decides.
+
+**Windows/Linux.** Part B covers Ctrl+K, and Part A covers Ctrl+Alt+K. Live
+verification on Windows/Linux may not be possible (no machine). If so, the
+generator says so in PROGRESS and the PR. It relies on the research from item 2
+plus the Jest key-matching criterion, and the evaluator records those checks as
+`NOT RUN (platform unavailable)` (see the header conventions).
 
 **Acceptance criteria**
 
-1. **Jest** (new `tests/m19InsertLinkShortcut.test.ts`, using the existing `api` mocks):
-    - `onStart` registers a command named `notesheetInsertLink` with `enabledCondition: 'hasActivePluginEditor'`.
-    - A menu item is created with the verified accelerator string.
+_Part A (built; still graded):_
+
+1. **Jest** (`tests/m19InsertLinkShortcut.test.ts`, existing `api` mocks):
+    - `onStart` registers `notesheetInsertLink` with `enabledCondition: 'hasActivePluginEditor'`.
+    - A menu item is created with the accelerator `CmdOrCtrl+Alt+K`.
     - Running the command posts `{ type: 'insertLink' }` to the active editor handle.
     - It posts nothing when `isActive` returns false.
-    - It never re-registers or overrides `textLink`: assert no `commands.register` call has the name `textLink`.
-2. **Live, keystroke path.** With a Notesheet note open and cell B2 selected,
-   the harness sends the verified accelerator as a real OS keystroke via
-   `osascript` System Events. The harness already holds Accessibility permission
-   for `prep-joplin-window.sh`. Screenshot
-   `screenshots/feature-2-m19-insert-link-alt-shortcut/eval-*.png` shows Univer's
-   hyperlink edit panel open over the grid (link text / URL inputs visible), and
-   Joplin's markdown "Insert link" dialog is **not** showing. A CDP DOM probe
-   records the panel's root element as present. The generator identifies a
-   stable selector and documents it in `PROGRESS.md` Notes.
-3. **Live, menu path.** Clicking Tools → "Insert link in spreadsheet" opens the
-   same panel (probe JSON in the same folder).
-4. **Live, no regression on markdown notes.** In a plain markdown note, Cmd/Ctrl+K
-   still opens Joplin's own link dialog, and the new menu item is
-   disabled/greyed (its `enabledCondition` is false). The screenshot or probe
-   records both.
-5. **Docs.**
-    - README "Known gaps → Editor" Cmd/Ctrl+K bullet is rewritten. It says Cmd/Ctrl+K is owned by Joplin's `textLink` app-menu accelerator and can't be intercepted by a plugin (cite the KeymapService.ts / MenuBar.tsx / editorCommandDeclarations.ts paths).
-    - It names the new shortcut.
-    - It gives the workaround for users who want Cmd/Ctrl+K itself: Tools → Options → Keyboard Shortcuts, clear or rebind `textLink`, then bind "Insert link in spreadsheet" to Cmd/Ctrl+K.
-    - `BACKLOG.md` E4 and CHANGELOG are updated to match.
+    - It never registers or overrides `textLink`: no `commands.register` call has the name `textLink`.
+2. **Live, alt keystroke path.** With a Notesheet note open and B2 selected, a
+   real OS keystroke Mod+Alt+K (System Events) opens Univer's hyperlink edit
+   panel (link text / URL inputs visible), and Joplin's markdown "Insert
+   Hyperlink" dialog is **not** showing. This holds with the grid focused and
+   while typing in the cell. Screenshot
+   `screenshots/feature-2-m19-insert-link-alt-shortcut/eval-*.png`.
+3. **Live, menu path.** Tools → "Insert link in spreadsheet" opens the same panel.
+4. **Live, no regression on markdown notes.** In a markdown note, Mod+K still
+   opens Joplin's own link dialog, and the new menu item is greyed out.
+
+_Part B (new):_
+
+5. **Research recorded.** `PROGRESS.md` Notes and the PR body record the
+   findings for research items 1–4 with citations, and the chosen in-cell
+   semantics ((i) or (ii)) with the evidence for it.
+6. **Jest, written failing first** (extend `tests/m19InsertLinkShortcut.test.ts`
+   or add `tests/m19CmdKInEditor.test.ts`). It pins the key-matching rule for
+   both platforms:
+    - It matches macOS Meta+K and Windows/Linux Ctrl+K.
+    - It does **not** match macOS Ctrl+K, Mod+Shift+K, or Mod+Alt+K (Mod+Alt+K stays Part A's accelerator path).
+    - It does not match a keydown with `isComposing` set or an auto-repeat.
+    - It does not dispatch when the grid itself is focused, where Univer's own shortcut already handles the key. This guards against a double toggle.
+    - It never touches `textLink`.
+7. **Live, macOS, real Cmd+K keystrokes** (System Events, as in Part A) open
+   Univer's link panel with the **grid**, the **in-cell editor** and the
+   **formula bar** focused. Joplin's "Insert Hyperlink" dialog does not open.
+   Joplin's log and the DevTools console show no `Received command, but editor
+is gone textLink` line for presses made inside the editor. A screenshot per
+   focus state goes under `screenshots/feature-2-m19-insert-link-alt-shortcut/`.
+8. **Live, no text loss and link applied.** Typed text survives the shortcut.
+   Entering a URL and confirming produces a cell that displays a link to that
+   URL. Cancelling leaves the typed text and adds no link.
+9. **Live, unchanged outside the editor.** Markdown notes (both editors) and
+   focus outside the Notesheet editor behave as on `main` for Mod+K.
+10. **Docs (file-content).**
+    - The README "Known gaps → Editor" Cmd/Ctrl+K bullet is rewritten. Mod+K now opens Univer's link panel in the grid, while typing in a cell, and in the formula bar. Mod+Alt+K and Tools → "Insert link in spreadsheet" remain as alternatives.
+    - The bullet states the remaining residual: with a Notesheet open but focus outside the editor, Mod+K still goes to Joplin and does nothing.
+    - The bullet states whether Windows/Linux was live-verified.
+    - The `textLink` rebind workaround is removed, unless something still needs it.
+    - `BACKLOG.md` E4 and the CHANGELOG Unreleased entry are updated to match. Released CHANGELOG entries are not edited.
+
+**Acceptance checks (black-box)**
+
+Setup: a Notesheet note (an empty one, plus `Hyperlinks-Variants.xlsx` imported)
+and a plain markdown note. "Panel" = Univer's link edit panel with its URL input
+visible. "Joplin's dialog" = Joplin's markdown "Insert Hyperlink" prompt.
+
+- **AC1** (crit 2): given a Notesheet with B2 selected and the grid focused / when the user presses Mod+Alt+K / then the panel opens at B2, and Joplin's dialog doesn't appear.
+- **AC2** (crit 2, 8): given the user has typed `abc` into B2 and is still editing / when Mod+Alt+K / then the panel opens and `abc` isn't lost.
+- **AC3** (crit 3): given B2 selected / when the user clicks Tools → "Insert link in spreadsheet" / then the panel opens for B2.
+- **AC4** (crit 4): given a markdown note is open / when the user opens the Tools menu / then "Insert link in spreadsheet" is greyed out. When Mod+Alt+K is pressed / then no panel and no new dialog appears.
+- **AC5** (crit 7): given B2 selected and the grid focused / when Mod+K / then the panel opens at B2, and Joplin's dialog doesn't appear (regression of what works on `main`).
+- **AC6** (crit 7, 8): given the user has typed `abc` into B2, caret at the end, still editing / when Mod+K / then the panel opens, `abc` is still visible (in the editor or committed to B2), and the Joplin log has no `editor is gone textLink` line for this press.
+- **AC7** (crit 8): continuing AC6 / when the user enters `https://example.org` in the panel and confirms / then, once editing ends, B2 displays `abc` as a link, hovering it shows `https://example.org`, and no other cell changed.
+- **AC8** (crit 8): given the user has typed `abc` into B2 and pressed Mod+K / when the user cancels the panel (Escape or clicking away) / then B2 still holds `abc` (still editing or committed, per the researched semantics) and has no link.
+- **AC9** (crit 7, 8): given B2 selected and the user has clicked into the formula bar and typed `xyz` / when Mod+K / then the panel opens and `xyz` isn't lost. After confirming `https://example.org`, B2 shows a link.
+- **AC10** (crit 7): given the user starts editing an empty B3 (editor open, nothing typed) / when Mod+K / then the panel opens with no error. Cancelling leaves B3 empty.
+- **AC11** (crit 7): given a non-default position — the bottom-right cell T1000 (scrolled into view), and separately AX5 on a sheet widened to 50 columns, and separately B2 on the **second** sheet tab — / when Mod+K with the grid focused, and again while editing that cell / then the panel opens anchored at that cell, inside the visible editor area.
+- **AC12** (crit 7): given the panel is open after a Mod+K / when Mod+K is pressed again / then it behaves as Mod+K does in the grid on `main` (the panel closes). At no point are two panels visible. A third press opens it again. The same holds when the presses start from in-cell editing.
+- **AC13** (crit 7): given B2:C3 selected / when Mod+K, then (after closing) Mod+Alt+K, then (after closing) Univer's toolbar link button / then all three produce the same result.
+- **AC14** (crit 7): given B2 selected in `Hyperlinks-Variants.xlsx` after import / when Mod+K is pressed and the panel is cancelled / then the fixture's existing links still render as links and still open their targets when clicked.
+- **AC15** (crit 9): given a markdown note in the Markdown editor / when Mod+K / then Joplin's dialog opens, as on `main`. Given the same note in the Rich Text editor / when Mod+K / then the same link dialog appears as on `main`.
+- **AC16** (crit 9): given a Notesheet note is open but focus is in the note list (and separately in the search box) / when Mod+K / then the result is the same as on `main` (no panel; nothing new appears).
+- **AC17** (crit 6): on macOS / given the grid focused, and separately while editing a cell / when **Control**+K (not Cmd) / then the result is the same as on `main` (the panel does not open).
+- **AC18** (crit 2, 6, 7): Windows/Linux variants of AC1, AC5, AC6, AC9 and AC15, using Ctrl+Alt+K and Ctrl+K. `NOT RUN (platform unavailable)` is allowed per the header conventions.
+- **AC19** (crit 7): throughout AC1–AC17 the DevTools console has no uncaught error and no `[Notesheet]` error.
+- **AC20** (crit 10): README "Known gaps → Editor" no longer says Mod+K fails while editing a cell. It names Mod+Alt+K and the Tools item as alternatives and states the focus-outside-the-editor residual. CHANGELOG Unreleased and `BACKLOG.md` E4 say the same.
 
 **Out of scope**
 
-- Making Cmd/Ctrl+K itself open Univer's panel (not possible from a plugin, per the research above).
-- Editing or removing an existing link via the shortcut (Univer's panel behaviour is whatever it does).
+- Making Mod+K open the panel when focus is outside the Notesheet editor.
+- Changing, re-registering or rebinding Joplin's `textLink`.
+- Other inputs inside the editor UI (find/replace box, sheet-tab rename, conditional-formatting side panel, comment editor). Mod+K there is not required to open the panel. It must not throw or lose typed text.
+- Editing or removing an existing link via the shortcut. That is whatever Univer's panel does.
 - Joplin Mobile.
 
 **Suggested fixture(s)**
 
-- `tests/fixtures/formatting-testdata/Hyperlinks-Variants.xlsx`, imported, to confirm existing links still render and click through after the change.
-- An empty notesheet for the insert case.
+- An empty notesheet (`scripts/pge/create-empty-notesheet.sh`) for the insert cases. Widen it to 50 columns for AC11 (`scripts/pge/widen-columns.js` / the feature-1 probe pattern).
+- `tests/fixtures/formatting-testdata/Hyperlinks-Variants.xlsx` (AC14), and `MultiSheet.xlsx` for the second-tab case.
 
 **Related risks**
 
-- Multiple open editor views (split / second window): the command must target the **active** handle only. Track handles in a set in `src/index.ts` and pick via `isActive`.
-- The `onMessage` dispatcher in `editorView.tsx` already handles `snapshot`-type messages. Add the new `type` branch without disturbing the snapshot-load path (M18 RTE fence work is adjacent).
+- **Double toggle.** Univer's grid shortcut and a new webview handler could both fire on one press, so the panel opens and immediately closes. Criterion 6 and AC5/AC12 guard this.
+- **Cell-edit commit semantics.** Committing or cancelling the in-cell editor around the panel can drop typed text, or write it to the wrong cell after selection moves.
+- **Electron accelerator order on Windows/Linux** may differ from macOS (research item 2).
+- **Multiple open editor views** (split view or a second window): Part A targets the **active, visible** handle only. Part B handles the key in the focused webview only.
+- The `onMessage` dispatcher in `editorView.tsx` also handles `snapshot` messages. The M18 RTE fence work is adjacent.
+- **Univer 1.x upgrade (BACKLOG F5):** re-verify `InsertLinkShortcut.id`, the preconditions, and the cell-editor/formula-bar focus detection.
 
 **Files likely touched**
 
-`src/index.ts`, `src/editorView.tsx`, new `tests/m19InsertLinkShortcut.test.ts`,
-possibly `tests/__mocks__/*`, `scripts/pge/eval-screenshot.js`, `README.md`,
-`BACKLOG.md`, `CHANGELOG.md`.
+`src/editorView.tsx`, `src/editor/insertLink.ts` (or a new pure key-matching
+helper under `src/editor/`), `src/index.ts` (Part A, already done),
+`tests/m19InsertLinkShortcut.test.ts` and/or new `tests/m19CmdKInEditor.test.ts`,
+`scripts/pge/insert-link-probe.js` / `insert-link-lib.js` (generator self-check),
+`README.md`, `BACKLOG.md`, `CHANGELOG.md`.
 
 ---
 
@@ -337,6 +541,26 @@ inside a run. All text and attribute values stay escaped. MaliciousValues-style
    bullet is removed, and `BACKLOG.md` D3 is marked done. The stale "Per-run
    formatting is out of scope per the M16 plan" comment in
    `notesheetRenderer.ts` (~L703–706) is updated.
+
+**Acceptance checks (black-box)**
+
+Setup: import fixtures through the Notesheet import UI (Tools → "Import .xlsx as
+Notesheet", or the webview Import button) and view the note in Joplin's
+**preview pane** unless a check says otherwise. Source runs, from the fixture
+XML: A1 = **"Hello"** bold + " world" plain. A2 = "Red" `#FF0000` + " and " +
+"Blue" `#0000FF` + " text". A3 = plain text "Visit example.com for more info"
+with a hyperlink.
+
+- **AC1** (crit 1, 4): given `RichTextInOneCell.xlsx` / when the user views the preview / then in A1 "Hello" is visibly heavier than " world", and " world" is regular weight.
+- **AC2** (crit 1, 4): same note / then in A2 "Red" is red, "Blue" is blue, and " and " and " text" are the default ink colour. The four pieces read as one continuous line, "Red and Blue text", with no extra spaces or line breaks.
+- **AC3** (crit 3): same note / then A3 reads "Visit example.com for more info" with the same text as on `main`. It isn't bold or coloured by a neighbouring run.
+- **AC4** (crit 1): given the same note / when the user exports it to HTML (File → Export → HTML) / then in the exported file "Hello" in A1 sits inside an element styled bold and " world" doesn't, and "Red" / "Blue" carry `#FF0000` / `#0000FF` (file-content check).
+- **AC5** (crit 4): given the same note / when the user exports it to PDF / then the PDF page shows the same bold and colour distinctions as the preview.
+- **AC6** (crit 1): given an empty notesheet / when the user types `line1`, inserts an in-cell line break (Alt+Enter; Option+Enter on macOS), types `line2`, makes only `line2` bold in the cell editor, commits, and switches to the preview / then the cell shows two lines, and only `line2` is bold.
+- **AC7** (crit 2): given `MaliciousValues.xlsx` / when previewed / then every script- or HTML-looking value appears as literal text. No alert or dialog appears, no image or element is injected, and the DevTools console shows no script error.
+- **AC8** (crit 3): given `NumberFormats.xlsx` and `FormattingSmorgasboard.xlsx` / when previewed / then every cell's text and number formatting matches `main`, including cells with no rich text.
+- **AC9** (crit 3): given `RichTextInOneCell.xlsx` open / when the user switches the note to the Rich Text editor and back (Joplin's toggle-editors button) / then the note still opens as a spreadsheet with A1–A3 unchanged (the fence survives).
+- **AC10** (crit 5): README "Known gaps → PDF / HTML export" no longer lists per-run rich text, and `BACKLOG.md` D3 is marked done (file-content check).
 
 **Out of scope**
 
@@ -427,6 +651,27 @@ selection.
    `BACKLOG.md` D4 is marked done, and the formatter header comment
    (~L345–358) is corrected.
 
+**Acceptance checks (black-box)**
+
+Setup: import `NumberFormats-Accounting.xlsx` (authored in this feature) and view
+the preview pane. "Reads" means the visible characters in order, with
+inter-token whitespace ignored. **The Excel reference screenshot
+`screenshots/excel-reference/NumberFormats-Accounting.png` comes from the
+operator** (captured in real Excel). Checks against it are
+`NOT RUN (reference missing)` until it's committed.
+
+- **AC1** (crit 2, 5): krona single-section, 1234.56 / then it reads `1,234.56 kr`, with the number first and `kr` last.
+- **AC2** (crit 2, 5): krona single-section, −1234.56 / then it reads `-1,234.56 kr`.
+- **AC3** (crit 2, 5): krona single-section, 0 / then it reads `0.00 kr`, not `kr-` or `kr0.00`.
+- **AC4** (crit 2, 5): krona 4-section, 1234.56 / −1234.56 / 0 / text `text` / then they read `1,234.56 kr`, `-1,234.56 kr`, `- kr`, and `text`.
+- **AC5** (crit 2, 5): US Accounting, 1234.56 / −1234.56 / 0 / `text` / then they read `$` … `1,234.56`, `$` … `(1,234.56)`, `$` … `-`, and `text`. `$` is always first.
+- **AC6** (crit 2): Euro suffix 1234.56 / then it reads `1,234.56 €` (unchanged from `main`).
+- **AC7** (crit 3): with the operator's Excel reference PNG committed / when the evaluator compares its preview capture to it / then for every krona row `kr` is right of the digits in both, and for every US row `$` is at the left of the cell and the digits are at the right in both.
+- **AC8** (crit 5): given `NumberFormats.xlsx` / when previewed / then B9 (krona) reads number-then-`kr`, B16 (US accounting) reads `$`-then-number, and every other cell in the sheet, including any `[Red]`/`[Blue]` section-colour cells and the unknown-pattern cell, shows the same text and colour as on `main`.
+- **AC9** (crit 5): given `NumberFormats-Accounting.xlsx` / when the note is exported to PDF / then the PDF shows the same token order as AC1–AC6.
+- **AC10** (spec, unchanged neighbour): given the same note / when opened in the **spreadsheet editor** (not the preview) / then the cells display exactly as on `main`. This feature changes the static renderer only.
+- **AC11** (crit 6): README "Known gaps → PDF / HTML export" no longer lists the krona-symbol position bullet. It lists `[$…]` locale-currency codes as a remaining gap. `BACKLOG.md` D4 is marked done (file-content check).
+
 **Out of scope**
 
 - `[$kr-41D]` locale-currency bracket codes and other `[$…]` currency tags beyond the existing `[$-409]` strip. List these as a remaining gap in README.
@@ -504,6 +749,26 @@ inset by the width of `)` so they line up with the parenthesised negatives.
    bullet is removed, `BACKLOG.md` D5 is marked done, and the
    `formatAccounting` comment (~L650–660) about the "single space"
    approximation is removed.
+
+**Acceptance checks (black-box)**
+
+Setup: same note as feature-4 (`NumberFormats-Accounting.xlsx`, preview pane).
+Pixel positions come from the evaluator's own preview capture. **The Excel
+reference screenshot `screenshots/excel-reference/NumberFormats-Accounting.png`
+comes from the operator.** Checks against it are `NOT RUN (reference missing)`
+until it's committed.
+
+- **AC1** (crit 1, 5): US Accounting column, rows 1234.56 / −1234.56 / 0 / then in all three rows `$` hugs the cell's left edge (left padding only).
+- **AC2** (crit 2, 3, 5): same column / then the right edge of the last digit of `1,234.56` (positive row) and the right edge of the last digit inside `(1,234.56)` (negative row) are within 3 px of each other horizontally. The positive row has visible blank space where the negative row has `)`.
+- **AC3** (crit 1, 5): US zero row / then the `-` sits left of where the positive row's last digit ends, by roughly two digit widths. It isn't flush against the right border.
+- **AC4** (crit 1, 5): krona rows / then the content is right-aligned with `kr` last, and there's a small blank gap (about one `-` wide) between `kr` and the cell's right border.
+- **AC5** (crit 1): every accounting cell / then no pad or fill characters are visible: no stray `)` on positive rows, and no `_`, `*` or `?` anywhere.
+- **AC6** (crit 1, 4): visible text with blanks ignored is the same as feature-4's AC1–AC6 (the two features compose).
+- **AC7** (spec, non-default dimension): given the US Accounting column widened in the editor to about twice its width / when the user switches back to the preview / then `$` still hugs the left edge, the digits still hug the right edge, and the gap between them grew.
+- **AC8** (crit 5): given the same note / when exported to PDF / then the PDF shows the AC1/AC2 alignment (`pdftotext -layout` output or a PDF page capture).
+- **AC9** (risk, unchanged neighbour): given `MergedCellsAndAlignment.xlsx`, and the non-accounting rows of `NumberFormats.xlsx` / when previewed / then wrapped cells, merged cells and row heights look the same as on `main`, and accounting rows are single-line height.
+- **AC10** (crit 3): with the operator's Excel reference PNG committed / then the AC2 alignment property also holds in the Excel reference (it confirms that is Excel's behaviour).
+- **AC11** (crit 6): README "Known gaps → PDF / HTML export" no longer lists the `_X` underscore-fill bullet. It lists non-space `*X` fill as a remaining gap. `BACKLOG.md` D5 is marked done (file-content check).
 
 **Out of scope**
 
@@ -595,6 +860,30 @@ emoji fonts.
    bullet lists **only** the unsupported sets. The README "Compatibility" /
    renderer paragraph (~L48: "only iconSet is not yet rendered") is corrected,
    and `BACKLOG.md` D2 is updated.
+
+**Acceptance checks (black-box)**
+
+Setup: import fixtures and view the preview pane. In
+`ConditionalFormatting-Variants.xlsx`, column I is I2:I11 = 0, 10, …, 90 with
+3Arrows at percent thresholds 0/33/67 (`gte`). That puts I2–I4 (0–20) in the
+bottom band, I5–I8 (30–60) in the middle band, and I9–I11 (70–90) in the top
+band. `screenshots/excel-reference/ConditionalFormatting-Variants.png` is already
+committed. **`screenshots/excel-reference/IconSets-Variants.png` comes from the
+operator.** Checks against it are `NOT RUN (reference missing)` until it's
+committed.
+
+- **AC1** (crit 1, 5): `ConditionalFormatting-Variants.xlsx` / then I9, I10 and I11 each show a green up-arrow immediately left of the number.
+- **AC2** (crit 1, 5): then I5–I8 show a gold/yellow right-arrow. Boundary cells: I5 (30, the lowest middle value) and I8 (60, the highest middle value).
+- **AC3** (crit 1, 5): then I2–I4 show a red down-arrow. Boundary cells: I2 (0, the minimum) and I4 (20, the highest bottom value).
+- **AC4** (crit 2): the arrow colours in the evaluator's capture match the same cells in `ConditionalFormatting-Variants.png` (green, gold and red families; canvas anti-aliasing tolerance applies).
+- **AC5** (crit 3, 5): `IconSets-Variants.xlsx` / then each in-scope set's column (3Arrows, 3ArrowsGray, 3TrafficLights1, 3TrafficLights2, 3Signs, 3Symbols, 3Symbols2, 3Flags) shows that set's three glyphs. The lowest values show the "low" icon and the highest values show the "high" icon, matching the fixture's thresholds.
+- **AC6** (crit 3, out of scope): in the `showValue="0"` column / then values are **still shown** next to the glyphs (expected until the importer follow-up lands).
+- **AC7** (crit 3): with the operator's `IconSets-Variants.png` committed / then glyph shapes and colours per column match the Excel reference by colour family.
+- **AC8** (crit 4): given a workbook with a `5Rating` icon set and one with an unknown icon-set name (the evaluator may author these with openpyxl under its own folder) / when imported and previewed / then the values show with **no** glyph, the import succeeds, and the console has no error.
+- **AC9** (crit 5): `ConditionalFormatting-Variants.xlsx` / then the colour-scale (A), data-bar (C) and cell-is (E) columns, and any other conditional-formatting ranges on the sheet, look the same as on `main`.
+- **AC10** (spec): given the same note / when exported to PDF / then the arrows appear in colour in the PDF, not as blank boxes or emoji.
+- **AC11** (unchanged neighbour): row heights in column I are unchanged from `main`, and no glyph is taller than its row. The spreadsheet **editor's** own canvas icons look as on `main`.
+- **AC12** (crit 6): README no longer says "only iconSet is not yet rendered". The iconSet Known-gaps bullet lists only the unsupported sets. `BACKLOG.md` D2 is updated (file-content check).
 
 **Out of scope (explicit list)**
 
@@ -708,6 +997,23 @@ references a part Notesheet couldn't resolve…"), and fix the stale comments
    The README "Known gaps" import section is updated. The remaining residual is
    unresolvable/corrupt table parts, which now skip the table instead of
    failing the import.
+
+**Acceptance checks (black-box)**
+
+Setup: fixtures (a)–(d) from criterion 1. Import each through the Notesheet
+import UI in the running Joplin. "Styled header band" = the table's header row
+shows its table-style fill.
+
+- **AC1** (crit 2, 4): (a) renamed table part / when imported / then the import finishes with "Imported.", and both tables appear, each with a styled header band, on the sheet tab that owns it in the source.
+- **AC2** (crit 2): (b) `./`-prefixed target / when imported / then the import succeeds and the table is present on its sheet.
+- **AC3** (crit 2): (c) dangling `rId`, and separately a relationship whose part is missing / when imported / then the import succeeds and no error dialog appears. The broken table is absent, and the remaining tables are present.
+- **AC4** (crit 2, 4): (d) sheetId ≠ filename / when imported / then each table appears on the tab whose **name** matches its source sheet, not on the tab with the same position or number.
+- **AC5** (crit 5, HARD RULE): given (d) imported / when the user exports it to `.xlsx` (`scripts/pge/eval-export.js`) / then the exported file contains one `xl/tables/table*.xml` per source table, and each `<table ref>` equals the source `ref`. Each is referenced from the worksheet whose `workbook.xml` sheet name matches the source owner, and `[Content_Types].xml` has an Override for every table part.
+- **AC6** (crit 5): given the exported file from AC5 / when the user imports it again / then the same tables appear on the same named tabs.
+- **AC7** (crit 4): during AC1–AC6 the DevTools console has no `Cannot read properties of undefined (reading 'name')` and no `[Notesheet]` import error.
+- **AC8** (crit 3, risk): `FormulasAndStructuredRefs.xlsx`, `LargeWorkbook.xlsx`, `MultiSheet.xlsx` and a workbook with no tables (`NumberFormats.xlsx`) / when imported / then the result looks as on `main`: same tabs, same tables, same header bands.
+- **AC9** (risk): the full fixture sweep (`scripts/pge/bulk-import-check.cjs` over `tests/fixtures/`) reports zero import failures.
+- **AC10** (crit 6): `BACKLOG.md` and README Known gaps describe the real cause (table-part relationship form), not "multi-table workbooks". The proposed milestone-row wording is in the PR, not committed (file-content check).
 
 **Out of scope**
 
@@ -825,6 +1131,25 @@ file then resolves its colours against its own theme again.
     font and fill theme references. The criterion-7 screenshot shows the fill
     in the Aptos accent family.
 
+**Acceptance checks (black-box)**
+
+Setup: import `ThemeTintedBorders-Aptos.xlsx` (authored in this feature; the
+Aptos theme has accent1 `#156082`) in the running Joplin. Export through
+`scripts/pge/eval-export.js` and inspect the exported `.xlsx`.
+
+- **AC1** (crit 7): given the fixture open in the editor / then the theme-4-tinted border cells show a teal-blue colour derived from `#156082`, not the Office-2007 `#4F81BD` blue.
+- **AC2** (crit 11): then the theme-coloured fill shows the Aptos accent family, and the theme-coloured font shows the colour its theme reference resolves to under the fixture's own theme.
+- **AC3** (crit 3, 6, 9, 11, HARD RULE): given the fixture imported and **not edited** / when exported / then the exported `xl/styles.xml` has, for those cells: `theme="4"` with tint `0.39997…`; `theme="5"` with the negative tint; `theme="1"` with no tint; the theme font colour and the theme fill `fgColor` matching the source to 1e-6. None of these colours has an `rgb` attribute.
+- **AC4** (crit 3): same export / then the exported `xl/theme/theme1.xml` colour scheme equals the source's.
+- **AC5** (crit 4): given one side of a themed border recoloured to red in the editor's border tool / when exported / then that side is `rgb="FFFF0000"`, and the other untouched sides keep their theme references.
+- **AC6** (crit 10): given the themed font recoloured and the themed fill recoloured in the editor / when exported / then those two colours are `rgb`, and untouched themed colours keep theme references.
+- **AC7** (risk): given a row inserted above the themed cells in the editor / when exported / then every exported theme reference sits on a cell whose on-screen colour it reproduces. A moved cell either keeps the correct reference or falls back to `rgb`. No cell ever gets a different colour.
+- **AC8** (crit 5, 10): given the AC3 export / when it is imported again / then the borders, font and fill look the same as after the first import.
+- **AC9** (repeated action): given the fixture imported / when the note is closed, reopened (and Joplin restarted once), then exported / then AC3 still holds (the theme references survive saving the note).
+- **AC10** (risk): given `FormulasAndStructuredRefs.xlsx` (table-style borders) / when exported / then its table-cell borders are written as on `main`, with no new theme references.
+- **AC11** (crit 8, regression): `BordersAndCellColors.xlsx` row 15 looks the same as on `main` in the editor, and its export carries the source theme reference.
+- **AC12** (crit 8): README "Known gaps → .xlsx import / export" no longer lists theme-tinted borders as lost. Only the residual remains (edited colours export as RGB; workbooks without a theme part). `BACKLOG.md` E2 is updated (file-content check).
+
 **Out of scope**
 
 - Workbooks with no theme part (the palette is null). Themed borders stay dropped as today. Document it.
@@ -851,9 +1176,108 @@ regression check.
 
 ---
 
+### feature-10-m19-new-spreadsheet-shortcut-conflict
+
+_Operator decision 2026-10-15. Spotted during feature-2 (`PROGRESS.md` Notes,
+"Out-of-scope bug spotted"). Builds **before** feature-9 (see "Build order")._
+
+**Spec**
+
+The New Spreadsheet command (`newSpreadsheet`, Tools menu item
+`notesheetNewMenu` in `src/index.ts`) currently ships the default accelerator
+`CmdOrCtrl+Shift+S`. That is also Joplin's default for `focusElementSideBar`
+("Focus sidebar"): `laurent22/joplin` `packages/lib/services/KeymapService.ts`
+L45 `Shift+Cmd+S` (macOS table) and L100 `Ctrl+Shift+S` (Windows/Linux table)
+at tag `v3.7.21` (`e41516e6`). Two app-menu items on one accelerator have
+undefined behaviour, so one of the two commands silently loses its shortcut.
+This feature gives New Spreadsheet a new default shortcut that is verified free,
+so pressing it reliably creates a spreadsheet note and Joplin's own Focus-sidebar
+shortcut works again. Tools → New Spreadsheet and both toolbar buttons stay as
+they are. This is a user-visible shortcut change, so it is documented in README
+and CHANGELOG.
+
+**Choosing the accelerator (required before coding).** A candidate passes only
+if **all** of these hold, each cited with a file path and commit SHA or doc URL:
+
+1. Unbound in **both** of Joplin's default keymap tables (`KeymapService.ts`, darwin and default).
+2. Not hard-coded in `packages/app-desktop/gui/MenuBar.tsx` (e.g. the `CommandOrControl+0/Plus/=/-` zoom items) or in an Electron role menu Joplin installs.
+3. Not bound by any Univer shortcut in the installed `@univerjs/*` packages, so the key still reaches Joplin's menu when the grid or cell editor has focus. Pin this in Jest, the same way feature-2 pins `CmdOrCtrl+Alt+K`.
+4. Not a macOS system-reserved shortcut and not a common Windows/Linux desktop-environment shortcut.
+5. Not `CmdOrCtrl+Alt+K` (feature-2) or any other Notesheet accelerator.
+
+Candidates, in order. The planner checked only rule 1 at `v3.7.21`, and both
+are free in both tables:
+
+1. `CmdOrCtrl+Shift+Alt+S`
+2. `CmdOrCtrl+Shift+Alt+N`
+
+The generator picks the first candidate that passes rules 1–5 and records why.
+If neither passes, it **stops** and reports the alternatives it checked, and the
+operator picks.
+
+**Acceptance criteria**
+
+1. **Verification recorded.** The PR body and `PROGRESS.md` Notes cite rules 1–5 for the chosen accelerator, and for any rejected candidate say which rule it failed.
+2. **Jest, written failing first** (new `tests/m19NewSpreadsheetShortcut.test.ts`, or extend `tests/m19InsertLinkShortcut.test.ts`):
+    - the `newSpreadsheet` menu item is created with the chosen accelerator;
+    - no Notesheet menu item uses `CmdOrCtrl+Shift+S`;
+    - the chosen accelerator is absent from a pinned copy of Joplin's two default keymap tables (citation inline) and from every installed Univer binding;
+    - it differs from `CmdOrCtrl+Alt+K`.
+3. **Live, new shortcut works.** A real OS keystroke of the new shortcut creates and opens a new spreadsheet note. It works with focus in a markdown note, in the note list, and in a Notesheet grid.
+4. **Live, conflict gone.** Shift+Cmd+S (macOS) moves focus to the sidebar, which is Joplin's default, and creates **no** note.
+5. **Live, entry points intact.** Tools → New Spreadsheet shows the new shortcut and creates a note. The editor-toolbar and note-toolbar New Spreadsheet buttons still create one.
+6. **Docs (file-content).**
+    - README (the install paragraph ~L9 and the feature paragraph ~L15) names the new shortcut and no longer says `Cmd/Ctrl+Shift+S` for New Spreadsheet.
+    - The CHANGELOG **Unreleased** section has a "Changed" entry. It names the old and new shortcut, gives the reason (clash with Joplin's Focus sidebar), and explains how to rebind in Keyboard Shortcuts.
+    - Released CHANGELOG entries (e.g. the `Cmd/Ctrl+Shift+S` mention ~L25) are history and are **not** edited.
+
+**Acceptance checks (black-box)**
+
+"New shortcut" = the accelerator chosen above (Mod variant per platform).
+"Creates a spreadsheet note" = exactly one new note appears in the note list and
+opens in the spreadsheet editor.
+
+- **AC1** (crit 3): given a markdown note open with the cursor in the Markdown editor / when the user presses the new shortcut / then a spreadsheet note is created and opened.
+- **AC2** (crit 3): given focus in the note list / when the new shortcut is pressed / then a spreadsheet note is created.
+- **AC3** (crit 3): given a Notesheet note open with the grid focused / when the new shortcut is pressed / then a spreadsheet note is created, and the original sheet's contents are unchanged when it's reopened.
+- **AC4** (crit 3): given the user has typed `abc` into B2 of a Notesheet and is still editing / when the new shortcut is pressed / then `abc` isn't lost: reopening the original note shows `abc` in B2. It's acceptable for the shortcut to do nothing while a cell is being edited. Whichever happens, the generator records which.
+- **AC5** (crit 4): given a markdown note open / when the user presses Shift+Cmd+S (macOS) / then keyboard focus moves to the sidebar, which is Joplin's Focus-sidebar behaviour, and no new note is created.
+- **AC6** (crit 3, repeated action): given focus in the note list / when the new shortcut is pressed twice, a second or so apart / then exactly two new spreadsheet notes exist, one per press, with no duplicates.
+- **AC7** (crit 5): when the user opens the Tools menu / then "New Spreadsheet" shows the new shortcut. Clicking it creates a spreadsheet note. Clicking the New Spreadsheet button on the editor toolbar and on the note toolbar each creates one too.
+- **AC8** (crit 5): when the user opens the Keyboard Shortcuts settings / then "New Spreadsheet" is listed with the new shortcut and can be rebound there.
+- **AC9** (crit 3, unchanged neighbours): Joplin's nearby defaults still do their own thing and create no spreadsheet note: Cmd+S (sync), Option+Cmd+S (toggle sidebar) on macOS, Shift+Cmd+L (focus note list). In a Notesheet, Mod+Alt+K still opens the link panel (feature-2).
+- **AC10** (crit 3, 4): Windows/Linux variants of AC1, AC2 and AC5 (Ctrl / Ctrl+Shift+S). `NOT RUN (platform unavailable)` is allowed per the header conventions.
+- **AC11** (crit 6): README no longer says `Cmd/Ctrl+Shift+S` for New Spreadsheet and names the new shortcut. CHANGELOG Unreleased has the "Changed" entry naming old → new. The released entry ~L25 is byte-identical to `main`.
+
+**Out of scope**
+
+- Migrating users who already rebound New Spreadsheet in Keyboard Shortcuts. Joplin keeps user overrides; the generator confirms this in research and notes it in the CHANGELOG entry if relevant.
+- Changing or removing Joplin's `focusElementSideBar` binding.
+- Any other Notesheet command or shortcut.
+
+**Suggested fixture(s)**
+
+None needed. Use an existing markdown note, an empty notesheet
+(`scripts/pge/create-empty-notesheet.sh`), and the note list.
+
+**Related risks**
+
+- A chord with Alt/Option can type a special character into a focused text input on macOS. Confirm the menu accelerator wins and nothing is typed (AC1, AC4).
+- Univer could add a binding for the chosen chord in 1.x (BACKLOG F5). The Jest pin from criterion 2 catches that on upgrade.
+- Leftover evaluator or generator notes created by AC1–AC7 clutter the dev profile. Delete them after the run (dev profile only).
+
+**Files likely touched**
+
+`src/index.ts`, new or extended `tests/m19*.test.ts`, `README.md`, `CHANGELOG.md`
+(Unreleased only), optionally `scripts/pge/` for a keystroke probe.
+
+---
+
 ### feature-9-m19-closeout-docs-and-regression
 
 **Spec**
+
+_Runs last, after feature-10 (see "Build order" at the top)._
 
 With all M19 features merged on the branch, the docs say what the plugin now
 does, and the full suite and the live smoke sweep are green. This feature adds
@@ -863,10 +1287,21 @@ inventory agree with the shipped code.
 **Acceptance criteria**
 
 1. **File-content checks on docs.**
-    - README "Known gaps" no longer lists anything fixed in features 1–8. The remaining residuals are listed exactly once: Cmd/Ctrl+K owned by Joplin, unsupported icon sets, `*X` non-space fill, `[$…]` currency tags, theme refs on fonts/fills, unresolvable table parts.
+    - README "Known gaps" no longer lists anything fixed in features 1–8 or 10. The remaining residuals are listed exactly once:
+        - Mod+K with focus outside the Notesheet editor still goes to Joplin, plus Windows/Linux live-verification status if it wasn't done (feature-2).
+        - Unsupported icon sets.
+        - `*X` non-space fill.
+        - `[$…]` currency tags.
+        - Edited colours export as RGB, and workbooks without a theme part drop themed colours (feature-8, which now covers borders, fonts and fills).
+        - Unresolvable table parts.
+        - Any residual feature-2 or feature-10 reported and the operator accepted.
+
+        _(Updated 2026-10-15: the earlier list said "Cmd/Ctrl+K owned by Joplin" and "theme refs on fonts/fills". Both are now covered by feature-2 Part B and feature-8's scope extension.)_
+
     - `BACKLOG.md` groups D–E reflect done or residual status.
     - CHANGELOG has an M19 entry.
     - The README milestone row is **not** flipped to ✅ by the generator. Proposing that is fine; the operator decides.
+
 2. **Every pin flip accounted for.** `git diff main -- tests/` shows only the
    allowed edits in the table at the top of this plan, plus new files.
 3. **Gate.** `npm run typecheck && npm run lint && npm test` all pass. The test
@@ -880,6 +1315,18 @@ inventory agree with the shipped code.
 5. **No employer / company-specific references** anywhere in the diff (public
    repo): no corporate hostnames, internal tool names, work aliases, or work
    e-mail addresses. Commits use the repo-local noreply identity.
+
+**Acceptance checks (black-box)**
+
+- **AC1** (crit 1): README "Known gaps" lists nothing fixed by features 1–8 or 10. Each residual from criterion 1 appears exactly once (file-content check).
+- **AC2** (crit 1): `BACKLOG.md` groups D–E show done or residual status for D2–D5 and E1–E4. CHANGELOG has an M19 entry that mentions Mod+K in the editor and the New Spreadsheet shortcut change.
+- **AC3** (crit 1): the README milestone row for M19 is **not** marked ✅ by the generator.
+- **AC4** (crit 2): `git diff main -- tests/` shows only new files plus the edits in the allowed-edit table.
+- **AC5** (crit 3): `npm run typecheck`, `npm run lint` and `npm test` pass on the commit under test. The test count is ≥ `main`'s count plus the new m19 tests.
+- **AC6** (crit 4): `scripts/pge/bulk-import-check.cjs` over every fixture under `tests/fixtures/` reports zero failures.
+- **AC7** (crit 4): preview-pane captures of `FormattingSmorgasboard.xlsx` and `ConditionalFormatting-Variants.xlsx` show the same table bands, CF fills and charts as their M18 evaluator captures, plus the M19 additions (icon glyphs, rich runs) where expected.
+- **AC8** (crit 1): with a fresh deploy, the Tools menu shows "New Spreadsheet" (with feature-10's shortcut), "Import .xlsx as Notesheet", and "Insert link in spreadsheet" (Mod+Alt+K), and each one works once.
+- **AC9** (crit 5): `git log main..HEAD` and `git diff main` contain no employer or company-specific hostnames, tool names, aliases or work e-mail addresses, and every commit author e-mail is the repo-local noreply address.
 
 **Out of scope**
 
@@ -904,5 +1351,9 @@ anchored to external ground truth: source XML, a cited spec, or a real-Excel
 reference PNG. They are never anchored to our own emit, and any export outcome
 gets a file-content check on the exported artifact. Each feature also gets
 **Out of scope**, **Suggested fixture(s)**, and **Related risks**, plus the
-allowed-edit table for existing tests. The generator works on the
-lowest-numbered feature with `passes: false` in `test-results.json`.
+allowed-edit table for existing tests. Since 2026-10-15 every feature also gets
+**Acceptance checks (black-box)**: given/when/then in user-visible terms, with
+stable `ACn` ids mapped to criteria and the boundaries listed explicitly. The
+generator never edits them. The generator works on the first feature with
+`passes: false` in the plan's stated build order. Without a stated order, that
+is the lowest-numbered one.

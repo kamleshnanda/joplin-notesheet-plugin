@@ -78,6 +78,12 @@
         "evaluator_verdict": null,
         "last_attempted_at": null
     },
+    "feature-10-m19-new-spreadsheet-shortcut-conflict": {
+        "passes": false,
+        "evidence": null,
+        "evaluator_verdict": null,
+        "last_attempted_at": null
+    },
     "feature-9-m19-closeout-docs-and-regression": {
         "passes": false,
         "evidence": null,
