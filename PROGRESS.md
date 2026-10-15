@@ -3,7 +3,7 @@
 This file is the generator's session-to-session handoff. Update after
 every feature.
 
-**Last verified against the repo: 2026-10-13** (`main` @ `9ec4258`).
+**Last verified against the repo: 2026-10-14** (`main` @ `2edd4b6`).
 
 > **Staleness rule for agents.** If the "Last verified" date above is more
 > than one day old, do NOT trust `## In progress` / `## Next` as-is. First
@@ -15,6 +15,13 @@ every feature.
 > wins over this file whenever they disagree.
 
 ## Done
+
+- **1.0.1 released** (2026-10-14) — PR #45 (`7ef5994`), tag `v1.0.1`, GitHub
+  release "Notesheet 1.0.1", `joplin-plugin-notesheet@1.0.1` on npm (`latest`).
+  The `.jpl` on npm, on the release and local build #36 are byte-identical
+  (SHA-256 `0e9d76a2…`). Then PR #46 (`2edd4b6`): Claude Code commit/PR
+  attribution turned off in `.claude/settings.json`; repo-local git identity is
+  the GitHub noreply address (no Amazon identity in new commits).
 
 - **M20 — Codebase health** (2026-10-13, PR #44, squash `9ec4258`;
   README row ✅). Merged `main` re-verified: clean `npm ci`, prod audit 0,
@@ -928,20 +935,17 @@ every feature.
 
 ## In progress
 
-- **Release 1.0.1** (M20 security release), branch `release-1.0.1`:
-  version bump + CHANGELOG. After merge: tag `v1.0.1`, GitHub release with
-  the `.jpl`, `npm publish`.
+- **M19 — Static-render & import gaps** (`BACKLOG.md` groups D–E), branch
+  `m19-render-import-gaps`, started 2026-10-14. Operator scope: D2, D3,
+  D4+D5, E1, E2, E3, E4 (all seven). D1 dataBar already shipped in M18.
+  E3 is OURS now: upstream closed Univer #6988 as by-design (2026-06-05) and
+  advises overriding the shortcut.
 
 ## Next
 
-1. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
-   D2 iconSet glyphs, D3 per-run rich text in HTML, D4/D5 accounting
-   formats, E1 multi-table workbooks (`xlsx-multi-table-unsupported`),
-   E2 theme-tinted borders, E3/E4 keybinding bugs (E3 is upstream Univer
-   #6988). D1 dataBar already shipped in M18 — drop it from `BACKLOG.md`
-   when M19 is planned.
-2. **M21 — in-cell (rich-value) image round-trip** (`richData` /
+1. **M21 — in-cell (rich-value) image round-trip** (`richData` /
    `_localImage`; fixes the `#VALUE!` placeholder; M18 round-3 item #2).
+2. **Univer 0.23 → 1.x upgrade** (`BACKLOG.md` F5) — own milestone, phased.
 
 Order and per-item scope are the operator's call at planning time.
 

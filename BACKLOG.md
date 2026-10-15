@@ -41,7 +41,7 @@ _Last collected: 2026-06-11 (after M17 + #33 merged); milestone split added 2026
 
 The Markdown-It renderer reads the snapshot without booting Univer; these have no static-HTML equivalent yet.
 
-- **D1 — dataBar CF rules**: value renders, no bar fragment. _Source: README._
+- ✅ **D1 — dataBar CF rules** — _shipped in M18 (`notesheetRenderer.ts` dataBar → linear-gradient)._
 - **D2 — iconSet CF rules**: value renders, no glyph. _Source: README._
 - **D3 — Per-run rich text in HTML**: bold + plain runs in one cell render as plain text. _Source: README._
 - **D4 — Krona-pattern accounting symbol position**: `_-* #,##0.00 "kr"_-` — symbol placed before the number, Excel puts it after. _Source: README._
@@ -51,7 +51,7 @@ The Markdown-It renderer reads the snapshot without booting Univer; these have n
 
 - **E1 — Multi-sheet workbooks with a named table on each sheet** trip exceljs's table-reduce (`xlsx-multi-table-unsupported`). Workaround: one sheet for all tables. A real import blocker for some workbooks. _Source: README._
 - **E2 — Theme-tinted borders** (`{theme, tint}`) re-resolve against the active clrScheme on round-trip, not the source workbook theme. _Source: README._
-- **E3 — Left-arrow in col A / Up-arrow in row 1** jumps cursor to bottom-right (upstream Univer bug [#6988](https://github.com/dream-num/univer/issues/6988)). Not ours to fix; track upstream. _Source: README._
+- **E3 — Left-arrow in col A / Up-arrow in row 1** jumps cursor to bottom-right. Upstream closed [#6988](https://github.com/dream-num/univer/issues/6988) as **by design** (2026-06-05) and advises overriding the shortcut, so this is ours to fix. _Source: README._
 - **E4 — Cmd/Ctrl+K** opens Joplin's markdown-link dialog instead of Univer's. Host keybinding conflict. _Source: README._
 
 ## F. Codebase health (non-functional — first-class delivery) — M20
