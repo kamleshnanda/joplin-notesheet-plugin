@@ -1503,7 +1503,10 @@ async function main() {
                     if (regionKind === 'arrowEdgeA1') {
                         arrowEdge = await pressLeftAtA1(page, captureWebview, captureCanvas);
                         console.error(
-                            `eval-screenshot: arrowEdgeA1 ${arrowEdge.before?.range} --ArrowLeft--> ${arrowEdge.after?.range}`,
+                            `eval-screenshot: arrowEdgeA1 ${arrowEdge.before?.range} --ArrowLeft--> ${arrowEdge.after?.range} startOk=${arrowEdge.startOk} stayedOnA1=${arrowEdge.stayedOnA1}` +
+                                (arrowEdge.startOk === false
+                                    ? ' (INVALID: did not start on A1, clamp not exercised)'
+                                    : ''),
                         );
                     }
                     let sampleFrame = captureWebview;
@@ -1714,7 +1717,18 @@ async function pressLeftAtA1(page, frame, canvasSel) {
         await page.keyboard.press('ArrowLeft');
         await frame.waitForTimeout(600);
         const after = await read();
-        return { key: 'ArrowLeft', before, after, stayedOnA1: after.range === 'A1' };
+        // Only meaningful if the press really started on A1: the focusing click
+        // can override activate(), and ArrowLeft from B1 also lands on A1, so
+        // without this guard a never-exercised clamp would read as a pass.
+        // Same guard as arrow-edge-probe.js (`startOk`).
+        const startOk = before.range === 'A1';
+        return {
+            key: 'ArrowLeft',
+            before,
+            after,
+            startOk,
+            stayedOnA1: startOk && after.range === 'A1',
+        };
     } catch (e) {
         return { error: e.message };
     }
