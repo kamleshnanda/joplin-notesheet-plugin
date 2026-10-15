@@ -113,6 +113,7 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-7-m17-chart-svg-html-export-jest': 'PGE M17 chart f7 eval ',
     'feature-8-m17-chart-preview-pane-pge-smoke': 'PGE M17 chart f8 eval ',
     'feature-1-m19-arrow-keys-clamp-at-sheet-edge': 'PGE M19 F1 arrow eval ',
+    'feature-2-m19-insert-link-alt-shortcut': 'PGE M19 F2 insert-link eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -170,6 +171,13 @@ const REGION_BY_FEATURE = {
     // before/after. Fixed: the highlight stays on A1 (top-left). On `main`
     // Univer wraps to the bottom-right cell and scrolls there.
     'feature-1-m19-arrow-keys-clamp-at-sheet-edge': 'arrowEdgeA1',
+    // M19 feature-2 (E4): Univer's insert-link panel opened by a REAL
+    // Cmd+Option+K (System Events keystroke to the dev-profile Joplin) with B2
+    // active. The panel is a DOM overlay above the canvas, so this region
+    // screenshots the whole Joplin page (it also shows that Joplin's own
+    // "Insert Hyperlink" prompt is absent). The sidecar's `insertLink` records
+    // the start-state guard and the outcome (scripts/pge/insert-link-lib.js).
+    'feature-2-m19-insert-link-alt-shortcut': 'insertLinkPanel',
 };
 
 function discoverApiPort() {
@@ -1509,6 +1517,17 @@ async function main() {
                                     : ''),
                         );
                     }
+                    let insertLink = null;
+                    if (regionKind === 'insertLinkPanel') {
+                        insertLink = await pressAltKAtB2(page, captureWebview);
+                        console.error(
+                            `eval-screenshot: insertLinkPanel startOk=${insertLink.startOk} panelOpen=${insertLink.after?.panelOpen} joplinPrompt=${insertLink.joplinPromptAfter} panelMs=${insertLink.panelOpenedAfterMs}` +
+                                (insertLink.error ? ` error=${insertLink.error}` : '') +
+                                (insertLink.startOk === false
+                                    ? ' (INVALID: start state wrong, shortcut not exercised)'
+                                    : ''),
+                        );
+                    }
                     let sampleFrame = captureWebview;
                     for (let attempt = 0; attempt < 6; attempt++) {
                         try {
@@ -1536,6 +1555,7 @@ async function main() {
                         );
                     }
                     if (arrowEdge) pixelSummary = { ...(pixelSummary ?? {}), arrowEdge };
+                    if (insertLink) pixelSummary = { ...(pixelSummary ?? {}), insertLink };
                 }
             }
         }
@@ -1549,6 +1569,8 @@ async function main() {
         //   - fallback: whole page.
         if (regionKind === 'previewPane' && previewLocator) {
             await previewLocator.screenshot({ path: out });
+        } else if (regionKind === 'insertLinkPanel') {
+            await page.screenshot({ path: out, fullPage: false });
         } else if (regionKind === 'floatDomChart' && captureWebview) {
             // Try the Notesheet root first (created in editorView.tsx as
             // #notesheet-univer-root). If for any reason it's not there
@@ -1621,7 +1643,9 @@ async function main() {
                               ? 'editor canvas + float-DOM (full #notesheet-univer-root container; chart-palette histogram derived from saved PNG)'
                               : regionKind === 'arrowEdgeA1'
                                 ? 'editor canvas after a real ArrowLeft at A1 (arrowEdge.before/after = facade selection; row-0 slab sampled)'
-                                : 'row-0 (top 80px slab of main canvas)';
+                                : regionKind === 'insertLinkPanel'
+                                  ? 'whole Joplin page after a real Cmd+Option+K at B2 (insertLink = start guard + Univer panel / Joplin prompt state; row-0 slab sampled)'
+                                  : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(
                 sidecar,
                 JSON.stringify(
@@ -1731,6 +1755,35 @@ async function pressLeftAtA1(page, frame, canvasSel) {
         };
     } catch (e) {
         return { error: e.message };
+    }
+}
+
+// M19 feature-2: real Cmd+Option+K at B2 (System Events keystroke to the
+// dev-profile Joplin, never executeCommand). Leaves the panel OPEN for the
+// screenshot. Only meaningful if the start state was right (B2 active, panel
+// closed, no Joplin prompt, Joplin frontmost, focus in the editor iframe) —
+// otherwise startOk is false and the capture must not be read as a pass.
+async function pressAltKAtB2(page, frame) {
+    const lib = require('./insert-link-lib');
+    try {
+        if (process.platform !== 'darwin') return { error: 'macOS only (System Events)' };
+        const pid = lib.devJoplinPid(); // throws if a non-dev Joplin is running
+        const k = lib.univerConstants();
+        const prep = await lib.prepareB2(page, frame, pid, k, 'canvas');
+        const r = { key: 'Cmd+Option+K', univer: k, ...prep };
+        if (!prep.startOk) return r;
+        lib.pressK(pid, lib.CMD_OPTION);
+        r.panelOpenedAfterMs = await lib.waitFor(
+            page,
+            async () => (await lib.webviewState(frame, k.linkPlaceholder)).panelOpen,
+        );
+        r.after = await lib.webviewState(frame, k.linkPlaceholder);
+        r.joplinPromptAfter = await lib.joplinPromptVisible(page);
+        r.panelShownNoJoplinPrompt =
+            r.after.panelOpen && !r.joplinPromptAfter && r.after.commandLog.includes(k.openPanelId);
+        return r;
+    } catch (e) {
+        return { startOk: false, error: e.message };
     }
 }
 
