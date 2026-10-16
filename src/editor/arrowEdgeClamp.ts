@@ -139,18 +139,66 @@ export function rangeMovedByMoveSelection<T>(rangesInSelectionOrder: readonly T[
         : undefined;
 }
 
+// A plain arrow move we judge at all. Ctrl/Cmd+arrow (JumpOver.moveGap →
+// findNextGapRange, which never wraps) and formula-editor moves keep Univer's
+// own behaviour. Any other jumpOver value goes through findNextRange and can
+// wrap, so it is treated like a plain arrow.
+function plainArrowParams(params: unknown, jumpOverGap: number): MoveSelectionParamsLike | null {
+    if (!params || typeof params !== 'object') return null;
+    const p = params as MoveSelectionParamsLike;
+    if (p.jumpOver === jumpOverGap) return null;
+    if (p.extra !== undefined && p.extra !== null) return null;
+    return p;
+}
+
+// True when the range already covers the whole sheet along the movement axis:
+// every row for Up/Down, every column for Left/Right. Univer's getStartRange
+// keeps that full extent (sheets-ui 0.23 lib/es ~L5372), so findNextRange always
+// runs off the sheet: it wraps on main, and the edge veto alone would turn the
+// key into a dead key. These moves are collapsed to the active cell instead.
+function spansMovementAxis(
+    direction: DirectionEnum,
+    dir: unknown,
+    r: ArrowEdgeRange,
+    sheet: ArrowEdgeSheet,
+): boolean {
+    if (dir === direction.UP || dir === direction.DOWN) {
+        return r.startRow <= 0 && r.endRow >= sheet.getRowCount() - 1;
+    }
+    if (dir === direction.LEFT || dir === direction.RIGHT) {
+        return r.startColumn <= 0 && r.endColumn >= sheet.getColumnCount() - 1;
+    }
+    return false;
+}
+
+/**
+ * Operator decision (2026-10-16, Excel behaviour): a plain arrow on a selection
+ * that spans the whole movement axis (whole column + Up/Down, whole row +
+ * Left/Right, whole sheet + any arrow) collapses to the active cell and moves
+ * one cell from there. This decides WHEN; editorView performs the collapse.
+ */
+export function makeFullAxisCollapse(
+    direction: DirectionEnum,
+    jumpOverGap: number,
+): ArrowEdgeClamp {
+    return (params, range, sheet) => {
+        if (!range) return false;
+        const p = plainArrowParams(params, jumpOverGap);
+        if (!p) return false;
+        return spansMovementAxis(direction, p.direction, range, sheet);
+    };
+}
+
 export function makeArrowEdgeClamp(direction: DirectionEnum, jumpOverGap: number): ArrowEdgeClamp {
     return (params, range, sheet) => {
-        if (!params || typeof params !== 'object' || !range) return false;
-        const p = params as MoveSelectionParamsLike;
-        // Ctrl/Cmd+arrow (JumpOver.moveGap → findNextGapRange, which never
-        // wraps) and formula-editor moves keep Univer's own behaviour. Any
-        // other jumpOver value goes through findNextRange and can wrap, so it
-        // is clamped like a plain arrow.
-        if (p.jumpOver === jumpOverGap) return false;
-        if (p.extra !== undefined && p.extra !== null) return false;
+        if (!range) return false;
+        const p = plainArrowParams(params, jumpOverGap);
+        if (!p) return false;
 
         const r = expandByMerges(range, sheet.getMergeData() ?? []);
+        // Full-axis selections are handled by the collapse path, never vetoed
+        // here (a veto would make the arrow a dead key).
+        if (spansMovementAxis(direction, p.direction, r, sheet)) return false;
         switch (p.direction) {
             case direction.LEFT: {
                 for (let c = r.startColumn - 1; c >= 0; c--) {

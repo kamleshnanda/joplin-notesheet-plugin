@@ -163,17 +163,18 @@ async function takeLog(frame) {
 
 // Build a multi-range selection directly through Univer's SetSelectionsOperation
 // (setup only; the move under test is still a real key press). `spec` is
-// [[a1Range, hasPrimary], ...] in selection order; a range with hasPrimary gets
+// [[a1Range, hasPrimary, rangeType?], ...] in selection order (rangeType: 0
+// NORMAL, 1 ROW, 2 COLUMN, 3 ALL — core RANGE_TYPE); a range with hasPrimary gets
 // its top-left cell as the primary (active) cell.
 async function setTwoRanges(frame, spec) {
     await frame.evaluate((spec) => {
         const api = window.__notesheetUniverAPI;
         const wb = api.getActiveWorkbook();
         const ws = wb.getActiveSheet();
-        const selections = spec.map(([a1, hasPrimary]) => {
+        const selections = spec.map(([a1, hasPrimary, rangeType = 0]) => {
             const r = ws.getRange(a1).getRange();
             return {
-                range: { ...r, rangeType: 0 },
+                range: { ...r, rangeType },
                 primary: hasPrimary
                     ? {
                           startRow: r.startRow,
@@ -386,6 +387,8 @@ async function main() {
         const stays = (r) =>
             r.after.range === r.before.range && r.after.current === r.before.current;
         const at = (ref) => (r) => r.after.range === ref && r.after.current === ref;
+        // Univer reports a whole-sheet (RANGE_TYPE.ALL) selection by its rows.
+        const SELECT_ALL_A1 = `1:${refs.rows}`;
 
         const cases = [
             { id: 'A5-left', start: 'A5', key: 'ArrowLeft', expect: stays, expectText: 'stays A5' },
@@ -504,6 +507,50 @@ async function main() {
                 expect: stays,
                 expectText: 'last range A1:A2 is at column A → vetoed, no wrap',
             },
+            // Selections that already span the whole movement axis (review
+            // finding): whole column + Up/Down, whole row + Left/Right, and
+            // Select All + any arrow. The arrow must not be a dead key.
+            ...[
+                ['wholecol-A-down', [['A1:A' + refs.rows, true, 2, 'A:A']], 'ArrowDown', 'A2'],
+                ['wholecol-A-up', [['A1:A' + refs.rows, true, 2, 'A:A']], 'ArrowUp', 'A1'],
+                [
+                    'wholerow-5-right',
+                    [['A5:' + refs.lastColCell, true, 1, '5:5']],
+                    'ArrowRight',
+                    'B5',
+                ],
+                [
+                    'wholerow-5-left',
+                    [['A5:' + refs.lastColCell, true, 1, '5:5']],
+                    'ArrowLeft',
+                    'A5',
+                ],
+            ].map(([id, spec, key, to]) => ({
+                id,
+                start: null,
+                setup: () => setTwoRanges(frame, spec),
+                expectStart: spec[0][3] ?? spec[0][0],
+                key,
+                expect: at(to),
+                expectText: `Excel: collapses to the active cell and moves → ${to}`,
+            })),
+            // Whole sheet. Built through the selection operation: inside Joplin,
+            // Cmd/Ctrl+A goes to Joplin's Edit → Select All, not Univer (the
+            // user-facing route is the corner box above the row headers).
+            ...[
+                ['ArrowUp', 'A1'],
+                ['ArrowDown', 'A2'],
+                ['ArrowLeft', 'A1'],
+                ['ArrowRight', 'B1'],
+            ].map(([key, to]) => ({
+                id: `selectall-${key.replace('Arrow', '').toLowerCase()}`,
+                start: null,
+                setup: () => setTwoRanges(frame, [[`A1:${refs.bottomRight}`, true, 3]]),
+                expectStart: SELECT_ALL_A1,
+                key,
+                expect: at(to),
+                expectText: `Excel: whole sheet collapses to A1 and moves → ${to}`,
+            })),
             // Corner: both edges at once (operator-requested corner-case run).
             {
                 id: 'bottomright-right',

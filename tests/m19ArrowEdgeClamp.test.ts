@@ -27,6 +27,7 @@ import {
     MOVE_SELECTION_COMMAND_ID,
     makeArrowEdgeClamp,
     rangeMovedByMoveSelection,
+    makeFullAxisCollapse,
     type ArrowEdgeRange,
     type ArrowEdgeSheet,
     type DirectionEnum,
@@ -358,5 +359,84 @@ describe('M19 arrow edge clamp — multi-range selection: judge the range the co
     it('a single selection behaves exactly as before', () => {
         expect(decide([cell('A5')], Direction.LEFT)).toBe(true);
         expect(decide([cell('B5')], Direction.LEFT)).toBe(false);
+    });
+});
+
+// Review finding (reproduced live: 8 dead keys): a selection that already spans
+// the WHOLE movement axis (whole column + Up/Down, whole row + Left/Right, whole
+// sheet + any arrow) must not be a dead key. Operator decision: Excel behaviour —
+// collapse to the active cell and move one cell. `makeFullAxisCollapse` decides
+// WHEN to do that; the listener performs it.
+describe('M19 arrow edge clamp — full-axis selections collapse to the active cell (Excel)', () => {
+    const shouldCollapse = makeFullAxisCollapse(Direction, JUMP_OVER_GAP);
+    const wholeCol = (c: number): ArrowEdgeRange => ({
+        startRow: 0,
+        endRow: ROWS - 1,
+        startColumn: c,
+        endColumn: c,
+    });
+    const wholeRow = (r: number): ArrowEdgeRange => ({
+        startRow: r,
+        endRow: r,
+        startColumn: 0,
+        endColumn: COLS - 1,
+    });
+    const wholeSheet: ArrowEdgeRange = {
+        startRow: 0,
+        endRow: ROWS - 1,
+        startColumn: 0,
+        endColumn: COLS - 1,
+    };
+
+    it.each<[string, ArrowEdgeRange, Direction]>([
+        ['whole column A + Down', wholeCol(0), Direction.DOWN],
+        ['whole column A + Up', wholeCol(0), Direction.UP],
+        ['whole column C + Down', wholeCol(2), Direction.DOWN],
+        ['whole row 5 + Right', wholeRow(4), Direction.RIGHT],
+        ['whole row 5 + Left', wholeRow(4), Direction.LEFT],
+        ['whole sheet + Up', wholeSheet, Direction.UP],
+        ['whole sheet + Down', wholeSheet, Direction.DOWN],
+        ['whole sheet + Left', wholeSheet, Direction.LEFT],
+        ['whole sheet + Right', wholeSheet, Direction.RIGHT],
+    ])('%s → collapse', (_l, r, direction) => {
+        expect(shouldCollapse({ direction }, r, sheet)).toBe(true);
+    });
+
+    it.each<[string, ArrowEdgeRange, Direction]>([
+        // Movement ACROSS a full column/row is a normal one-step move, not full-axis.
+        ['whole column C + Right', wholeCol(2), Direction.RIGHT],
+        ['whole column C + Left', wholeCol(2), Direction.LEFT],
+        ['whole row 5 + Down', wholeRow(4), Direction.DOWN],
+        ['single cell B5 + Left', cell('B5'), Direction.LEFT],
+        ['partial column A1:A10 + Down', range('A1:A10'), Direction.DOWN],
+    ])('%s → no collapse', (_l, r, direction) => {
+        expect(shouldCollapse({ direction }, r, sheet)).toBe(false);
+    });
+
+    it('never for Ctrl/Cmd+arrow (moveGap) or formula-editor moves', () => {
+        expect(
+            shouldCollapse(
+                { direction: Direction.DOWN, jumpOver: JUMP_OVER_GAP },
+                wholeCol(0),
+                sheet,
+            ),
+        ).toBe(false);
+        expect(
+            shouldCollapse(
+                { direction: Direction.DOWN, extra: 'formula-editor' },
+                wholeCol(0),
+                sheet,
+            ),
+        ).toBe(false);
+    });
+
+    it('a full-axis selection is no longer vetoed as an edge (collapse runs instead)', () => {
+        // The edge veto must stand aside for full-axis selections, otherwise the
+        // key is still dead. The collapse path handles them.
+        expect(shouldClampArrowMove({ direction: Direction.DOWN }, wholeCol(0), sheet)).toBe(false);
+        expect(shouldClampArrowMove({ direction: Direction.RIGHT }, wholeRow(4), sheet)).toBe(
+            false,
+        );
+        expect(shouldClampArrowMove({ direction: Direction.UP }, wholeSheet, sheet)).toBe(false);
     });
 });

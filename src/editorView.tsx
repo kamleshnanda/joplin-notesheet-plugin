@@ -65,6 +65,7 @@ import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart
 import {
     MOVE_SELECTION_COMMAND_ID,
     makeArrowEdgeClamp,
+    makeFullAxisCollapse,
     rangeMovedByMoveSelection,
 } from './editor/arrowEdgeClamp';
 import { isInsertLinkMessage, openUniverInsertLink } from './editor/insertLink';
@@ -962,23 +963,90 @@ function bootUniver(snapshot: Record<string, unknown>): void {
 // The decision lives in src/editor/arrowEdgeClamp.ts (pure, Jest-tested).
 // Univer 1.x (BACKLOG F5): re-verify BeforeCommandExecute + `cancel` semantics.
 const shouldClampArrowMove = makeArrowEdgeClamp(Direction, JumpOver.moveGap);
+const shouldCollapseFullAxis = makeFullAxisCollapse(Direction, JumpOver.moveGap);
 
 // M19 E4: the operation Univer's own Cmd/Ctrl+K shortcut runs
 // (`sheet.operation.insert-hyper-link-toolbar` in 0.23), read from the shortcut
 // rather than hard-coded; tests/m19InsertLinkShortcut.test.ts pins it.
 const INSERT_LINK_COMMAND_ID = InsertLinkShortcut.id;
 
+interface ArrowClampCell {
+    actualRow?: number;
+    actualColumn?: number;
+}
+
 interface ArrowClampApi {
     addEvent?: (event: string, cb: (e: ArrowClampEvent) => void) => unknown;
     Event?: { BeforeCommandExecute?: string };
+    executeCommand?: (id: string, params?: unknown) => Promise<unknown> | unknown;
     getActiveWorkbook?: () => {
+        getId?: () => string;
         getActiveSheet?: () => {
+            getSheetId?: () => string;
             getSheet?: () => unknown;
             getSelection?: () => {
                 getActiveRangeList?: () => Array<{ getRange?: () => unknown }>;
+                getCurrentCell?: () => ArrowClampCell | null;
             } | null;
         } | null;
     } | null;
+}
+
+// True while we run our own collapse-and-move, so that move is judged by the
+// edge veto only and can never re-enter the collapse path (no loop).
+let arrowCollapseInProgress = false;
+
+// Excel behaviour for a full-axis selection: collapse to the active cell, then
+// let Univer's own MoveSelectionCommand take one step from there (hidden rows,
+// merges and scrolling stay Univer's). Runs after the cancelled command has
+// unwound. A step off the sheet edge is vetoed as usual, so the result is the
+// collapsed active cell.
+async function collapseAndMove(
+    a: ArrowClampApi,
+    row: number,
+    col: number,
+    direction: unknown,
+    primary: ArrowClampCell | null,
+): Promise<void> {
+    const wb = a.getActiveWorkbook?.();
+    const ws = wb?.getActiveSheet?.();
+    const unitId = wb?.getId?.();
+    const subUnitId = ws?.getSheetId?.();
+    if (!unitId || !subUnitId || typeof a.executeCommand !== 'function') return;
+    arrowCollapseInProgress = true;
+    try {
+        await a.executeCommand('sheet.operation.set-selections', {
+            unitId,
+            subUnitId,
+            selections: [
+                {
+                    range: {
+                        startRow: row,
+                        endRow: row,
+                        startColumn: col,
+                        endColumn: col,
+                        rangeType: 0,
+                    },
+                    primary: primary ?? {
+                        startRow: row,
+                        startColumn: col,
+                        endRow: row,
+                        endColumn: col,
+                        actualRow: row,
+                        actualColumn: col,
+                        isMerged: false,
+                        isMergedMainCell: false,
+                    },
+                    style: null,
+                },
+            ],
+        });
+        await a.executeCommand(MOVE_SELECTION_COMMAND_ID, { direction });
+    } catch (e) {
+        console.warn('[Notesheet] arrow collapse-and-move failed', e);
+    } finally {
+        arrowCollapseInProgress = false;
+    }
 }
 
 interface ArrowClampEvent {
@@ -1011,6 +1079,17 @@ function installArrowEdgeClamp(api: unknown): void {
                     ws?.getSelection?.()?.getActiveRangeList?.() ?? [],
                 )?.getRange?.();
                 if (!sheet || !range) return;
+                const r = range as Parameters<typeof shouldClampArrowMove>[1];
+                const sh = sheet as Parameters<typeof shouldClampArrowMove>[2];
+                if (!arrowCollapseInProgress && shouldCollapseFullAxis(event.params, r, sh)) {
+                    event.cancel = true;
+                    const cur = ws?.getSelection?.()?.getCurrentCell?.() ?? null;
+                    const row = cur?.actualRow ?? r.startRow;
+                    const col = cur?.actualColumn ?? r.startColumn;
+                    const direction = (event.params as { direction?: unknown }).direction;
+                    queueMicrotask(() => void collapseAndMove(a, row, col, direction, cur));
+                    return;
+                }
                 if (
                     shouldClampArrowMove(
                         event.params,
