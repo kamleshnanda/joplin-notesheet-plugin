@@ -161,6 +161,43 @@ async function takeLog(frame) {
     });
 }
 
+// Build a multi-range selection directly through Univer's SetSelectionsOperation
+// (setup only; the move under test is still a real key press). `spec` is
+// [[a1Range, hasPrimary], ...] in selection order; a range with hasPrimary gets
+// its top-left cell as the primary (active) cell.
+async function setTwoRanges(frame, spec) {
+    await frame.evaluate((spec) => {
+        const api = window.__notesheetUniverAPI;
+        const wb = api.getActiveWorkbook();
+        const ws = wb.getActiveSheet();
+        const selections = spec.map(([a1, hasPrimary]) => {
+            const r = ws.getRange(a1).getRange();
+            return {
+                range: { ...r, rangeType: 0 },
+                primary: hasPrimary
+                    ? {
+                          startRow: r.startRow,
+                          startColumn: r.startColumn,
+                          endRow: r.startRow,
+                          endColumn: r.startColumn,
+                          actualRow: r.startRow,
+                          actualColumn: r.startColumn,
+                          isMerged: false,
+                          isMergedMainCell: false,
+                      }
+                    : null,
+                style: null,
+            };
+        });
+        api.executeCommand('sheet.operation.set-selections', {
+            unitId: wb.getId(),
+            subUnitId: ws.getSheetId(),
+            selections,
+        });
+    }, spec);
+    await frame.waitForTimeout(200);
+}
+
 async function activate(frame, a1) {
     await frame.evaluate((ref) => {
         const ws = window.__notesheetUniverAPI.getActiveWorkbook().getActiveSheet();
@@ -210,7 +247,8 @@ async function runKeyCase(page, frame, c) {
     await page.keyboard.press('Escape');
     await frame.waitForTimeout(100);
     if (c.setup) await c.setup();
-    await activate(frame, c.start);
+    // Cases whose setup builds the selection itself use a null start.
+    if (c.start) await activate(frame, c.start);
     if (c.preKeys)
         for (const k of c.preKeys) {
             await page.keyboard.press(k);
@@ -233,7 +271,10 @@ async function runKeyCase(page, frame, c) {
     const res = { id: c.id, desc: c.desc, key: c.key, before, after, commands, ...extra };
     // Harness guard: the case only counts if it really started where intended.
     const wantStart = c.expectStart || c.start;
-    res.startOk = before.range === wantStart;
+    res.startOk =
+        before.range === wantStart &&
+        (!c.expectSelections ||
+            JSON.stringify(before.selections) === JSON.stringify(c.expectSelections));
     res.pass = res.startOk && c.expect(res);
     res.expected = c.expectText;
     return res;
@@ -430,6 +471,38 @@ async function main() {
                     ),
                 expect: stays,
                 expectText: 'stays B5 (column A hidden)',
+            },
+            // Multi-range selection whose primary is NOT on the last range (the
+            // state Enter/Tab cycling leaves). MoveSelectionCommand moves the
+            // LAST selection, so the clamp must judge that one (review finding).
+            {
+                id: 'multirange-primaryfirst-left',
+                start: null,
+                setup: () =>
+                    setTwoRanges(frame, [
+                        ['A1:A2', true],
+                        ['C5:D6', false],
+                    ]),
+                expectStart: 'A1:A2',
+                expectSelections: ['A1:A2', 'C5:D6'],
+                key: 'ArrowLeft',
+                expect: at('B5'),
+                expectText:
+                    'last range C5:D6 moves to B5 (no false veto from the first range at column A)',
+            },
+            {
+                id: 'multirange-primarylast-at-edge-left',
+                start: null,
+                setup: () =>
+                    setTwoRanges(frame, [
+                        ['C5:D6', true],
+                        ['A1:A2', false],
+                    ]),
+                expectStart: 'C5:D6',
+                expectSelections: ['C5:D6', 'A1:A2'],
+                key: 'ArrowLeft',
+                expect: stays,
+                expectText: 'last range A1:A2 is at column A → vetoed, no wrap',
             },
             // Corner: both edges at once (operator-requested corner-case run).
             {

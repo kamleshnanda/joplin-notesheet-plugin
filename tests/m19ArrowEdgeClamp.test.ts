@@ -26,6 +26,7 @@ import { dirname, join } from 'path';
 import {
     MOVE_SELECTION_COMMAND_ID,
     makeArrowEdgeClamp,
+    rangeMovedByMoveSelection,
     type ArrowEdgeRange,
     type ArrowEdgeSheet,
     type DirectionEnum,
@@ -150,6 +151,11 @@ describe('M19 arrow edge clamp — Univer contract', () => {
         expect(JUMP_OVER_GAP).toBe(1);
         // MoveSelectionCommand only takes the non-wrapping gap path for moveGap.
         expect(SHEETS_UI_ES).toContain('jumpOver === 1 ? findNextGapRange');
+    });
+    it('MoveSelectionCommand moves the LAST selection (getCurrentLastSelection)', () => {
+        expect(SHEETS_UI_ES).toContain(
+            'getSelectionsService(accessor, params.fromCurrentSelection).getCurrentLastSelection()',
+        );
     });
     it('targets the Univer 0.23 MoveSelectionCommand id', () => {
         expect(MOVE_SELECTION_COMMAND_ID).toBe('sheet.command.move-selection');
@@ -327,5 +333,30 @@ describe('M19 arrow edge clamp — KNOWN SHORTCOMING: multi-cell selection moves
         expect(shouldClampArrowMove({ direction: Direction.RIGHT }, range('A5:C5'), sheet)).toBe(
             false,
         );
+    });
+});
+
+// Review finding: the clamp must judge the range MoveSelectionCommand moves (the
+// LAST selection), not the facade's first-with-primary active range. The two
+// differ after Enter/Tab cycling leaves the primary on an earlier range.
+describe('M19 arrow edge clamp — multi-range selection: judge the range the command moves', () => {
+    const decide = (ranges: ArrowEdgeRange[], direction: Direction) => {
+        const moved = rangeMovedByMoveSelection(ranges);
+        return moved ? shouldClampArrowMove({ direction }, moved, sheet) : false;
+    };
+    it('picks the last range in selection order', () => {
+        expect(rangeMovedByMoveSelection([range('A1:A2'), range('C5:D6')])).toEqual(range('C5:D6'));
+        expect(rangeMovedByMoveSelection([cell('B5')])).toEqual(cell('B5'));
+        expect(rangeMovedByMoveSelection([])).toBeUndefined();
+    });
+    it('[A1:A2 (primary), C5:D6] + Left → allow (no false veto from the first range)', () => {
+        expect(decide([range('A1:A2'), range('C5:D6')], Direction.LEFT)).toBe(false);
+    });
+    it('[C5:D6 (primary), A1:A2] + Left → cancel (the moved range is at column A)', () => {
+        expect(decide([range('C5:D6'), range('A1:A2')], Direction.LEFT)).toBe(true);
+    });
+    it('a single selection behaves exactly as before', () => {
+        expect(decide([cell('A5')], Direction.LEFT)).toBe(true);
+        expect(decide([cell('B5')], Direction.LEFT)).toBe(false);
     });
 });

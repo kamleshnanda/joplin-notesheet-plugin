@@ -62,7 +62,11 @@ import {
     NOTESHEET_ARRAY_FORMULAS_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
-import { MOVE_SELECTION_COMMAND_ID, makeArrowEdgeClamp } from './editor/arrowEdgeClamp';
+import {
+    MOVE_SELECTION_COMMAND_ID,
+    makeArrowEdgeClamp,
+    rangeMovedByMoveSelection,
+} from './editor/arrowEdgeClamp';
 import { isInsertLinkMessage, openUniverInsertLink } from './editor/insertLink';
 import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
@@ -971,7 +975,7 @@ interface ArrowClampApi {
         getActiveSheet?: () => {
             getSheet?: () => unknown;
             getSelection?: () => {
-                getActiveRange?: () => { getRange?: () => unknown } | null;
+                getActiveRangeList?: () => Array<{ getRange?: () => unknown }>;
             } | null;
         } | null;
     } | null;
@@ -1001,7 +1005,11 @@ function installArrowEdgeClamp(api: unknown): void {
             try {
                 const ws = a.getActiveWorkbook?.()?.getActiveSheet?.();
                 const sheet = ws?.getSheet?.();
-                const range = ws?.getSelection?.()?.getActiveRange?.()?.getRange?.();
+                // Judge the range the command will actually move: the LAST
+                // selection, not the facade's first-with-primary active range.
+                const range = rangeMovedByMoveSelection(
+                    ws?.getSelection?.()?.getActiveRangeList?.() ?? [],
+                )?.getRange?.();
                 if (!sheet || !range) return;
                 if (
                     shouldClampArrowMove(

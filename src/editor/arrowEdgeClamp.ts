@@ -125,6 +125,20 @@ function expandByMerges(range: ArrowEdgeRange, merges: ArrowEdgeRange[]): ArrowE
     return out;
 }
 
+/**
+ * The range MoveSelectionCommand will move, given the sheet's selections in
+ * selection order: the LAST one (`getCurrentLastSelection()`, sheets-ui 0.23
+ * lib/es ~L6668), whether or not it holds the primary cell. Not the facade's
+ * `FSelection.getActiveRange()`, which returns the FIRST selection with a
+ * primary. The two differ after Enter/Tab cycling through a multi-range
+ * selection, and judging the wrong one causes a false veto or a missed wrap.
+ */
+export function rangeMovedByMoveSelection<T>(rangesInSelectionOrder: readonly T[]): T | undefined {
+    return rangesInSelectionOrder.length > 0
+        ? rangesInSelectionOrder[rangesInSelectionOrder.length - 1]
+        : undefined;
+}
+
 export function makeArrowEdgeClamp(direction: DirectionEnum, jumpOverGap: number): ArrowEdgeClamp {
     return (params, range, sheet) => {
         if (!params || typeof params !== 'object' || !range) return false;
