@@ -112,6 +112,8 @@ const TITLE_PREFIX_BY_FEATURE = {
     'feature-3-m17-multisheet-import-editor-canvas': 'PGE M17 chart f3 eval ',
     'feature-7-m17-chart-svg-html-export-jest': 'PGE M17 chart f7 eval ',
     'feature-8-m17-chart-preview-pane-pge-smoke': 'PGE M17 chart f8 eval ',
+    'feature-1-m19-arrow-keys-clamp-at-sheet-edge': 'PGE M19 F1 arrow eval ',
+    'feature-2-m19-insert-link-alt-shortcut': 'PGE M19 F2 insert-link eval ',
 };
 
 // Per-feature pixel-sampling region. Defaults to row-0 (the smoke
@@ -163,6 +165,19 @@ const REGION_BY_FEATURE = {
     // inlineSvgCount — the count of <svg class="notesheet-chart"> the
     // static-SVG renderer emitted into the rendered HTML.
     'feature-8-m17-chart-preview-pane-pge-smoke': 'previewPane',
+    // M19 feature-1 (E3): editor canvas after a REAL ArrowLeft keystroke at A1.
+    // Before sampling, the capture clicks the canvas (keyboard focus),
+    // activates A1 and presses ArrowLeft; the sidecar records the selection
+    // before/after. Fixed: the highlight stays on A1 (top-left). On `main`
+    // Univer wraps to the bottom-right cell and scrolls there.
+    'feature-1-m19-arrow-keys-clamp-at-sheet-edge': 'arrowEdgeA1',
+    // M19 feature-2 (E4): Univer's insert-link panel opened by a REAL
+    // Cmd+Option+K (System Events keystroke to the dev-profile Joplin) with B2
+    // active. The panel is a DOM overlay above the canvas, so this region
+    // screenshots the whole Joplin page (it also shows that Joplin's own
+    // "Insert Hyperlink" prompt is absent). The sidecar's `insertLink` records
+    // the start-state guard and the outcome (scripts/pge/insert-link-lib.js).
+    'feature-2-m19-insert-link-alt-shortcut': 'insertLinkPanel',
 };
 
 function discoverApiPort() {
@@ -1492,6 +1507,27 @@ async function main() {
                     // reference can become stale even though
                     // waitForSelector found a canvas. Fetching the frame
                     // again at sample time pins us to the live one.
+                    let arrowEdge = null;
+                    if (regionKind === 'arrowEdgeA1') {
+                        arrowEdge = await pressLeftAtA1(page, captureWebview, captureCanvas);
+                        console.error(
+                            `eval-screenshot: arrowEdgeA1 ${arrowEdge.before?.range} --ArrowLeft--> ${arrowEdge.after?.range} startOk=${arrowEdge.startOk} stayedOnA1=${arrowEdge.stayedOnA1}` +
+                                (arrowEdge.startOk === false
+                                    ? ' (INVALID: did not start on A1, clamp not exercised)'
+                                    : ''),
+                        );
+                    }
+                    let insertLink = null;
+                    if (regionKind === 'insertLinkPanel') {
+                        insertLink = await pressAltKAtB2(page, captureWebview);
+                        console.error(
+                            `eval-screenshot: insertLinkPanel startOk=${insertLink.startOk} panelOpen=${insertLink.after?.panelOpen} joplinPrompt=${insertLink.joplinPromptAfter} panelMs=${insertLink.panelOpenedAfterMs}` +
+                                (insertLink.error ? ` error=${insertLink.error}` : '') +
+                                (insertLink.startOk === false
+                                    ? ' (INVALID: start state wrong, shortcut not exercised)'
+                                    : ''),
+                        );
+                    }
                     let sampleFrame = captureWebview;
                     for (let attempt = 0; attempt < 6; attempt++) {
                         try {
@@ -1518,6 +1554,8 @@ async function main() {
                             `eval-screenshot: pixel sample returned error after retries: ${pixelSummary.error}`,
                         );
                     }
+                    if (arrowEdge) pixelSummary = { ...(pixelSummary ?? {}), arrowEdge };
+                    if (insertLink) pixelSummary = { ...(pixelSummary ?? {}), insertLink };
                 }
             }
         }
@@ -1531,6 +1569,8 @@ async function main() {
         //   - fallback: whole page.
         if (regionKind === 'previewPane' && previewLocator) {
             await previewLocator.screenshot({ path: out });
+        } else if (regionKind === 'insertLinkPanel') {
+            await page.screenshot({ path: out, fullPage: false });
         } else if (regionKind === 'floatDomChart' && captureWebview) {
             // Try the Notesheet root first (created in editorView.tsx as
             // #notesheet-univer-root). If for any reason it's not there
@@ -1601,7 +1641,11 @@ async function main() {
                             ? 'preview pane (iframe.noteTextViewer; CSS-computed background-color of every <td>, ink aggregates derived from those colours)'
                             : regionKind === 'floatDomChart'
                               ? 'editor canvas + float-DOM (full #notesheet-univer-root container; chart-palette histogram derived from saved PNG)'
-                              : 'row-0 (top 80px slab of main canvas)';
+                              : regionKind === 'arrowEdgeA1'
+                                ? 'editor canvas after a real ArrowLeft at A1 (arrowEdge.before/after = facade selection; row-0 slab sampled)'
+                                : regionKind === 'insertLinkPanel'
+                                  ? 'whole Joplin page after a real Cmd+Option+K at B2 (insertLink = start guard + Univer panel / Joplin prompt state; row-0 slab sampled)'
+                                  : 'row-0 (top 80px slab of main canvas)';
             fs.writeFileSync(
                 sidecar,
                 JSON.stringify(
@@ -1652,6 +1696,94 @@ async function main() {
         process.stdout.write(savedPath + '\n');
     } else {
         process.exit(1);
+    }
+}
+
+// M19 feature-1: focus the sheet, put the active cell on A1, press a REAL
+// ArrowLeft (CDP key event, not executeCommand) and report the facade
+// selection before/after. A warm-up move first settles the selection set by
+// the focusing click (without it the first activate can be overridden).
+async function pressLeftAtA1(page, frame, canvasSel) {
+    const read = () =>
+        frame.evaluate(() => {
+            const ws = window.__notesheetUniverAPI.getActiveWorkbook().getActiveSheet();
+            const r = ws.getActiveRange();
+            const cur = ws.getSelection()?.getCurrentCell?.();
+            return {
+                range: r ? r.getA1Notation() : null,
+                currentRow: cur ? cur.actualRow : null,
+                currentColumn: cur ? cur.actualColumn : null,
+            };
+        });
+    const activate = async (ref) => {
+        await frame.evaluate(
+            (a1) =>
+                window.__notesheetUniverAPI
+                    .getActiveWorkbook()
+                    .getActiveSheet()
+                    .getRange(a1)
+                    .activate(),
+            ref,
+        );
+        await frame.waitForTimeout(200);
+    };
+    try {
+        await frame
+            .locator(canvasSel)
+            .first()
+            .click({ position: { x: 120, y: 60 } });
+        await frame.waitForTimeout(300);
+        await activate('H10');
+        await page.keyboard.press('ArrowDown');
+        await frame.waitForTimeout(300);
+        await activate('A1');
+        const before = await read();
+        await page.keyboard.press('ArrowLeft');
+        await frame.waitForTimeout(600);
+        const after = await read();
+        // Only meaningful if the press really started on A1: the focusing click
+        // can override activate(), and ArrowLeft from B1 also lands on A1, so
+        // without this guard a never-exercised clamp would read as a pass.
+        // Same guard as arrow-edge-probe.js (`startOk`).
+        const startOk = before.range === 'A1';
+        return {
+            key: 'ArrowLeft',
+            before,
+            after,
+            startOk,
+            stayedOnA1: startOk && after.range === 'A1',
+        };
+    } catch (e) {
+        return { error: e.message };
+    }
+}
+
+// M19 feature-2: real Cmd+Option+K at B2 (System Events keystroke to the
+// dev-profile Joplin, never executeCommand). Leaves the panel OPEN for the
+// screenshot. Only meaningful if the start state was right (B2 active, panel
+// closed, no Joplin prompt, Joplin frontmost, focus in the editor iframe) —
+// otherwise startOk is false and the capture must not be read as a pass.
+async function pressAltKAtB2(page, frame) {
+    const lib = require('./insert-link-lib');
+    try {
+        if (process.platform !== 'darwin') return { error: 'macOS only (System Events)' };
+        const pid = lib.devJoplinPid(); // throws if a non-dev Joplin is running
+        const k = lib.univerConstants();
+        const prep = await lib.prepareB2(page, frame, pid, k, 'canvas');
+        const r = { key: 'Cmd+Option+K', univer: k, ...prep };
+        if (!prep.startOk) return r;
+        lib.pressK(pid, lib.CMD_OPTION);
+        r.panelOpenedAfterMs = await lib.waitFor(
+            page,
+            async () => (await lib.webviewState(frame, k.linkPlaceholder)).panelOpen,
+        );
+        r.after = await lib.webviewState(frame, k.linkPlaceholder);
+        r.joplinPromptAfter = await lib.joplinPromptVisible(page);
+        r.panelShownNoJoplinPrompt =
+            r.after.panelOpen && !r.joplinPromptAfter && r.after.commandLog.includes(k.openPanelId);
+        return r;
+    } catch (e) {
+        return { startOk: false, error: e.message };
     }
 }
 

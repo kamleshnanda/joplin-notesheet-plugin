@@ -66,6 +66,23 @@ If you cannot get steps 2–6 to work in this session, leave the row at
 `{"passes": false}`, document the blocker in `PROGRESS.md`, and stop.
 Do not flip the bit speculatively.
 
+## Your proof is a self-check; the evaluator tests independently
+
+Your live proof above is a **developer self-check**. It is not the evidence
+the verdict rests on. The evaluator (`.claude/agents/evaluator.md`) is an
+independent black-box tester:
+
+- It reads only the spec, deploys your commit itself
+  (`scripts/pge/deploy-build.sh`), and writes and runs its **own** probes.
+  It doesn't use your tests, probes or screenshots. So commit your work
+  before handing off; the evaluator tests a commit, not your working tree.
+- **Never edit a feature's "Acceptance checks (black-box)"** in
+  `BUILD_PLAN.md`. They are the operator↔evaluator contract. If one is wrong,
+  impossible, or contradicted by the platform, stop and report; the
+  operator decides.
+- Make your self-check cover those acceptance checks too, including their
+  boundaries, so the evaluator's run isn't the first time a case is tried.
+
 ## Launching Joplin
 
 The harness scripts under `scripts/pge/` handle this:

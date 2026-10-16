@@ -3,7 +3,7 @@
 This file is the generator's session-to-session handoff. Update after
 every feature.
 
-**Last verified against the repo: 2026-10-13** (`main` @ `9ec4258`).
+**Last verified against the repo: 2026-10-15** (`main` @ `2edd4b6`; branch `m19-render-import-gaps`).
 
 > **Staleness rule for agents.** If the "Last verified" date above is more
 > than one day old, do NOT trust `## In progress` / `## Next` as-is. First
@@ -15,6 +15,13 @@ every feature.
 > wins over this file whenever they disagree.
 
 ## Done
+
+- **1.0.1 released** (2026-10-14) — PR #45 (`7ef5994`), tag `v1.0.1`, GitHub
+  release "Notesheet 1.0.1", `joplin-plugin-notesheet@1.0.1` on npm (`latest`).
+  The `.jpl` on npm, on the release and local build #36 are byte-identical
+  (SHA-256 `0e9d76a2…`). Then PR #46 (`2edd4b6`): Claude Code commit/PR
+  attribution turned off in `.claude/settings.json`; repo-local git identity is
+  the GitHub noreply address for all new commits.
 
 - **M20 — Codebase health** (2026-10-13, PR #44, squash `9ec4258`;
   README row ✅). Merged `main` re-verified: clean `npm ci`, prod audit 0,
@@ -928,24 +935,156 @@ every feature.
 
 ## In progress
 
-- **Release 1.0.1** (M20 security release), branch `release-1.0.1`:
-  version bump + CHANGELOG. After merge: tag `v1.0.1`, GitHub release with
-  the `.jpl`, `npm publish`.
+- **M19 — Static-render & import gaps** (`BACKLOG.md` groups D–E), branch
+  `m19-render-import-gaps`, started 2026-10-14. Operator scope: D2, D3,
+  D4+D5, E1, E2, E3, E4 (all seven). D1 dataBar already shipped in M18.
+  E3 is OURS now: upstream closed Univer #6988 as by-design (2026-06-05) and
+  advises overriding the shortcut.
+  **Plan: `BUILD_PLAN.md`** (9 features, `feature-1-m19-…` → `feature-9-m19-…`;
+  per-feature rows in `test-results.json`, all defaulted FAIL). Work the
+  lowest-numbered `passes: false` row. Operator inputs the plan depends on
+  (Excel reference PNGs for D4/D5 + non-3Arrows icon sets; E4 accelerator
+  verification) are listed at the top of `BUILD_PLAN.md`.
+
+- **RESUME HERE (handoff 2026-10-15, operator left for the day):**
+  1. **DONE 2026-10-15 (20/20 ×2, `probe-branch-corners-*.json`):** extra corner-case probe
+     runs for feature-1, branch only (~10 min). Add to
+     `scripts/pge/arrow-edge-probe.js`: bottom-right T1000+Right and
+     T1000+Down, plus a sheet resized to a different width (e.g. 50 columns:
+     AX5+Right, AX1000+Down). Run it twice against the installed branch build
+     and commit the JSONs. A `main` baseline for these is optional (+~10 min);
+     the recommendation was to skip it, since the per-edge wrap is already
+     reproduced. If any case fails, set feature-1 back to `passes: false`.
+  2. **feature-2 (E4 insert-link alt shortcut) — generator DONE 2026-10-15,
+     awaiting evaluator** (`passes: false`, evidence filled). Commits `d2bafb1`
+     (failing-first, 12 fail / 4 pass), `1725529` (impl), `fa8e033` (live proof +
+     docs). Accelerator `CmdOrCtrl+Alt+K`: free in both default keymap tables at
+     the installed Joplin v3.7.21 (`e41516e6`, KeymapService.ts L22–79 darwin /
+     L80–137 default; `Option+Cmd+L` IS taken by toggleNoteList, so candidate 2
+     would have failed on macOS) and in every installed Univer binding (pinned
+     in `tests/m19InsertLinkShortcut.test.ts`). Live (build #42 = HEAD
+     `fa8e033`): `scripts/pge/insert-link-probe.js` 8/8 ×2, main baseline
+     `probe-main-*.json`. **Spec premise corrected:** real Cmd+K already opens
+     Univer's panel when the grid has focus (on `main` too); only cell-editing /
+     focus-outside-iframe falls to Joplin's textLink. Docs say exactly that.
+     Next: feature-3 after the evaluator grades feature-2.
+  3. **State:** branch `m19-render-import-gaps` is pushed, with **draft PR #47**
+     open so CI runs (this branch name doesn't match the `m**/**` push trigger).
+     Check #47's CI result first.
+     The dev-profile Joplin may still be running with the feature-1 branch
+     build. Before any install: quit → install → launch, and never touch a
+     regular-profile Joplin. Commit identity is the repo-local noreply
+     address; check `git config --local user.email` first.
+  5. **Review fixes (2026-10-15):**
+     - `afd75a5`: the clamp exempts only `jumpOver === JumpOver.moveGap` (1).
+       Values 0, 2 and 3 still wrap in Univer, so they are vetoed.
+       `JumpOver.moveGap` is injected from `@univerjs/preset-sheets-core`, and
+       the tests pin it against the installed sheets-ui.
+     - `b3f9e90`: kill-switch and verify-gate fail CLOSED if the project-root
+       `cd` fails.
+     - Feature-1 was re-verified live on build #40: 14/14, two runs
+       (`probe-branch-jumpover-fix-*.json`).
+  4. **Harness fix `a53b4d8`:** hooks are now anchored at
+     `$CLAUDE_PROJECT_DIR`. Still don't lead commands with `cd` into
+     subdirectories.
+
+- **feature-1-m19-arrow-keys-clamp-at-sheet-edge — ✅ evaluator PASS
+  (2026-10-15, `3cc78f2`).** The evaluator used its own screenshot and probe
+  (14/14). Its 3 LOW findings were fixed in `97c1cac`: a multi-cell KNOWN
+  SHORTCOMING test; `Direction` read from `@univerjs/presets`; the cancel
+  stack leak documented in the F5 checklist and BACKLOG F5. The leak is
+  accepted (upstream, harmless). History before the evaluator ran: Fix: `cbe836e` (BeforeCommandExecute veto,
+  `src/editor/arrowEdgeClamp.ts`). Failing-first jest: `174e669`. Live proof
+  on the dev profile with real CDP keystrokes, `scripts/pge/arrow-edge-probe.js`.
+  A `main` baseline `.jpl` was built from `b62ea8f`'s `src/editorView.tsx`.
+  - main: 6/14. Every edge case wraps (A5 Left → T4, C1 Up → B1000, A1
+    Left/Up → T1000, T5 Right → A6, C1000 Down → D1, hidden-A B5 Left → T4,
+    typed-x A5 Left → T4).
+  - branch: 14/14 on two runs. Zero console errors or warnings.
+  - Results are in `screenshots/feature-1-m19-arrow-keys-clamp-at-sheet-edge/probe-{main,branch}-*.json`.
+  - Eval capture `eval-*.png`: A1 stays highlighted. `main-baseline-a1-left.png`
+    shows the cursor at T1000.
+  - Docs updated (README Known gaps → Editor, CHANGELOG Unreleased, BACKLOG E3).
+  - `passes` is left false for the evaluator.
+  - Operator decision (2026-10-15): ship the multi-cell case as-is. With
+    `A5:C5` selected and `C5` active, Left is a no-op on branch; main wrapped to
+    T4. Excel-style collapse-and-move is deferred as BACKLOG **E5**, milestone
+    TBD (operator). Don't assign one. README Known gaps documents it.
+
+- **feature-2-m19-insert-link-alt-shortcut** — generator done (see RESUME HERE
+  item 2); evaluator pending. Operator FYI: Cmd/Ctrl+K behaviour is
+  focus-dependent (README Known gaps bullet rewritten accordingly).
+
+- **Plan update 2026-10-15 (planner; supersedes RESUME HERE item 2's "Next: feature-3"):**
+  - **feature-2 scope extended.** It is now Part A (alt shortcut + Tools item, built) plus Part B (new): Cmd/Ctrl+K must open Univer's link panel in the grid, while typing in a cell, and in the formula bar. Outside the editor and in markdown notes it stays as on `main`.
+  - feature-2 Part B requires research first and has a STOP rule. The old "never reaches the iframe" premise is marked superseded in `BUILD_PLAN.md`. The row stays `passes: false`, and its evidence list is kept.
+  - **New feature-10-m19-new-spreadsheet-shortcut-conflict.** It replaces `CmdOrCtrl+Shift+S`, which clashes with Joplin's `focusElementSideBar`. It builds **before** feature-9; the build order is in the plan header, and the `test-results.json` row is placed before feature-9's.
+  - Every feature now has **Acceptance checks (black-box)**. Generators must not edit them; report instead.
+  - Evaluation is independent: `.claude/agents/evaluator.md`, `scripts/pge/deploy-build.sh`.
+  - Next for the generator: feature-2 Part B.
 
 ## Next
 
-1. **M19 — static-render & import gaps** (`BACKLOG.md` groups D–E):
-   D2 iconSet glyphs, D3 per-run rich text in HTML, D4/D5 accounting
-   formats, E1 multi-table workbooks (`xlsx-multi-table-unsupported`),
-   E2 theme-tinted borders, E3/E4 keybinding bugs (E3 is upstream Univer
-   #6988). D1 dataBar already shipped in M18 — drop it from `BACKLOG.md`
-   when M19 is planned.
-2. **M21 — in-cell (rich-value) image round-trip** (`richData` /
+1. **M21 — in-cell (rich-value) image round-trip** (`richData` /
    `_localImage`; fixes the `#VALUE!` placeholder; M18 round-3 item #2).
+2. **Univer 0.23 → 1.x upgrade** (`BACKLOG.md` F5) — own milestone, phased.
 
 Order and per-item scope are the operator's call at planning time.
 
 ## Notes
+
+- **M19 feature-1 live-probe lessons (2026-10-15).**
+  - The first `FRange.activate()` right after the focusing canvas click can be
+    overridden by that click's pointer selection. The first case read `B:B`,
+    and later cases behaved inconsistently. Fix: warm up with activate H10 +
+    ArrowDown before the first case. Also guard every case with
+    `startOk = before.range === intended start`.
+  - The webview frame survives note switches, but Univer is re-booted with a
+    new facade. A `window.__x` listener registry has to be re-installed when
+    `window.__notesheetUniverAPI` changes. Otherwise it listens on a disposed
+    instance and logs nothing.
+  - The command-stack leak from `cancel` is MEASURED. `api._commandService._commandExecutionStack.length`
+    goes 0 → 9 after 9 vetoed keys on branch, and stays 0 on main. It resets on
+    every Univer boot (note open). See the notes below for impact.
+  - Drawing nudge = `sheet.command.move-drawing`, 1 px per arrow press
+    (left 128 → 130 → 128), unaffected by the veto.
+  - On macOS, Cmd+arrow is `Meta+ArrowLeft` in Playwright. With only D5
+    filled, Cmd+Left from D5 → A5, identical on main and branch.
+
+- **M19 feature-1 (arrow edge clamp) — Univer 0.23 facts verified in
+  `node_modules` (2026-10-14).**
+  - `MoveSelectionCommand` (`sheet.command.move-selection`, sheets-ui
+    lib/es ~L6660) computes `startRange = getStartRange(range, primary,
+    direction)`, which keeps the selection RANGE's extent on the movement
+    axis. So a multi-cell selection moves from its edge, not the active cell,
+    and for a merged cell the range is the merge. `findNextRange` (~L5060)
+    steps past that edge, skips hidden rows/cols, and wraps
+    (`isGoBack = true`) when it runs off the sheet. `arrowEdgeClamp.ts`
+    mirrors exactly that condition.
+  - Params: `{ direction }` for plain arrows (shortcut `staticParameters`),
+    `{ direction, jumpOver: 1 }` for Ctrl/Cmd+arrow, `extra: 'formula-editor'`
+    (+ `fromCurrentSelection`) from sheets-formula-ui ref selection (~L3308).
+    The arrow-commit path is editor-bridge `_moveSelection` (~L10744), which
+    calls `executeCommand(MoveSelectionCommand.id, { direction })` directly.
+    The drawing nudge is a different command (`sheet.command.move-drawing`,
+    sheets-drawing-ui ~L5770), so the veto can't swallow it by id.
+  - Facade cancel: core `facade.js` ~L1258 fires `BeforeCommandExecute` from
+    `commandService.beforeCommandExecuted` and throws `CanceledError` when
+    `event.cancel`. Core `executeCommand` (~L3354) catches
+    `CustomCommandExecutionError` and returns `false`. **Upstream quirk:** the
+    throw skips `stackItemDisposable.dispose()`, so each vetoed keystroke leaves
+    one stale entry in `CommandService._commandExecutionStack`. Effect: a
+    mutation dispatched outside any command later gets
+    `params.trigger = 'sheet.command.move-selection'`. Every `trigger` consumer
+    found (sheets-formula, sheets-ui L8696, docs-ui) compares against specific
+    other ids, so this looks benign, but it is a small per-keystroke leak.
+    It affects every `cancel` user, not just us.
+  - Jest can't load `@univerjs/core` / `@univerjs/presets` CJS in-process: they
+    `require('lodash-es')` / `nanoid@5`, which are ESM-only. That's why other
+    suites `jest.mock` Univer. `tests/m19ArrowEdgeClamp.test.ts` reads the real
+    `Direction` enum in a child process
+    (`node --input-type=module -e "await import('@univerjs/core')"`, so it works on
+    Node 20/22 too) and injects it into `makeArrowEdgeClamp(Direction)`.
 
 - **M20 dependency / bundling lessons (2026-10-13).**
   - npm 11 re-writes `package-lock.json` at `package.json`'s 4-space
@@ -1963,3 +2102,48 @@ Order and per-item scope are the operator's call at planning time.
   so the test simply asserts the constructor + code constant
   shape. Acceptable: the wrap is unit-tested by the existing
   m12ImportRecovery suite for the in-tree crash classes.
+
+- **M19 feature-2 (E4) live-harness notes (2026-10-15, verified):**
+  - **Node:** Homebrew `node` 26.5 is broken on this machine (`libsimdjson.33.dylib`
+    missing after a simdjson 5.0.5 upgrade). Use
+    `PATH=~/.config/nvm/versions/node/v22.19.0/bin:$PATH` (Node 22 = CI matrix).
+  - **Cmd/Ctrl+K routing on macOS (Joplin 3.7.21):** keydown reaches the editor
+    iframe FIRST; if Univer's `InsertLinkShortcut` (precondition
+    `whenSheetEditorFocused`) handles it, it preventDefaults and Joplin's
+    `textLink` menu accelerator never fires. In cell-edit mode or with focus
+    outside the iframe Univer doesn't handle it, so Joplin runs `textLink` →
+    log `Received command, but editor is gone textLink`, nothing opens. Same on
+    `main`. Windows/Linux NOT verified live (no machine).
+  - **Our accelerator** `CmdOrCtrl+Alt+K` → plugin command → `postMessage` →
+    webview `openUniverInsertLink(activeApi, InsertLinkShortcut.id)`; panel opens
+    in ~100–300 ms in all focus states. `InsertHyperLinkToolbarOperation` is NOT
+    exported by sheets-hyper-link-ui 0.23, but `InsertLinkShortcut` is (re-exported
+    by `@univerjs/preset-sheets-hyper-link`); its `.id` is the toolbar op. The op
+    TOGGLES (closes if `currentEditing`), so pressing twice closes the panel.
+  - **Target view:** `hasActivePluginEditor` = some view `active` (not `opened`);
+    `postInsertLinkToActiveEditor` (`src/insertLinkShortcut.ts`) requires
+    `isActive && isVisible` (WebviewController `visible` = `active && opened`),
+    first match wins (mirrors Joplin's getActivePluginEditorView); dead handles
+    (isActive throws) are dropped. Plugin API calls return Promises at runtime even
+    where typed `void` — `postMessage` is awaited.
+  - **Stable selectors:** Univer link panel = `input[placeholder="<hyperLink.form.linkPlaceholder>"]`
+    ("Enter link" in en-US; read from the installed locale), root = its closest
+    `.univer-rounded-xl` (CellLinkEdit root div, no id/data attr). Joplin's
+    markdown link prompt = `.smalltalk .content-area` containing "Insert Hyperlink"
+    (`dialogs.prompt`, useEditorCommands.ts L83–84); cancel via
+    `.smalltalk [data-name="js-cancel"]`. A leftover smalltalk dialog intercepts
+    every click on the page — clear it before any canvas click.
+  - **Harness:** `scripts/pge/insert-link-lib.js` (shared), `insert-link-probe.js`
+    (`PGE_NOTE_ID` + `PGE_MD_NOTE_ID`), `eval-screenshot.js` region
+    `insertLinkPanel` (whole-page capture). Keystrokes are System Events
+    `key code 40` to the dev PID; `devJoplinPid()` throws if any non-dev Joplin
+    runs. AX `AXMenuItemCmdModifiers` bit1 = Option, bit3 = no-Cmd. Flakes seen and
+    handled: back-to-back presses within ~400 ms of a programmatic panel close can
+    miss (probe settles 500 ms); in the first ~minute after a relaunch the markdown
+    Cmd+K control case missed twice (Joplin's own prompt; not reproducible by hand;
+    after a 45 s warm-up 8/8 ×2). Test notes: notesheet `c3f5b13b…`, markdown
+    `c31b0272…` (dev profile).
+  - **Out-of-scope bug spotted (not fixed):** our existing `CmdOrCtrl+Shift+S`
+    ("New Spreadsheet", `src/index.ts`) collides with Joplin's default
+    `focusElementSideBar` (KeymapService.ts L45 `Shift+Cmd+S` / L100
+    `Ctrl+Shift+S`). Needs an operator decision (BACKLOG item + milestone).

@@ -14,7 +14,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-JPL="$REPO_ROOT/publish/com.kamleshnanda.joplin-notesheet.jpl"
+# PGE_JPL lets deploy-build.sh install a .jpl built elsewhere (a temp worktree).
+JPL="${PGE_JPL:-$REPO_ROOT/publish/com.kamleshnanda.joplin-notesheet.jpl}"
 PLUGIN_ID="com.kamleshnanda.joplin-notesheet"
 PROFILE_DIR="${JOPLIN_PROFILE_DIR:-$HOME/.config/joplindev-desktop}"
 PLUGIN_DIR="$PROFILE_DIR/plugins"

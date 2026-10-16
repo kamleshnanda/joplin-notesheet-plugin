@@ -2,6 +2,13 @@ import joplin from 'api';
 import { ContentScriptType, MenuItemLocation, ToolbarButtonLocation } from 'api/types';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
+import {
+    INSERT_LINK_ACCELERATOR,
+    INSERT_LINK_COMMAND,
+    INSERT_LINK_LABEL,
+    INSERT_LINK_MENU_ID,
+    postInsertLinkToActiveEditor,
+} from './insertLinkShortcut';
 import { emptySnapshot, extractSnapshot, isNotesheetBody, wrapSnapshot } from './snapshot';
 import { xlsxBufferToSnapshot } from './xlsx';
 
@@ -34,6 +41,10 @@ joplin.plugins.register({
                 './contentScripts/notesheetRenderer.js',
             );
 
+            // Every editor view Joplin creates (one per window). The insert-link
+            // command picks the active + visible one (src/insertLinkShortcut.ts).
+            const editorHandles = new Set<string>();
+
             // ── Custom Editor: Univer spreadsheet view ──
             // When the active note's body matches the notesheet fence sentinel,
             // this editor takes over and shows the Univer spreadsheet UI.
@@ -45,6 +56,7 @@ joplin.plugins.register({
                     return isNotesheetBody(note?.body);
                 },
                 onSetup: async (handle) => {
+                    editorHandles.add(handle);
                     let viewReady = false;
 
                     await joplin.views.editors.setHtml(
@@ -212,6 +224,23 @@ joplin.plugins.register({
                 },
             });
 
+            // ── "Insert link in spreadsheet" (M19 E4) ──
+            // Cmd/Ctrl+K is Joplin's `textLink` app-menu accelerator; it only
+            // reaches Univer when the grid itself has focus (see
+            // src/editor/insertLink.ts). This command has its own accelerator
+            // (menu item below) and posts to the webview, which runs Univer's
+            // insert-link operation. Never re-register `textLink`: it would
+            // break the markdown editors.
+            await joplin.commands.register({
+                name: INSERT_LINK_COMMAND,
+                label: INSERT_LINK_LABEL,
+                iconName: 'fas fa-link',
+                enabledCondition: 'hasActivePluginEditor',
+                execute: async () => {
+                    await postInsertLinkToActiveEditor(joplin.views.editors, editorHandles);
+                },
+            });
+
             await joplin.views.toolbarButtons.create(
                 'notesheetNewEditorButton',
                 'newSpreadsheet',
@@ -232,6 +261,12 @@ joplin.plugins.register({
                 'notesheetImportXlsxMenu',
                 'importXlsxAsNotesheet',
                 MenuItemLocation.Tools,
+            );
+            await joplin.views.menuItems.create(
+                INSERT_LINK_MENU_ID,
+                INSERT_LINK_COMMAND,
+                MenuItemLocation.Tools,
+                { accelerator: INSERT_LINK_ACCELERATOR },
             );
 
             console.info(LOG, 'plugin loaded');

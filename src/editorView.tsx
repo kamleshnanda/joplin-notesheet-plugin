@@ -23,6 +23,7 @@ import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
 
 import {
     createUniver,
+    Direction,
     IResourceManagerService,
     LocaleType,
     LogLevel,
@@ -30,12 +31,15 @@ import {
     defaultTheme,
     merge,
 } from '@univerjs/presets';
-import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
+import { JumpOver, UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
-import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
+import {
+    InsertLinkShortcut,
+    UniverSheetsHyperLinkPreset,
+} from '@univerjs/preset-sheets-hyper-link';
 import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';
 
 import { withFlatTableTheme } from './univerTableTheme';
@@ -58,6 +62,13 @@ import {
     NOTESHEET_ARRAY_FORMULAS_RESOURCE,
 } from './xlsx';
 import NotesheetChart, { type NotesheetChartType } from './charts/NotesheetChart';
+import {
+    MOVE_SELECTION_COMMAND_ID,
+    makeArrowEdgeClamp,
+    makeFullAxisCollapse,
+    rangeMovedByMoveSelection,
+} from './editor/arrowEdgeClamp';
+import { isInsertLinkMessage, openUniverInsertLink } from './editor/insertLink';
 import { extractRangeAsChartData, detectHeaderRow, type RangeAddress } from './charts/extractData';
 import { pushChartUpdate } from './charts/dataBus';
 import { registerTextToNumberCommand } from './formulas/registerTextToNumber';
@@ -907,6 +918,8 @@ function bootUniver(snapshot: Record<string, unknown>): void {
         }
     }
 
+    installArrowEdgeClamp(univerAPI);
+
     // Drawing transforms (drag, resize, anchor changes) don't trigger
     // SheetEditEnded, so without this hook the workbook snapshot picks up
     // the new transform in memory but never gets written back to the note.
@@ -937,6 +950,161 @@ function bootUniver(snapshot: Record<string, unknown>): void {
         } catch (e) {
             console.warn('[Notesheet] could not subscribe to CommandExecuted', e);
         }
+    }
+}
+
+// M19 feature-1 (BACKLOG E3): arrow keys stop at the sheet edge, as in Excel,
+// instead of Univer 0.23's wrap (findNextRange `isGoBack = true`; upstream
+// univer#6988 closed as by-design). A command-level veto, not a shortcut
+// override: committing a cell edit with an arrow key calls MoveSelectionCommand
+// directly (editor-bridge `_moveSelection`), bypassing ShortcutService. Setting
+// `event.cancel` makes the facade throw CanceledError, which core
+// `executeCommand` catches and turns into `false` — nothing reaches the console.
+// The decision lives in src/editor/arrowEdgeClamp.ts (pure, Jest-tested).
+// Univer 1.x (BACKLOG F5): re-verify BeforeCommandExecute + `cancel` semantics.
+const shouldClampArrowMove = makeArrowEdgeClamp(Direction, JumpOver.moveGap);
+const shouldCollapseFullAxis = makeFullAxisCollapse(Direction, JumpOver.moveGap);
+
+// M19 E4: the operation Univer's own Cmd/Ctrl+K shortcut runs
+// (`sheet.operation.insert-hyper-link-toolbar` in 0.23), read from the shortcut
+// rather than hard-coded; tests/m19InsertLinkShortcut.test.ts pins it.
+const INSERT_LINK_COMMAND_ID = InsertLinkShortcut.id;
+
+interface ArrowClampCell {
+    actualRow?: number;
+    actualColumn?: number;
+}
+
+interface ArrowClampApi {
+    addEvent?: (event: string, cb: (e: ArrowClampEvent) => void) => unknown;
+    Event?: { BeforeCommandExecute?: string };
+    executeCommand?: (id: string, params?: unknown) => Promise<unknown> | unknown;
+    getActiveWorkbook?: () => {
+        getId?: () => string;
+        getActiveSheet?: () => {
+            getSheetId?: () => string;
+            getSheet?: () => unknown;
+            getSelection?: () => {
+                getActiveRangeList?: () => Array<{ getRange?: () => unknown }>;
+                getCurrentCell?: () => ArrowClampCell | null;
+            } | null;
+        } | null;
+    } | null;
+}
+
+// True while we run our own collapse-and-move, so that move is judged by the
+// edge veto only and can never re-enter the collapse path (no loop).
+let arrowCollapseInProgress = false;
+
+// Excel behaviour for a full-axis selection: collapse to the active cell, then
+// let Univer's own MoveSelectionCommand take one step from there (hidden rows,
+// merges and scrolling stay Univer's). Runs after the cancelled command has
+// unwound. A step off the sheet edge is vetoed as usual, so the result is the
+// collapsed active cell.
+async function collapseAndMove(
+    a: ArrowClampApi,
+    row: number,
+    col: number,
+    direction: unknown,
+    primary: ArrowClampCell | null,
+): Promise<void> {
+    const wb = a.getActiveWorkbook?.();
+    const ws = wb?.getActiveSheet?.();
+    const unitId = wb?.getId?.();
+    const subUnitId = ws?.getSheetId?.();
+    if (!unitId || !subUnitId || typeof a.executeCommand !== 'function') return;
+    arrowCollapseInProgress = true;
+    try {
+        await a.executeCommand('sheet.operation.set-selections', {
+            unitId,
+            subUnitId,
+            selections: [
+                {
+                    range: {
+                        startRow: row,
+                        endRow: row,
+                        startColumn: col,
+                        endColumn: col,
+                        rangeType: 0,
+                    },
+                    primary: primary ?? {
+                        startRow: row,
+                        startColumn: col,
+                        endRow: row,
+                        endColumn: col,
+                        actualRow: row,
+                        actualColumn: col,
+                        isMerged: false,
+                        isMergedMainCell: false,
+                    },
+                    style: null,
+                },
+            ],
+        });
+        await a.executeCommand(MOVE_SELECTION_COMMAND_ID, { direction });
+    } catch (e) {
+        console.warn('[Notesheet] arrow collapse-and-move failed', e);
+    } finally {
+        arrowCollapseInProgress = false;
+    }
+}
+
+interface ArrowClampEvent {
+    id?: string;
+    params?: unknown;
+    cancel?: boolean;
+}
+
+function installArrowEdgeClamp(api: unknown): void {
+    const a = api as ArrowClampApi;
+    const eventName = a?.Event?.BeforeCommandExecute;
+    if (typeof a?.addEvent !== 'function' || !eventName) {
+        console.warn(
+            '[Notesheet] BeforeCommandExecute unavailable — arrow keys will wrap at the sheet edge',
+        );
+        return;
+    }
+    try {
+        a.addEvent(eventName, (event) => {
+            // Runs synchronously inside executeCommand for EVERY command:
+            // cheap id check first, and never throw (a non-CanceledError
+            // thrown here would reject the user's command).
+            if (event?.id !== MOVE_SELECTION_COMMAND_ID) return;
+            try {
+                const ws = a.getActiveWorkbook?.()?.getActiveSheet?.();
+                const sheet = ws?.getSheet?.();
+                // Judge the range the command will actually move: the LAST
+                // selection, not the facade's first-with-primary active range.
+                const range = rangeMovedByMoveSelection(
+                    ws?.getSelection?.()?.getActiveRangeList?.() ?? [],
+                )?.getRange?.();
+                if (!sheet || !range) return;
+                const r = range as Parameters<typeof shouldClampArrowMove>[1];
+                const sh = sheet as Parameters<typeof shouldClampArrowMove>[2];
+                if (!arrowCollapseInProgress && shouldCollapseFullAxis(event.params, r, sh)) {
+                    event.cancel = true;
+                    const cur = ws?.getSelection?.()?.getCurrentCell?.() ?? null;
+                    const row = cur?.actualRow ?? r.startRow;
+                    const col = cur?.actualColumn ?? r.startColumn;
+                    const direction = (event.params as { direction?: unknown }).direction;
+                    queueMicrotask(() => void collapseAndMove(a, row, col, direction, cur));
+                    return;
+                }
+                if (
+                    shouldClampArrowMove(
+                        event.params,
+                        range as Parameters<typeof shouldClampArrowMove>[1],
+                        sheet as Parameters<typeof shouldClampArrowMove>[2],
+                    )
+                ) {
+                    event.cancel = true;
+                }
+            } catch (e) {
+                console.warn('[Notesheet] arrow edge clamp check failed', e);
+            }
+        });
+    } catch (e) {
+        console.warn('[Notesheet] could not subscribe to BeforeCommandExecute', e);
     }
 }
 
@@ -1030,6 +1198,13 @@ function init(): void {
         const m = event?.message as LoadMessage | undefined;
         if (m && m.type === 'load' && m.snapshot) {
             bootUniver(m.snapshot);
+            return;
+        }
+        // M19 E4: the host's "Insert link in spreadsheet" command (its own
+        // accelerator, since Cmd/Ctrl+K is Joplin's) — run the same operation
+        // Univer's Cmd/Ctrl+K shortcut fires. See src/editor/insertLink.ts.
+        if (isInsertLinkMessage(m)) {
+            openUniverInsertLink(activeApi, INSERT_LINK_COMMAND_ID);
         }
     });
     window.webviewApi.postMessage(READY_MESSAGE).catch((err) => {

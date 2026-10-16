@@ -19,6 +19,16 @@ target=$(printf '%s' "$input" | python3 -c 'import json,sys; print(json.load(sys
 # Only guard the results file (anchor on path separator so e.g. vitest-results.json doesn't match)
 case "$target" in "$results"|*/"$results") ;; *) exit 0 ;; esac
 
+# Run from the project root so the relative evidence log resolves correctly
+# even after the session has cd'd into a subdirectory. CLAUDE_PROJECT_DIR is set
+# by Claude Code for hooks; fall back to this script's own location. Done AFTER
+# the target filter (which doesn't depend on cwd) so a failed cd only blocks
+# writes to the results file, never unrelated edits. Guard → fail CLOSED.
+cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || {
+  echo '{"decision":"block","reason":"PGE verify-gate hook could not cd to the project root, so it cannot check the evidence log; refusing to modify the results file unguarded."}'
+  exit 0
+}
+
 if [ ! -s "$log" ]; then
   cat <<'JSON'
 {"decision":"block","reason":"Cannot modify the results file: no screenshot or console-log evidence has been Read this session. Open the evidence file with the Read tool first, then retry."}
